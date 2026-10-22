@@ -601,10 +601,28 @@ async function startFromBitrix(req, res) {
         try { info = await getWabotBitrixLookup().phoneFromDeal(emp, bitrixId); bitrixCompany = emp; break }
         catch (e) { lastErr = e; console.warn(`[wa/bitrix/start] deal ${bitrixId} no encontrado en ${emp}: ${e.message}`) }
       }
-      if (!info) return res.status(502).json({ success: false, error: 'Bitrix: ' + lastErr.message })
-      if (!info.phone) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
-      waNumber = info.phone
-      contactName = info.contactName
+      // Respaldo: muchos deals (p.ej. "Invitado - VELSA 1 …") llegan a Bitrix
+      // sin Contacto con teléfono, pero el webhook ya guardó el número del
+      // cliente en bitrix_webhook_leads. Se usa ese si Bitrix no lo trae.
+      let phoneDb = ''
+      if (!info?.phone) {
+        try {
+          const r = await query(
+            `SELECT phone, empresa FROM bitrix_webhook_leads
+              WHERE bitrix_id = $1 AND COALESCE(TRIM(phone), '') <> ''
+              ORDER BY (empresa = $2) DESC NULLS LAST, id DESC LIMIT 1`,
+            [String(bitrixId).trim(), bitrixCompany || empresaBx]
+          )
+          phoneDb = normalizePhoneEC(r.rows[0]?.phone)
+          if (phoneDb && !bitrixCompany) bitrixCompany = r.rows[0].empresa || empresaBx
+        } catch (e) {
+          console.warn(`[wa/bitrix/start] respaldo bitrix_webhook_leads falló para ${bitrixId}: ${e.message}`)
+        }
+      }
+      if (!info && !phoneDb) return res.status(502).json({ success: false, error: 'Bitrix: ' + lastErr.message })
+      if (!info?.phone && !phoneDb) return res.status(404).json({ success: false, error: 'La negociación no tiene un teléfono válido en Bitrix' })
+      waNumber = info?.phone || phoneDb
+      contactName = info?.contactName || null
     }
     if (!isAdmin(req) && isAdminOnlyNumber(waNumber)) {
       return res.status(403).json({ success: false, error: 'Este número está reservado para administradores' })

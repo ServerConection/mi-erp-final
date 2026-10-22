@@ -126,6 +126,42 @@ const INIT = {
   archivo_nombramiento: "", archivo_registro_mercantil: "", archivo_ruc: "",
 };
 
+const PROMOCIONES_ANCHO_BANDA = {
+  HOME: {
+    150: 600,
+    200: 900,
+    400: 900,
+    750: 1200,
+    850: 1300,
+  },
+  PRO: {
+    250: 600,
+    550: 900,
+    575: 1200,
+    800: 1300,
+    900: 1500,
+    950: 1500,
+    1010: 1500,
+    1100: 1500,
+    1250: 1500,
+    1350: 1500,
+  },
+};
+
+function obtenerPromocionAnchoBanda(form) {
+  const tipoPlan = String(form.tipo_plan || "").trim().toUpperCase();
+  const promocionesTipo = PROMOCIONES_ANCHO_BANDA[tipoPlan];
+  if (!promocionesTipo) return "—";
+
+  const velocidadesPlan = String(form.plan_contratado_final || "")
+    .match(/\d+(?:[.,]\d+)?/g)
+    ?.map((valor) => Number(valor.replace(",", "."))) || [];
+  const velocidadBase = velocidadesPlan.find((velocidad) => promocionesTipo[velocidad]);
+  const velocidadPromocional = promocionesTipo[velocidadBase];
+
+  return velocidadPromocional ? `${velocidadPromocional}Mbps x 18 meses` : "—";
+}
+
 // ─── Genera el texto del resumen de venta en el formato exacto acordado ──────
 function generarResumenVenta(form, user, opcion = null) {
   const trato = form.genero_cliente === "MUJER" ? "Sra" : "Sr";
@@ -143,6 +179,7 @@ function generarResumenVenta(form, user, opcion = null) {
   const serviciosTxt = serviciosResumen.length
     ? serviciosResumen.map(s => `-    ${s}`).join("\n")
     : "-    —";
+  const promocionAnchoBanda = obtenerPromocionAnchoBanda(form);
   const leySi = form.beneficios_de_ley === "SI" ? "X" : " ";
   const leyNo = form.beneficios_de_ley === "SI" ? " " : "X";
   const plazo = form.plazo_contrato_meses || "36";
@@ -165,6 +202,7 @@ function generarResumenVenta(form, user, opcion = null) {
     `⏳Plan contratado: ${plan}`,
     `✅Servicios Empaquetados incluidos:`,
     serviciosTxt,
+    `✅Promoción de ancho de banda: ${promocionAnchoBanda}`,
     `✅Precio regular (sin impuestos): $${form.precio_regular_sin_imp || "—"}`,
     `✅Precio regular (con impuestos): $${form.precio_regular || "—"}`,
     `✅Precio con promoción: $${form.precio_promocion || "—"}${form.meses_promocion ? ` durante ${form.meses_promocion} facturas` : ""}`,

@@ -10,6 +10,7 @@
  * (Campañas > Cargar lista de números).
  */
 import { useState, useEffect, useCallback, useMemo } from "react";
+import AutomarcadorCargaBitrix from "./AutomarcadorCargaBitrix";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3050";
 // URL pública del servicio del Automarcador (mismo dominio que el iframe del panel).
@@ -348,7 +349,7 @@ export default function Automarcador() {
           />
         </div>
       ) : (
-        <CargarBase />
+        <AutomarcadorCargaBitrix />
       )}
     </div>
   );

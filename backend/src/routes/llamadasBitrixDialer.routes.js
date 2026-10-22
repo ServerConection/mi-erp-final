@@ -19,6 +19,7 @@ function crearRouter({
   router.get('/cola', c.autenticar, c.cola)
   router.post('/siguiente', express.json({ limit: '4kb' }), c.autenticar, c.siguiente)
   router.post('/resultado', express.json({ limit: '4kb' }), c.autenticar, c.resultado)
+  router.post('/estado', express.json({ limit: '4kb' }), c.autenticar, c.estado)
   return router
 }
 

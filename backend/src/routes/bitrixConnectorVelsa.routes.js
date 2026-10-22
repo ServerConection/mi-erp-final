@@ -6,7 +6,7 @@ const express = require('express')
 const router = express.Router()
 const {
   install, settings, events, placementInbox,
-  registrarConector, registrarPlacement, listarCanales, activarCanal, estado,
+  registrarConector, registrarPlacement, listarCanales, activarCanal, asignarLinea, estado,
 } = require('../controllers/bitrixConnectorVelsa.controller')
 const { verificarToken, noAsesor } = require('../middleware/auth')
 
@@ -26,5 +26,6 @@ router.get('/canales',   verificarToken, listarCanales)
 router.post('/registrar', verificarToken, noAsesor, registrarConector)
 router.post('/registrar-placement', verificarToken, noAsesor, registrarPlacement)
 router.post('/activar',   verificarToken, noAsesor, activarCanal)
+router.post('/asignar-linea', verificarToken, noAsesor, asignarLinea)
 
 module.exports = router

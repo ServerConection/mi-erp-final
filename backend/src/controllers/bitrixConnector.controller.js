@@ -258,6 +258,30 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
     } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
   }
 
+  /**
+   * Conecta (o desconecta) una línea de WhatsApp a un canal abierto de Bitrix.
+   * body: { line_id, open_line_id }  — open_line_id null/0 = desconectar.
+   * Varias líneas pueden entregar al mismo canal.
+   */
+  async function asignarLinea(req, res) {
+    try {
+      const lineId = String(req.body.line_id || '').trim()
+      const openLineId = Number(req.body.open_line_id) || null
+      if (!lineId) return res.status(400).json({ success: false, message: 'Falta line_id' })
+
+      const r = await pool.query('SELECT id, name, phone_number FROM lines WHERE id = $1', [lineId])
+      const linea = r.rows[0]
+      if (!linea) return res.status(404).json({ success: false, message: 'Línea no encontrada' })
+
+      if (openLineId) {
+        await conector.activar(openLineId, true)
+        await conector.fijarDatos(openLineId)
+      }
+      await pool.query('UPDATE lines SET open_line_id = $1 WHERE id = $2', [openLineId, lineId])
+      return res.json({ success: true, line_id: lineId, open_line_id: openLineId })
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
+  }
+
   async function estado(req, res) {
     try {
       const tokens = await bitrixApp.leerTokens()
@@ -272,7 +296,7 @@ function crearControladorBitrixConnector({ bitrixApp, conector, appToken }) {
     } catch (e) { return res.status(500).json({ success: false, message: e.message }) }
   }
 
-  return { install, settings, events, placementInbox, registrarConector, registrarPlacement, listarCanales, activarCanal, estado }
+  return { install, settings, events, placementInbox, registrarConector, registrarPlacement, listarCanales, activarCanal, asignarLinea, estado }
 }
 
 // ── Instancia Novonet: mismo comportamiento que antes de este refactor ─────

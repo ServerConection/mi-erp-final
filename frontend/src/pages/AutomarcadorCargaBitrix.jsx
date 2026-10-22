@@ -6,6 +6,7 @@
  * hace el backend (/api/llamadas/bitrix/enviar).
  */
 import { useState, useEffect } from "react";
+import MultiSelectBuscable from "../components/MultiSelectBuscable";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:3050"}/api/llamadas/bitrix`;
 const authH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` });
@@ -13,8 +14,7 @@ const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Gu
 
 export default function AutomarcadorCargaBitrix() {
   const [opciones, setOpciones] = useState(null);
-  const [form, setForm] = useState({ stage_id: "", responsible_id: "", date_from: hoy(), date_to: hoy(), name: "" });
-  const [busqResp, setBusqResp] = useState("");
+  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -30,8 +30,10 @@ export default function AutomarcadorCargaBitrix() {
   }, []);
 
   const nombreAuto = (f) => {
-    const etapa = opciones?.stages?.find(s => s.id === f.stage_id)?.name || "";
-    const resp = f.responsible_id || "";
+    const resumen = (ids = [], opts = []) => ids.length === 0 ? "" : ids.length === 1
+      ? (opts.find(o => String(o.id) === String(ids[0]))?.name || "") : `${ids.length} seleccionados`;
+    const etapa = resumen(f.stage_ids, opciones?.stages);
+    const resp = resumen(f.responsible_ids, opciones?.responsibles);
     const fecha = f.date_from === f.date_to ? f.date_from : `${f.date_from} a ${f.date_to}`;
     return [etapa, fecha, resp].filter(Boolean).join(" - ").toUpperCase();
   };
@@ -45,10 +47,7 @@ export default function AutomarcadorCargaBitrix() {
     });
   };
 
-  const responsables = (opciones?.responsibles || []).filter(r =>
-    !busqResp || r.name.toLowerCase().includes(busqResp.toLowerCase()));
-
-  const listo = form.stage_id && form.responsible_id && form.date_from && form.date_to;
+  const listo = form.date_from && form.date_to;
 
   const consultar = async () => {
     setBusy(true); setError(""); setPreview(null); setEnviado(null);
@@ -81,19 +80,14 @@ export default function AutomarcadorCargaBitrix() {
         <p className="text-[10px] text-slate-500">Empresa: <b>{opciones?.empresa || "cargando…"}</b> · Igual que en WABOT, sin descargar nada de Bitrix.</p>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
-            <label className={lbl}>Etapa</label>
-            <select className={inp} value={form.stage_id} disabled={!opciones} onChange={e => cambiar("stage_id", e.target.value)}>
-              <option value="">Selecciona una etapa</option>
-              {(opciones?.stages || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <label className={lbl}>Etapas</label>
+            <MultiSelectBuscable options={opciones?.stages || []} value={form.stage_ids} disabled={!opciones}
+              onChange={v => cambiar("stage_ids", v)} placeholder="Buscar etapa…" todosLabel="Todas las etapas" />
           </div>
           <div>
-            <label className={lbl}>Responsable</label>
-            <input className={inp} placeholder="Buscar responsable…" value={busqResp} onChange={e => setBusqResp(e.target.value)} disabled={!opciones} />
-            <select className={inp} value={form.responsible_id} disabled={!opciones} onChange={e => cambiar("responsible_id", e.target.value)}>
-              <option value="">Selecciona responsable</option>
-              {responsables.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
+            <label className={lbl}>Responsables</label>
+            <MultiSelectBuscable options={opciones?.responsibles || []} value={form.responsible_ids} disabled={!opciones}
+              onChange={v => cambiar("responsible_ids", v)} placeholder="Buscar responsable…" todosLabel="Todos los responsables" />
           </div>
           <div>
             <label className={lbl}>Creación desde</label>

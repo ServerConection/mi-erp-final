@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import WaCreationDateFilter from "../components/WaCreationDateFilter";
+import MultiSelectBuscable from "../components/MultiSelectBuscable";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
@@ -101,7 +102,7 @@ export default function WaContactos() {
   const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [creator, setCreator] = useState("");
   const [bitrixOptions, setBitrixOptions] = useState(null);
-  const [bitrixForm, setBitrixForm] = useState({ stage_id: "", responsible_id: "", date_from: "", date_to: "", name: "" });
+  const [bitrixForm, setBitrixForm] = useState({ stage_ids: [], responsible_ids: [], date_from: "", date_to: "", name: "" });
   const [bitrixPreview, setBitrixPreview] = useState(null);
   const [bitrixBusy, setBitrixBusy] = useState(false);
   const [bitrixError, setBitrixError] = useState("");
@@ -191,7 +192,7 @@ export default function WaContactos() {
   const openBitrix = async () => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
     setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
-    setBitrixForm({ stage_id: "", responsible_id: "", date_from: today, date_to: today, name: "" });
+    setBitrixForm({ stage_ids: [], responsible_ids: [], date_from: today, date_to: today, name: "" });
     // La empresa puede cambiar mientras la sesión sigue abierta. No reutilizar
     // opciones anteriores: el backend resuelve siempre la empresa vigente desde BD.
     setBitrixOptions(null);
@@ -209,8 +210,10 @@ export default function WaContactos() {
   };
 
   const generatedBitrixName = (current = bitrixForm) => {
-    const stage = bitrixOptions?.stages?.find(s => s.id === current.stage_id)?.name || "";
-    const responsible = bitrixOptions?.responsibles?.find(u => u.id === current.responsible_id)?.name || "";
+    const resumen = (ids = [], opts = []) => ids.length === 0 ? "" : ids.length === 1
+      ? (opts.find(o => String(o.id) === String(ids[0]))?.name || "") : `${ids.length} SELECCIONADOS`;
+    const stage = resumen(current.stage_ids, bitrixOptions?.stages);
+    const responsible = resumen(current.responsible_ids, bitrixOptions?.responsibles);
     const date = current.date_from ? current.date_from.split("-").reverse().join("-") : "";
     return [stage, date, responsible].filter(Boolean).join(" - ").toUpperCase();
   };
@@ -474,16 +477,15 @@ export default function WaContactos() {
             </div>
             <div className="p-5 space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
-                <label className="text-xs font-semibold text-slate-500">ETAPA
-                  <select value={bitrixForm.stage_id} onChange={e => updateBitrixForm("stage_id", e.target.value)} disabled={bitrixBusy || !bitrixOptions}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">Selecciona una etapa</option>
-                    {(bitrixOptions?.stages || []).map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
-                  </select>
-                </label>
+                <div className="text-xs font-semibold text-slate-500">ETAPA
+                  <MultiSelectBuscable options={bitrixOptions?.stages || []} value={bitrixForm.stage_ids}
+                    onChange={value => updateBitrixForm("stage_ids", value)} disabled={bitrixBusy || !bitrixOptions}
+                    placeholder="Buscar etapa…" todosLabel="Todas las etapas" />
+                </div>
                 <div className="text-xs font-semibold text-slate-500">RESPONSABLE
-                  <SearchableSelect options={bitrixOptions?.responsibles || []} value={bitrixForm.responsible_id}
-                    onChange={value => updateBitrixForm("responsible_id", value)} disabled={bitrixBusy || !bitrixOptions} />
+                  <MultiSelectBuscable options={bitrixOptions?.responsibles || []} value={bitrixForm.responsible_ids}
+                    onChange={value => updateBitrixForm("responsible_ids", value)} disabled={bitrixBusy || !bitrixOptions}
+                    placeholder="Buscar responsable…" todosLabel="Todos los responsables" />
                 </div>
                 <label className="text-xs font-semibold text-slate-500">FECHA DESDE
                   <input type="date" value={bitrixForm.date_from} onChange={e => updateBitrixForm("date_from", e.target.value)}
@@ -517,7 +519,7 @@ export default function WaContactos() {
             </div>
             <div className="p-5 border-t border-slate-100 flex flex-wrap gap-3 justify-end">
               <button onClick={() => setModal(null)} className="text-sm text-slate-500 px-4 py-2">Cancelar</button>
-              <button onClick={previewFromBitrix} disabled={bitrixBusy || !bitrixForm.stage_id || !bitrixForm.responsible_id || !bitrixForm.date_from || !bitrixForm.date_to}
+              <button onClick={previewFromBitrix} disabled={bitrixBusy || !bitrixForm.date_from || !bitrixForm.date_to}
                 className="border border-blue-600 text-blue-700 disabled:opacity-40 px-5 py-2 rounded-lg text-sm font-medium">{bitrixBusy ? "Consultando…" : "Consultar"}</button>
               <button onClick={createFromBitrix} disabled={bitrixBusy || !bitrixPreview?.unique_contacts || !bitrixForm.name.trim()}
                 className="bg-green-600 text-white disabled:bg-slate-300 px-5 py-2 rounded-lg text-sm font-medium">Crear base</button>

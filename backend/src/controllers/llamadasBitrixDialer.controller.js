@@ -14,13 +14,14 @@
  * user.current y busca al usuario ERP por correo (igual que LLAMAR).
  */
 const svc = require('../services/automarcadorBitrix.service')
+const { crearRegistroLlamadas, resultadoDeFila } = require('../services/automarcadorBitrixRegistro.service')
 
 const CACHE_MS = 5 * 60 * 1000
 
 const esperar = (ms) => new Promise(ok => setTimeout(ok, ms))
 const esLimiteBitrix = (err) => /too many requests|query_limit_exceeded|operation_time_limit/i.test(String(err?.message || ''))
 
-function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(), pausaReintentoMs = 1500 }) {
+function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(), pausaReintentoMs = 1500, registro = crearRegistroLlamadas() }) {
   const cache = new Map() // token -> { usuarioId, nombre, exp }
 
   // Bitrix limita las peticiones REST del portal; si responde "Too many
@@ -86,6 +87,18 @@ function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(
     cola: responder(req => svc.resumenAsesor(req.asesor.usuarioId, db).then(r => ({ ...r, asesor: req.asesor.nombre }))),
     siguiente: responder(req => svc.siguiente(req.asesor.usuarioId, db)),
     resultado: responder(req => svc.registrarResultado(req.asesor.usuarioId, req.body || {}, db)),
+    // La página pregunta aquí si la llamada ya terminó; el ERP lo resuelve con
+    // el registro compartido (una consulta a Bitrix para todos los asesores).
+    estado: responder(async (req) => {
+      if (!registro.configurado()) return { terminada: false, automatico: false }
+      const item = await svc.itemEnLlamada(req.asesor.usuarioId, req.body?.item_id, db)
+      if (!item) return { terminada: true, estado: null }
+      const fila = await registro.buscar({ bitrixUserId: req.asesor.bitrixId, telefono: item.telefono, desde: item.ultimo_intento })
+      if (!fila) return { terminada: false, automatico: true }
+      const res = resultadoDeFila(fila)
+      await svc.registrarResultado(req.asesor.usuarioId, { item_id: item.id, estado: res.estado, duracion: res.duracion }, db)
+      return { terminada: true, ...res }
+    }),
   }
 }
 
@@ -121,7 +134,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
 </div>
 <script>
 (function(){
-  var API='/api/llamadas/bitrix-dialer/', me=null, corriendo=false, actual=null, sondeo=null, inicio=null;
+  var API='/api/llamadas/bitrix-dialer/', corriendo=false, actual=null, sondeo=null;
   var $=function(id){return document.getElementById(id)};
   function error(m){ $('err').textContent=m||''; }
   function token(){ return new Promise(function(ok){ var a=BX24.getAuth(); if(a&&a.access_token) return ok(a.access_token); BX24.refreshAuth(function(n){ ok(n&&n.access_token); }); }); }
@@ -133,14 +146,12 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   }
   function bx(metodo, params){ return new Promise(function(ok,ko){ BX24.callMethod(metodo, params, function(r){ r.error()?ko(new Error(r.error().ex?r.error().ex.error_description:String(r.error()))):ok(r.data()); }); }); }
   function refrescar(){ return api('cola').then(function(d){ $('quien').textContent='Asesor: '+(d.asesor||''); $('pend').textContent=d.pendientes; $('ok').textContent=d.contestadas_hoy; $('nc').textContent=d.no_contesta_hoy; $('btnIniciar').disabled=corriendo||!d.pendientes; }).catch(function(e){ error(e.message); }); }
-  function ultimos9(v){ return String(v||'').replace(/\\D/g,'').slice(-9); }
-  function iso(d){ return d.toISOString().replace(/\\.\\d+Z$/,'+00:00'); }
 
-  function terminar(resultado, dur){
+  function terminar(resultado, dur, yaRegistrado){
     if(!actual) return;
     clearInterval(sondeo); sondeo=null;
     var item=actual; actual=null;
-    api('resultado',{item_id:item.id, estado:resultado, duracion:dur||0}).catch(function(e){ error(e.message); })
+    (yaRegistrado ? Promise.resolve() : api('resultado',{item_id:item.id, estado:resultado, duracion:dur||0}).catch(function(e){ error(e.message); }))
       .then(refrescar).then(function(){
         if(!corriendo){ $('estado').textContent='Detenido.'; return; }
         var s=parseInt($('pausa').value,10)||5; $('estado').textContent='Siguiente llamada en '+s+' s…';
@@ -148,26 +159,25 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
       });
   }
   function revisarRegistro(){
-    if(!actual||!me) return;
-    bx('voximplant.statistic.get',{FILTER:{PORTAL_USER_ID:me, '>=CALL_START_DATE':iso(inicio)}, SORT:'CALL_START_DATE', ORDER:'DESC'})
-      .then(function(filas){
-        var f=(filas||[]).filter(function(x){ return ultimos9(x.PHONE_NUMBER)===ultimos9(actual&&actual.telefono); })[0];
-        if(!f) return;
-        var dur=parseInt(f.CALL_DURATION,10)||0;
-        terminar(String(f.CALL_FAILED_CODE)==='200'&&dur>0?'contestada':'no_contesta', dur);
-      }).catch(function(){ $('estado').textContent='En llamada… (al colgar, marca el resultado abajo)'; });
+    if(!actual) return;
+    var item=actual;
+    api('estado',{item_id:item.id}).then(function(d){
+      if(actual!==item) return;
+      if(d.terminada){ terminar(d.estado, d.duracion, true); return; }
+      if(d.automatico===false) $('estado').textContent='En llamada… (al colgar, marca el resultado abajo)';
+    }).catch(function(){});
   }
   function llamar(){
     error('');
     api('siguiente',{}).then(function(item){
       if(!item){ corriendo=false; $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('No tienes más números pendientes.'); return refrescar(); }
-      actual=item; inicio=new Date(Date.now()-10000);
+      actual=item;
       $('cardActual').classList.remove('hidden');
       $('cliente').textContent=item.nombre_cliente||'Cliente';
       $('deal').textContent=item.deal_id?('Negociación #'+item.deal_id):'';
       $('estado').textContent='Marcando…';
       BX24.im.phoneTo('+'+item.telefono);
-      clearInterval(sondeo); sondeo=setInterval(revisarRegistro, 4000);
+      clearInterval(sondeo); sondeo=setInterval(revisarRegistro, 6000);
       refrescar();
     }).catch(function(e){ corriendo=false; error(e.message); $('btnDetener').classList.add('hidden'); refrescar(); });
   }
@@ -176,7 +186,6 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   Array.prototype.forEach.call(document.querySelectorAll('#manual button'),function(b){ b.onclick=function(){ terminar(b.getAttribute('data-r'),0); }; });
   BX24.init(function(){
     BX24.fitWindow && BX24.fitWindow();
-    bx('user.current',{}).then(function(u){ me=u.ID; }).catch(function(){});
     refrescar();
   });
 })();

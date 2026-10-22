@@ -51,6 +51,29 @@ const ejecutarMigracion = async () => {
   }
 };
 
+// Corre una migración sin esperar candados: si una tabla está ocupada por otra
+// consulta, falla en 5 s (en vez de colgarse 90 s) y el arranque continúa.
+const migrarSinBloquear = async (archivo) => {
+  let client;
+  const t0 = Date.now();
+  try {
+    const sql = fs.readFileSync(path.join(__dirname, '../migrations', archivo), 'utf8');
+    client = await pool.connect();
+    await client.query("SET lock_timeout = '5s'");
+    await client.query("SET statement_timeout = '60s'");
+    await client.query(sql);
+    console.log(`[WA] Migración ${archivo} OK (${Date.now() - t0} ms)`);
+  } catch (err) {
+    console.error(`[WA] ⚠️ Migración ${archivo} no terminó (${Date.now() - t0} ms), se continúa el arranque:`, err.message);
+  } finally {
+    if (client) {
+      await client.query('RESET lock_timeout').catch(() => {});
+      await client.query('RESET statement_timeout').catch(() => {});
+      client.release();
+    }
+  }
+};
+
 // appInstance: opcional. Cuando WABOT corre como proceso separado, el
 // entrypoint pasa SU app Express para registrar el baileysManager ahí. Si no
 // se pasa (monolito), cae al require('../app') de siempre → sin cambios.
@@ -58,11 +81,14 @@ const iniciarWhatsApp = async (appInstance) => {
   try {
     const io = getIO();
 
-    await ejecutarMigracion();
-    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/20261012_welcome_operacion_completa.sql'), 'utf8'));
-    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/20261007_wa_presentation_variants.sql'), 'utf8'));
-    await ejecutarMigracionWabotBitrix();
-    await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/wa_line_downtime.sql'), 'utf8'));
+    // Migraciones idempotentes (las tablas ya existen). Cada una corre con
+    // lock_timeout corto y NINGUNA puede cancelar el arranque: si la base está
+    // lenta o una tabla está ocupada, se avisa y WhatsApp arranca igual.
+    await migrarSinBloquear('whatsapp_schema.sql');
+    await migrarSinBloquear('20261012_welcome_operacion_completa.sql');
+    await migrarSinBloquear('20261007_wa_presentation_variants.sql');
+    await migrarSinBloquear('wabot_bitrix.sql');
+    await migrarSinBloquear('wa_line_downtime.sql');
 
     const authDir = process.env.WA_AUTH_DIR || process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '../../auth_sessions');
     fs.mkdirSync(authDir, { recursive: true });

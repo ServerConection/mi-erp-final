@@ -19,6 +19,41 @@ export default function AutomarcadorCargaBitrix() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [enviado, setEnviado] = useState(null);
+  // Automarcador por Bitrix: asesores que marcan desde su teléfono de Bitrix
+  const [asesores, setAsesores] = useState([]);
+  const [asesorIds, setAsesorIds] = useState([]);
+  const [campanas, setCampanas] = useState([]);
+  const [creadaBx, setCreadaBx] = useState(null);
+
+  const cargarCampanas = () => fetch(`${API}/campanas`, { headers: authH() })
+    .then(r => r.json()).then(j => { if (j.success) setCampanas(j.data); }).catch(() => {});
+
+  useEffect(() => {
+    fetch(`${API}/asesores`, { headers: authH() })
+      .then(r => r.json()).then(j => { if (j.success) setAsesores(j.data); }).catch(() => {});
+    cargarCampanas();
+  }, []);
+
+  const crearCampanaBitrix = async () => {
+    setBusy(true); setError(""); setCreadaBx(null);
+    try {
+      const r = await fetch(`${API}/campanas`, { method: "POST", headers: authH(), body: JSON.stringify({ ...form, asesor_ids: asesorIds }) });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || "No se pudo crear la campaña");
+      setCreadaBx(j.data); cargarCampanas();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const reintentar = async (id) => {
+    setError("");
+    try {
+      const r = await fetch(`${API}/campanas/${id}/reintentar`, { method: "POST", headers: authH() });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || "No se pudo reintentar");
+      cargarCampanas();
+    } catch (e) { setError(e.message); }
+  };
 
   useEffect(() => {
     setBusy(true);
@@ -39,7 +74,7 @@ export default function AutomarcadorCargaBitrix() {
   };
 
   const cambiar = (campo, valor) => {
-    setPreview(null); setEnviado(null); setError("");
+    setPreview(null); setEnviado(null); setCreadaBx(null); setError("");
     setForm(prev => {
       const next = { ...prev, [campo]: valor };
       if (campo !== "name") next.name = nombreAuto(next);
@@ -114,6 +149,29 @@ export default function AutomarcadorCargaBitrix() {
         </div>
       </div>
 
+      {preview?.unique_contacts > 0 && (
+        <div className="bg-white rounded-2xl border border-blue-200 p-4 space-y-2">
+          <p className="text-[11px] font-black text-slate-700">☎ Marcar por Bitrix (teléfono de cada asesor)</p>
+          <p className="text-[10px] text-slate-500">Los {preview.unique_contacts} números se reparten entre los asesores elegidos. Cada uno los marca desde la app "Automarcador" en su Bitrix.</p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="flex-1 min-w-[220px]">
+              <label className={lbl}>Asesores</label>
+              <MultiSelectBuscable options={asesores} value={asesorIds} onChange={setAsesorIds}
+                placeholder="Buscar asesor…" todosLabel="Selecciona asesores" />
+            </div>
+            <button onClick={crearCampanaBitrix} disabled={busy || !asesorIds.length}
+              className="text-[11px] font-black uppercase bg-blue-600 text-white rounded-lg px-4 py-2 disabled:opacity-40">
+              ☎ Crear campaña Bitrix ({asesorIds.length} asesor{asesorIds.length === 1 ? "" : "es"})
+            </button>
+          </div>
+          {creadaBx && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-700 font-bold">
+              ✅ Campaña #{creadaBx.campana_id} creada con {creadaBx.total} número(s) repartidos entre {Object.keys(creadaBx.por_asesor || {}).length} asesor(es).
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[11px] text-red-700 font-bold">{error}</div>}
 
       {enviado && (
@@ -151,6 +209,33 @@ export default function AutomarcadorCargaBitrix() {
           {preview.unique_contacts > (preview.items?.length || 0) && (
             <p className="px-4 py-2 text-[10px] text-slate-400">Se muestran {preview.items.length}; la campaña incluirá los {preview.unique_contacts} números.</p>
           )}
+        </div>
+      )}
+
+      {campanas.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <p className="px-4 pt-3 text-[11px] font-black text-slate-700">Campañas Bitrix</p>
+          <table className="w-full text-[10px] mt-2">
+            <thead className="bg-slate-50 text-slate-400 font-black uppercase">
+              <tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Nombre</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Pendientes</th><th className="px-3 py-2">Contestadas</th><th className="px-3 py-2">No contestan</th><th className="px-3 py-2"></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {campanas.map(c => (
+                <tr key={c.id}>
+                  <td className="px-3 py-2 font-bold">{c.id}</td>
+                  <td className="px-3 py-2">{c.nombre}</td>
+                  <td className="px-3 py-2 text-center">{c.total}</td>
+                  <td className="px-3 py-2 text-center">{c.pendientes}</td>
+                  <td className="px-3 py-2 text-center text-green-700 font-bold">{c.contestadas}</td>
+                  <td className="px-3 py-2 text-center text-amber-600 font-bold">{c.no_contesta}</td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => reintentar(c.id)} disabled={!c.no_contesta}
+                      className="text-[9px] font-black px-2 py-1 rounded-lg border border-slate-300 disabled:opacity-40">↻ Reintentar no contestados</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

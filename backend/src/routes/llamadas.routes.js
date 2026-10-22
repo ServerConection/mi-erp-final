@@ -15,6 +15,10 @@ router.use('/analitica', require('./llamadasAnalitica.routes').createRouter({
   pool: require('../config/db'), verify: verificarToken,
 }));
 
+// Automarcador Bitrix (lado asesor): lo abre Bitrix dentro de su app local.
+// Va ANTES de verificarToken: la identidad viene de la sesión de Bitrix.
+router.use('/bitrix-dialer', require('./llamadasBitrixDialer.routes').crearRouter());
+
 // Todo el módulo es solo para supervisión (igual que Automarcador): los
 // asesores no cargan bases, solo reciben llamadas desde el Automarcador.
 router.use(verificarToken, noAsesor);
@@ -31,5 +35,12 @@ const llamadasBitrix = require('../controllers/llamadasBitrix.controller');
 router.get('/bitrix/opciones',               llamadasBitrix.opciones);
 router.post('/bitrix/consultar',             llamadasBitrix.consultar);
 router.post('/bitrix/enviar',                llamadasBitrix.enviar);
+
+// Automarcador Bitrix (lado supervisor): campañas repartidas entre asesores
+const campanasBitrix = require('../controllers/llamadasBitrixCampanas.controller').crearCampanasController();
+router.get('/bitrix/asesores',                campanasBitrix.asesores);
+router.get('/bitrix/campanas',                campanasBitrix.campanas);
+router.post('/bitrix/campanas',               campanasBitrix.crear);
+router.post('/bitrix/campanas/:id/reintentar', campanasBitrix.reintentar);
 
 module.exports = router;

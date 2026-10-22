@@ -79,7 +79,7 @@ async function guardar(req, res, importar) {
       const existing = await client.query(`SELECT id, nombre_bitrix_asesor, fecha_carga::text, gestionables_permitidos, porcentaje_atc_max FROM ${T.asesores} WHERE id = $1 OR (UPPER(BTRIM(nombre_bitrix_asesor)) = UPPER($2) AND fecha_carga = $3)`, [r.id, r.nombre_bitrix_asesor, r.fecha_carga]);
       if (existing.rows.some(x => x.id !== r.id || x.nombre_bitrix_asesor !== r.nombre_bitrix_asesor || x.fecha_carga !== r.fecha_carga)) throw Object.assign(new Error(`El ID ${r.id} o el asesor/fecha ya pertenece a otro registro`), { status: 409 });
       if (!importar && (!existing.rows.length || existing.rows[0].gestionables_permitidos !== r.original || (r.original_atc !== undefined && existing.rows[0].porcentaje_atc_max !== r.original_atc))) throw Object.assign(new Error('Las cuotas cambiaron. Consulte la fecha otra vez antes de actualizar.'), { status: 409 });
-      await client.query(`INSERT INTO ${T.asesores} (id, nombre_bitrix_asesor, gestionables_permitidos, fecha_carga, porcentaje_atc_max) VALUES ($1,$2,$3,$4,COALESCE($5::int, 50)) ON CONFLICT (id) DO UPDATE SET gestionables_permitidos = EXCLUDED.gestionables_permitidos, porcentaje_atc_max = COALESCE($5::int, ${T.asesores}.porcentaje_atc_max)`, [r.id, r.nombre_bitrix_asesor, r.gestionables_permitidos, r.fecha_carga, r.porcentaje_atc_max ?? null]);
+      await client.query(`INSERT INTO ${T.asesores} (id, nombre_bitrix_asesor, gestionables_permitidos, fecha_carga, porcentaje_atc_max) VALUES ($1,$2,$3,$4,COALESCE($5::int, 50)) ON CONFLICT (id) DO UPDATE SET gestionables_permitidos = EXCLUDED.gestionables_permitidos, porcentaje_atc_max = COALESCE($5::int, ${T.asesores}.porcentaje_atc_max)`, [r.id, r.nombre_bitrix_asesor, r.gestionables_permitidos, r.fecha_carga, null /* % ATC fijo desde código */]);
     }
     await client.query(`SELECT setval('${T.asesores}_id_seq', GREATEST((SELECT MAX(id) FROM ${T.asesores}), (SELECT last_value FROM ${T.asesores}_id_seq)), true)`);
     await client.query('COMMIT');
@@ -97,7 +97,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, bloqueadoPorEfectividad, metaVentaSubida, plazoVentaHoras, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, plazoVentaHoras, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -152,15 +152,17 @@ router.get('/reparto/estado', async (req, res) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
       const esEstacion = normalizarNombre(r.nombre) === normalizarNombre(cfg.estacion_nombre);
       const atcHoy = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.atc || 0) : null;
-      const tope = topeAtc({ permitidos: r.permitidos, maxPct: r.atc_max });
+      const tope = topeAtc({ permitidos: r.permitidos });
       return {
         ...r,
         // Cupo usado = TOTAL de leads entregados hoy (bot + humano, cualquier etapa)
         total_asignados: r.asignados,
+        atc_max: ATC_MAX_PCT,                 // fijo desde código
         asignados: r.asignados,
         disponibles: Math.max(0, r.permitidos - r.asignados),
         en_linea: enLinea ? !!l?.enLinea : null,
         jornada: l?.jornada || null,
+        conexion: l?.inicio || null,          // hora de apertura de jornada (orden de conexión)
         encontrado_en_bitrix: enLinea ? !!l : null,
         es_estacion: esEstacion,
         gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
@@ -169,7 +171,7 @@ router.get('/reparto/estado', async (req, res) => {
         atc: atcHoy,
         atc_tope: tope === null ? null : Math.ceil(tope),
         atc_pct: atcHoy !== null && r.permitidos ? Math.round((atcHoy * 100) / r.permitidos) : 0,
-        bloqueado_atc: gestMap ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: atcHoy, maxPct: r.atc_max }) : false,
+        bloqueado_atc: gestMap ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: atcHoy }) : false,
         // Efectividad: Ventas Subidas vs meta (30% ↑ de gestionables) y leads vencidos (+3 h)
         venta_subida: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.venta || 0) : null,
         vencidos: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0) : null,
@@ -185,7 +187,7 @@ router.get('/reparto/estado', async (req, res) => {
     res.json({
       success: true,
       config: cfg,
-      en_linea: enLinea ? { criterio: enLinea.criterio, generado: enLinea.generado } : null,
+      en_linea: enLinea ? { criterio: enLinea.criterio, generado: enLinea.generado, respaldo: !!enLinea.respaldo, motivo_respaldo: enLinea.motivo_respaldo || null } : null,
       resumen: resumen.rows[0],
       horario: { inicio: cfg.hora_inicio, fin: cfg.hora_fin, dentro: dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin) },
       estacion: { nombre: cfg.estacion_nombre, pendientes: cola.rows.length, lista: cola.rows, sin_tabla: !!cola.sinTabla },

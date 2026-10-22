@@ -53,12 +53,14 @@ const esEtapaAtc = (etapa) => /^ATC([ /-]?SOPORTE)?$/.test(
  * (10 permitidos y 50% → máximo 5 ATC). Al llegar al tope no recibe más.
  * 100 = sin límite.
  */
-const topeAtc = ({ permitidos, maxPct }) => {
-  const max = Number.isInteger(maxPct) ? maxPct : 50;
+// El % de ATC lo define SISTEMAS en código (no se edita desde el panel).
+const ATC_MAX_PCT = Number(process.env.GESTIONABLES_ATC_MAX_PCT) || 50;
+const topeAtc = ({ permitidos, maxPct = ATC_MAX_PCT }) => {
+  const max = Number.isInteger(maxPct) ? maxPct : ATC_MAX_PCT;
   if (max >= 100) return null;
   return (Number(permitidos) || 0) * max / 100;
 };
-const bloqueadoPorAtc = ({ permitidos, atc, maxPct }) => {
+const bloqueadoPorAtc = ({ permitidos, atc, maxPct = ATC_MAX_PCT }) => {
   const tope = topeAtc({ permitidos, maxPct });
   if (tope === null || !permitidos) return false;
   return (Number(atc) || 0) >= tope;
@@ -102,4 +104,4 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };

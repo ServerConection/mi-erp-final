@@ -2,7 +2,16 @@
 .SYNOPSIS
     Script de auditoria de hardware y seguridad para ERP Novo Core.
     Compatible con Windows 10/11 sin instalaciones previas.
+
+.PARAMETER Empresa
+    Empresa a la que pertenece el equipo: NOVONET o VELSA. Si no se indica,
+    el script la solicita antes de recopilar y enviar la auditoria.
 #>
+
+param(
+    [ValidateSet("NOVONET", "VELSA")]
+    [string]$Empresa
+)
 
 $ApiUrl = "https://erp-backend-v1-qhk2.onrender.com/api/inventario-activos/auditoria"
 $ApiToken = "iat_F3xEA3E6Iw2v2kQooZEAVa5VTy0xYWNV8xWV2Q4zJEI"
@@ -10,9 +19,19 @@ $ApiToken = "iat_F3xEA3E6Iw2v2kQooZEAVa5VTy0xYWNV8xWV2Q4zJEI"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 $ErrorActionPreference = "SilentlyContinue"
 
+if (-not $Empresa) {
+    do {
+        $Empresa = (Read-Host "Empresa del equipo (NOVONET/VELSA)").Trim().ToUpper()
+        if ($Empresa -notin @("NOVONET", "VELSA")) {
+            Write-Host "Empresa invalida. Escribe NOVONET o VELSA." -ForegroundColor Red
+        }
+    } while ($Empresa -notin @("NOVONET", "VELSA"))
+}
+
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "   RECOLECCION DE AUDITORIA TI - PRODUCCION  " -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host "Empresa seleccionada: $Empresa" -ForegroundColor Green
 
 # 1. Direccion MAC activa fisica
 $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { 
@@ -179,6 +198,7 @@ $datosExtra = @{
 
 # Construccion de Payload
 $payload = @{
+    empresa               = $Empresa
     mac                   = $mac
     tipo                  = $tipo
     marca                 = $marca

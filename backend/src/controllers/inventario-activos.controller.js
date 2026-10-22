@@ -273,6 +273,7 @@ exports.revocarTokenAuditoria = async (req, res) => {
 };
 
 const normalizarAuditoria = (body) => ({
+  empresa: normalizarTexto(body.empresa),
   mac: normalizarTexto(body.mac),
   tipo: normalizarTexto(body.tipo),
   marca: normalizarTexto(body.marca),
@@ -292,9 +293,10 @@ const normalizarAuditoria = (body) => ({
 });
 
 const validarAuditoria = (datos) => {
-  const faltantes = ['mac', 'tipo', 'marca', 'perfil_windows']
+  const faltantes = ['empresa', 'mac', 'tipo', 'marca', 'perfil_windows']
     .filter((campo) => !datos[campo]);
   if (faltantes.length) return `Campos obligatorios faltantes: ${faltantes.join(', ')}.`;
+  if (!['NOVONET', 'VELSA'].includes(datos.empresa)) return 'empresa debe ser NOVONET o VELSA.';
   if (!['CPU', 'LAPTOP'].includes(datos.tipo)) return 'tipo debe ser CPU o LAPTOP.';
   if (!PERFILES_WINDOWS.has(datos.perfil_windows)) return 'perfil_windows debe ser USUARIO o ADMIN.';
   if (typeof datos.usb_bloqueado !== 'boolean') return 'usb_bloqueado debe ser boolean.';
@@ -316,6 +318,14 @@ exports.registrarAuditoria = async (req, res) => {
   const errorValidacion = validarAuditoria(datos);
   if (errorValidacion) return res.status(400).json({ success: false, error: errorValidacion });
 
+  const empresaToken = normalizarTexto(req.user?.empresa);
+  if (req.user?.authTipo === 'API_TOKEN' && empresaToken !== 'POR DEFINIR' && empresaToken !== datos.empresa) {
+    return res.status(403).json({
+      success: false,
+      error: `El token de auditoria pertenece a ${empresaToken} y no puede registrar equipos de ${datos.empresa}.`,
+    });
+  }
+
   try {
     const resultado = await pool.transaction(async (client) => {
       let consultaActivo = await client.query(
@@ -328,8 +338,6 @@ exports.registrarAuditoria = async (req, res) => {
       const usuario = usuarioActual(req);
 
       if (!activo) {
-        const empresaUsuario = normalizarTexto(req.user?.empresa);
-        const empresa = EMPRESAS_AUDITORIA.has(empresaUsuario) ? empresaUsuario : 'POR DEFINIR';
         const insercion = await client.query(
           `INSERT INTO public.inventario_activos
              (empresa, tipo_dispositivo, marca, modelo, numero_serie, procesador,
@@ -339,7 +347,7 @@ exports.registrarAuditoria = async (req, res) => {
                    'POR DEFINIR', 'POR DEFINIR', $13, 'ACTIVO', $13, $13)
            ON CONFLICT (numero_serie) DO NOTHING
            RETURNING *`,
-          [empresa, datos.tipo, datos.marca, datos.modelo, datos.mac, datos.procesador,
+          [datos.empresa, datos.tipo, datos.marca, datos.modelo, datos.mac, datos.procesador,
             datos.ram_gb, textoGB(datos.ram_gb), datos.disco_tipo, datos.disco_gb,
             textoGB(datos.disco_gb), datos.fecha_fabricacion, usuario]
         );
@@ -355,6 +363,11 @@ exports.registrarAuditoria = async (req, res) => {
       }
 
       if (!activo) throw new Error('No se pudo obtener el activo asociado a la MAC.');
+      if (normalizarTexto(activo.empresa) !== datos.empresa) {
+        const error = new Error(`La MAC ya pertenece a un activo de ${activo.empresa}; no se registrara como ${datos.empresa}.`);
+        error.status = 409;
+        throw error;
+      }
 
       if (!activoCreado && req.user?.perfil === 'ADMINISTRADOR') {
         const actualizacion = await client.query(

@@ -65,7 +65,7 @@ async function getAll(req, res) {
     }
     const where = `WHERE ${conds.join(' AND ')}`
     const result = await query(`
-      SELECT l.*, b.name AS bot_name, u.usuario AS owner_username
+      SELECT l.*, b.name AS bot_name, u.usuario AS owner_username, UPPER(u.empresa) AS owner_empresa
       FROM lines l
       LEFT JOIN bots b ON l.bot_id = b.id
       LEFT JOIN usuarios u ON l.created_by = u.id

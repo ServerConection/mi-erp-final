@@ -6,6 +6,12 @@ import { getSocketCompartido } from "../utils/socketCompartido";
 import { estadoEfectivoLinea } from "../utils/waLineStatus";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
+// Conector WABOT-BITRIX: un portal por empresa (VELSA tiene el suyo).
+const BITRIX_API = {
+  NOVONET: `${import.meta.env.VITE_API_URL}/api/bitrix-connector`,
+  VELSA:   `${import.meta.env.VITE_API_URL}/api/bitrix-connector-velsa`,
+};
+const portalDeLinea = (line) => (line.owner_empresa === "VELSA" ? "VELSA" : "NOVONET");
 
 // Permisos: solo ADMINISTRADOR elimina líneas.
 // Crear líneas SIN límite: ADMINISTRADOR y perfiles gerenciales (SUPERVISOR,
@@ -62,6 +68,40 @@ export default function WaLineas() {
   const [error, setError]       = useState("");
   const [proxyPool, setProxyPool] = useState(null); // { credenciales, total, en_uso, quemados, libres }
   const [resetting, setResetting] = useState(false);
+  // Canales abiertos de Bitrix por portal: { NOVONET: [{ID, LINE_NAME}], VELSA: [...] }
+  const [canales, setCanales] = useState({ NOVONET: [], VELSA: [] });
+  const [asignando, setAsignando] = useState(null); // lineId en curso
+  const puedeAsignarCanal = IS_ADMIN || IS_SUPERVISOR;
+
+  useEffect(() => {
+    if (!puedeAsignarCanal) return;
+    Object.entries(BITRIX_API).forEach(async ([portal, base]) => {
+      try {
+        const r = await fetch(`${base}/canales`, { headers: authH(false) });
+        const d = await r.json();
+        if (d.success) setCanales(prev => ({ ...prev, [portal]: Array.isArray(d.canales) ? d.canales : [] }));
+      } catch { /* portal sin conector instalado: sin canales */ }
+    });
+  }, [puedeAsignarCanal]);
+
+  const asignarCanal = async (line, openLineId) => {
+    setAsignando(line.id);
+    setError("");
+    try {
+      const r = await fetch(`${BITRIX_API[portalDeLinea(line)]}/asignar-linea`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({ line_id: line.id, open_line_id: openLineId ? Number(openLineId) : null }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || "No se pudo conectar el canal abierto");
+      setLines(prev => prev.map(l => (l.id === line.id ? { ...l, open_line_id: d.open_line_id } : l)));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAsignando(null);
+    }
+  };
   const qrPollRef = useRef(null);
   const stopQrPoll = () => { if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; } };
 
@@ -320,6 +360,24 @@ export default function WaLineas() {
               <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
                 👤 {line.owner_username || "—"}
               </span>
+
+              {puedeAsignarCanal && (
+                <select
+                  value={line.open_line_id || ""}
+                  disabled={asignando === line.id}
+                  onChange={e => asignarCanal(line, e.target.value)}
+                  title={`Canal abierto de Bitrix ${portalDeLinea(line)} al que entrega esta línea`}
+                  className={`text-xs border rounded-lg px-2 py-1 max-w-[180px] ${line.open_line_id ? "border-green-300 text-green-700 bg-green-50" : "border-slate-200 text-slate-500"}`}
+                >
+                  <option value="">Sin canal abierto</option>
+                  {(canales[portalDeLinea(line)] || []).map(c => (
+                    <option key={c.ID} value={c.ID}>🔗 {c.LINE_NAME || `Canal ${c.ID}`}</option>
+                  ))}
+                  {line.open_line_id && !(canales[portalDeLinea(line)] || []).some(c => String(c.ID) === String(line.open_line_id)) && (
+                    <option value={line.open_line_id}>🔗 Canal {line.open_line_id}</option>
+                  )}
+                </select>
+              )}
 
               <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[line.status] || STATUS_COLORS.disconnected}`}>
                 {STATUS_LABEL[line.status] || line.status}

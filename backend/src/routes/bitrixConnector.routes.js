@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const {
   install, settings, events, placementInbox,
-  registrarConector, registrarPlacement, listarCanales, activarCanal, estado,
+  registrarConector, registrarPlacement, listarCanales, activarCanal, asignarLinea, estado,
 } = require('../controllers/bitrixConnector.controller')
 const { verificarToken, noAsesor } = require('../middleware/auth')
 const bitrixApp = require('../services/bitrixApp.service')
@@ -53,5 +53,6 @@ router.post('/registrar-call-placement', verificarToken, noAsesor, async (req, r
   catch (error) { return res.status(500).json({ success: false, message: error.message }) }
 })
 router.post('/activar',   verificarToken, noAsesor, activarCanal)
+router.post('/asignar-linea', verificarToken, noAsesor, asignarLinea)
 
 module.exports = router

@@ -95,6 +95,8 @@ function fuenteDetalleJotform(empresa, alias) {
         e.aplica_descuento_3ra_edad                            AS aplica_descuento_3ra_edad,
         e.fecha_agenda::text                                   AS fecha_agenda,
         e.observacion_venta_original                           AS observacion_venta,
+        e.provincia                                            AS provincia,
+        e.ciudad                                               AS ciudad,
         bw0.etapa_bitrix                                       AS etapa_bitrix,
         (bw0.created_at AT TIME ZONE 'America/Guayaquil')      AS creado_bitrix,
         COALESCE(NULLIF(TRIM(to_jsonb(bw0) ->> 'created_at_ecuador'), ''),
@@ -180,7 +182,9 @@ function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
     ${a}.servicio_adicional                          AS "SERVICIO_ADICIONAL_FACTURADO",
     ${a}.forma_pago                                  AS "FORMA_PAGO",
     ${a}.aplica_descuento_3ra_edad                   AS "APLICA_DESCUENTO",
-    ${a}.observacion_venta                           AS "OBSERVACION"`;
+    ${a}.observacion_venta                           AS "OBSERVACION",
+    ${a}.provincia                                   AS "PROVINCIA",
+    ${a}.ciudad                                      AS "CIUDAD"`;
 }
 
 /**

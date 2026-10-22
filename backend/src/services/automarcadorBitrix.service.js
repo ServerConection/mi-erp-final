@@ -186,8 +186,18 @@ async function registrarResultado(usuarioId, { item_id, estado, duracion }, db) 
   return { ok: true }
 }
 
+// La llamada que el asesor tiene en curso (para buscar su resultado).
+async function itemEnLlamada(usuarioId, itemId, db) {
+  const r = await db.query(
+    `SELECT id, telefono, ultimo_intento FROM automarcador_bx_items
+      WHERE id = $1 AND usuario_id = $2 AND estado = 'en_llamada'`,
+    [parseInt(itemId, 10) || 0, usuarioId]
+  )
+  return r.rows[0] || null
+}
+
 module.exports = {
   DDL, ESTADOS_FINALES, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
-  resumenAsesor, siguiente, registrarResultado,
+  resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
   _reset: () => { esquemaListo = null },
 }

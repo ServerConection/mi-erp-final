@@ -70,3 +70,24 @@ test('reintenta cuando Bitrix responde Too many requests', async () => {
   await c2.autenticar({ get: () => 'tok2' }, { status(s) { estado = s; return this }, json(b) { cuerpo = b } }, () => {})
   assert.equal(estado, 503); assert.equal(cuerpo.ocupado, true)
 })
+
+test('estado registra el resultado con el registro compartido', async () => {
+  const bitrixApp = { usuarioActualPorAuthId: async () => ({ ID: '55', EMAIL: 'a@b.c' }) }
+  const consultas = []
+  const db = { query: async (sql, params) => {
+    consultas.push(sql)
+    if (/FROM usuarios/.test(sql)) return { rows: [{ id: 9, nombre: 'Ana' }] }
+    if (/SELECT id, telefono, ultimo_intento/.test(sql)) return { rows: [{ id: 3, telefono: '593990000001', ultimo_intento: '2026-10-22T15:00:00Z' }] }
+    if (/SET estado = \$3/.test(sql)) { assert.deepEqual(params, [3, 9, 'contestada', 40]); return { rows: [{ id: 3 }] } }
+    return { rows: [] }
+  } }
+  const registro = { configurado: () => true, buscar: async (q) => { assert.equal(q.bitrixUserId, '55'); return { CALL_FAILED_CODE: '200', CALL_DURATION: '40' } } }
+  const { crearDialerController } = require('../src/controllers/llamadasBitrixDialer.controller')
+  const c = crearDialerController({ bitrixApp, db, portalUrl: 'https://x.bitrix24.es', registro })
+  const req = { get: () => 'tok', body: { item_id: 3 } }
+  let cuerpo
+  await new Promise(ok => c.autenticar(req, {}, ok))
+  await c.estado(req, { json(b) { cuerpo = b; return this }, status() { return this } })
+  assert.deepEqual(cuerpo, { success: true, data: { terminada: true, estado: 'contestada', duracion: 40 } })
+  assert.ok(consultas.some(s => /SET estado = \$3/.test(s)))
+})

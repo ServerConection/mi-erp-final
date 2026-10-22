@@ -3645,7 +3645,13 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                         )}
 
                         {sec.campos.filter((field) => !CAMPOS_DOCUMENTO.includes(field)).map((field) => (
-                          <div key={`${sec.titulo}-${field}`} data-detail-field={field}>
+                          <div
+                            key={`${sec.titulo}-${field}`}
+                            data-detail-field={field}
+                            style={(["detalle_regularizacion", "novedades_atc"].includes(field))
+                              ? { gridColumn: "span 3" }
+                              : undefined}
+                          >
                             <label style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                               {field === "nombre_cliente_completo" && detail?.tipo_documento === "RUC EMPRESA"
                                 ? "NOMBRE DE LA EMPRESA"
@@ -3999,17 +4005,19 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   <option value="PENDIENTE">Pendiente</option>
                                   <option value="NOTIFICADO">Notificado</option>
                                 </select>
-                              ) : field === "novedades_atc" ? (
+                              ) : ["detalle_regularizacion", "novedades_atc"].includes(field) ? (
                                 <textarea
                                   value={detail?.[field] ?? ""}
                                   onChange={(e) =>
                                     setDetail((prev) => ({ ...prev, [field]: e.target.value }))
                                   }
-                                  rows={4}
-                                  placeholder="Escribe libremente las novedades ATC…"
+                                  rows={field === "detalle_regularizacion" ? 6 : 4}
+                                  placeholder={field === "detalle_regularizacion"
+                                    ? "Escribe el detalle de la regularización…"
+                                    : "Escribe libremente las novedades ATC…"}
                                   style={{
                                     width: "100%",
-                                    minHeight: 100,
+                                    minHeight: field === "detalle_regularizacion" ? 140 : 100,
                                     padding: "10px 12px",
                                     borderRadius: 8,
                                     border: "1px solid #dbe4f0",

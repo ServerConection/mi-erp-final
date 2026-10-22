@@ -45,8 +45,9 @@ const ejecutarMigracion = async () => {
     await pool.query(sql);
     console.log('[WA] Migración verificada/aplicada (tablas OK)');
   } catch (err) {
-    console.error('[WA] Error en migración automática:', err.message);
-    throw err;
+    // Las tablas ya existen (la migración es idempotente). Si la base tarda en
+    // responder al arrancar, NO se cancela WhatsApp: se sigue con las líneas.
+    console.error('[WA] ⚠️ Migración automática no terminó (se continúa el arranque):', err.message);
   }
 };
 

@@ -17,8 +17,23 @@ const svc = require('../services/automarcadorBitrix.service')
 
 const CACHE_MS = 5 * 60 * 1000
 
-function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now() }) {
+const esperar = (ms) => new Promise(ok => setTimeout(ok, ms))
+const esLimiteBitrix = (err) => /too many requests|query_limit_exceeded|operation_time_limit/i.test(String(err?.message || ''))
+
+function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(), pausaReintentoMs = 1500 }) {
   const cache = new Map() // token -> { usuarioId, nombre, exp }
+
+  // Bitrix limita las peticiones REST del portal; si responde "Too many
+  // requests" se reintenta con espera creciente antes de rechazar la sesión.
+  async function usuarioBitrix(token) {
+    for (let intento = 1; ; intento++) {
+      try { return await bitrixApp.usuarioActualPorAuthId(token) }
+      catch (err) {
+        if (!esLimiteBitrix(err) || intento >= 4) throw err
+        await esperar(pausaReintentoMs * intento)
+      }
+    }
+  }
 
   async function autenticar(req, res, next) {
     const token = String(req.get('x-bitrix-auth') || '').trim()
@@ -26,7 +41,7 @@ function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(
     try {
       const hit = cache.get(token)
       if (hit && hit.exp > now()) { req.asesor = hit; return next() }
-      const bx = await bitrixApp.usuarioActualPorAuthId(token)
+      const bx = await usuarioBitrix(token)
       const email = String(bx?.EMAIL || '').trim().toLowerCase()
       if (!email) return res.status(403).json({ success: false, error: 'Tu usuario de Bitrix no tiene correo' })
       const r = await db.query(
@@ -40,6 +55,7 @@ function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(
       return next()
     } catch (err) {
       console.error('[AUTOMARCADOR-BX] auth:', err.message)
+      if (esLimiteBitrix(err)) return res.status(503).json({ success: false, ocupado: true, error: 'Bitrix está ocupado, reintentando…' })
       return res.status(401).json({ success: false, error: 'Sesión de Bitrix inválida, recarga la app' })
     }
   }
@@ -109,9 +125,11 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   var $=function(id){return document.getElementById(id)};
   function error(m){ $('err').textContent=m||''; }
   function token(){ return new Promise(function(ok){ var a=BX24.getAuth(); if(a&&a.access_token) return ok(a.access_token); BX24.refreshAuth(function(n){ ok(n&&n.access_token); }); }); }
-  function api(ruta, cuerpo){
+  function api(ruta, cuerpo, intento){
     return token().then(function(t){ return fetch(API+ruta,{method:cuerpo?'POST':'GET',headers:{'Content-Type':'application/json','X-Bitrix-Auth':t},body:cuerpo?JSON.stringify(cuerpo):undefined}); })
-      .then(function(r){ return r.json(); }).then(function(j){ if(!j.success) throw new Error(j.error||'Error'); return j.data; });
+      .then(function(r){ return r.json(); }).then(function(j){
+        if(!j.success && j.ocupado && (intento||0)<5){ error(j.error); return new Promise(function(ok){ setTimeout(ok, 3000*((intento||0)+1)); }).then(function(){ return api(ruta, cuerpo, (intento||0)+1); }); }
+        if(!j.success) throw new Error(j.error||'Error'); error(''); return j.data; });
   }
   function bx(metodo, params){ return new Promise(function(ok,ko){ BX24.callMethod(metodo, params, function(r){ r.error()?ko(new Error(r.error().ex?r.error().ex.error_description:String(r.error()))):ok(r.data()); }); }); }
   function refrescar(){ return api('cola').then(function(d){ $('quien').textContent='Asesor: '+(d.asesor||''); $('pend').textContent=d.pendientes; $('ok').textContent=d.contestadas_hoy; $('nc').textContent=d.no_contesta_hoy; $('btnIniciar').disabled=corriendo||!d.pendientes; }).catch(function(e){ error(e.message); }); }

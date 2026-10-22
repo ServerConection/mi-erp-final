@@ -53,3 +53,20 @@ test('identifica al asesor por el correo de Bitrix', async () => {
     assert.deepEqual(consultas[0], ['asesor@novonet.net'])
   } finally { s.cerrar() }
 })
+
+test('reintenta cuando Bitrix responde Too many requests', async () => {
+  let intentos = 0
+  const bitrixApp = { usuarioActualPorAuthId: async () => { intentos++; if (intentos < 3) throw new Error('BITRIX_SSO_AUTH_INVALIDO: Too many requests'); return { ID: '1', EMAIL: 'a@b.c' } } }
+  const db = { query: async (sql) => /FROM usuarios/.test(sql) ? { rows: [{ id: 1, nombre: 'A' }] } : { rows: [{ pendientes: 0, contestadas_hoy: 0, no_contesta_hoy: 0 }] } }
+  const { crearDialerController } = require('../src/controllers/llamadasBitrixDialer.controller')
+  const c = crearDialerController({ bitrixApp, db, portalUrl: 'https://x.bitrix24.es', pausaReintentoMs: 1 })
+  let estado = 200, siguiente = false
+  await c.autenticar({ get: () => 'tok' }, { status(s) { estado = s; return this }, json() {} }, () => { siguiente = true })
+  assert.equal(intentos, 3); assert.equal(siguiente, true); assert.equal(estado, 200)
+
+  intentos = -10
+  const c2 = crearDialerController({ bitrixApp, db, portalUrl: 'https://x.bitrix24.es', pausaReintentoMs: 1 })
+  let cuerpo = null
+  await c2.autenticar({ get: () => 'tok2' }, { status(s) { estado = s; return this }, json(b) { cuerpo = b } }, () => {})
+  assert.equal(estado, 503); assert.equal(cuerpo.ocupado, true)
+})

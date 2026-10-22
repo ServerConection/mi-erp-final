@@ -1,7 +1,7 @@
 /**
  * Automarcador.jsx
  * Módulo embebido para el sistema de llamadas automáticas.
- * Acceso restringido: ANALISTA, ADMINISTRADOR, COORDINADOR, GERENCIA
+ * Acceso restringido: SUPERVISOR, ANALISTA, ADMINISTRADOR, COORDINADOR, GERENCIA
  *
  * Incluye una pestaña "Cargar base" que conecta con la data ya
  * sincronizada de Bitrix (negociaciones + etapa + responsable + teléfono)

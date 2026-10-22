@@ -134,7 +134,7 @@ export default function HomeModules() {
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
-      rolesPermitidos: ['ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
+      rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
 
     { title: "Chat Interno", path: "/chat", icon: MessageCircle, accent: "azul", cat: "comunicacion",
       desc: "Mensajería directa y grupos con tu equipo, en tiempo real." },

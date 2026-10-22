@@ -70,13 +70,20 @@ async function listarTodo(webhook, method, params, max = MAX_DEALS) {
   return rows.slice(0, max)
 }
 
+// Acepta listas (stage_ids / responsible_ids) o el formato anterior de un
+// solo valor (stage_id / responsible_id). Lista vacía = todas/todos.
+function aLista(lista, unico) {
+  const crudo = Array.isArray(lista) ? lista : (lista ? [lista] : (unico ? [unico] : []))
+  return [...new Set(crudo.map(v => String(v ?? '').trim()).filter(Boolean))].slice(0, 500)
+}
+
 function validarFiltros(input = {}) {
-  const stageId = String(input.stage_id || '').trim()
-  const responsibleId = String(input.responsible_id || '').trim()
+  const stageIds = aLista(input.stage_ids, input.stage_id)
+  const responsibleIds = aLista(input.responsible_ids, input.responsible_id)
   const from = String(input.date_from || '').trim()
   const to = String(input.date_to || '').trim()
-  if (!stageId || !responsibleId || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    const err = new Error('Selecciona etapa, responsable y un rango de fechas válido')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    const err = new Error('Selecciona un rango de fechas válido')
     err.status = 400
     throw err
   }
@@ -85,7 +92,7 @@ function validarFiltros(input = {}) {
     err.status = 400
     throw err
   }
-  return { stageId, responsibleId, from, to }
+  return { stageIds, responsibleIds, from, to }
 }
 
 async function obtenerOpciones(user, db = require('../config/db')) {
@@ -127,17 +134,26 @@ async function cargarContactos(webhook, contactIds) {
 async function consultar(user, input, db = require('../config/db')) {
   const empresa = empresaUsuario(user)
   const f = validarFiltros(input)
+  const params = [empresa.toLowerCase(), f.from, f.to]
+  let filtrosExtra = ''
+  if (f.stageIds.length) {
+    params.push(f.stageIds)
+    filtrosExtra += `\n        AND etapa = ANY($${params.length}::text[])`
+  }
+  if (f.responsibleIds.length) {
+    params.push(f.responsibleIds.map(r => r.toUpperCase()))
+    filtrosExtra += `\n        AND UPPER(BTRIM(responsible)) = ANY($${params.length}::text[])`
+  }
+  params.push(MAX_DEALS)
   const result = await db.query(
     `SELECT bitrix_id, phone, etapa, etapa_bitrix, responsible, created_at,
             COALESCE(NULLIF(BTRIM(raw_query->>'title'), ''), NULLIF(BTRIM(raw_query->>'TITLE'), '')) AS contact_name
        FROM bitrix_webhook_leads
       WHERE empresa=$1
-        AND etapa=$2
-        AND UPPER(BTRIM(responsible))=UPPER(BTRIM($3))
-        AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $4::date AND $5::date
+        AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date${filtrosExtra}
       ORDER BY created_at DESC, bitrix_id DESC
-      LIMIT $6`,
-    [empresa.toLowerCase(), f.stageId, f.responsibleId, f.from, f.to, MAX_DEALS]
+      LIMIT $${params.length}`,
+    params
   )
   const deals = result.rows
   const byPhone = new Map()

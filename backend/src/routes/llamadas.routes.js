@@ -26,4 +26,10 @@ router.get('/lotes',                         listarLotes);
 router.put('/lotes/:loteId/items/:itemId',   asignarAsesorItem);
 router.get('/lotes/:loteId/export.csv',      exportarLoteCsv);
 
+// Carga de base igual que WABOT (etapa + responsable + fechas, con teléfono)
+const llamadasBitrix = require('../controllers/llamadasBitrix.controller');
+router.get('/bitrix/opciones',               llamadasBitrix.opciones);
+router.post('/bitrix/consultar',             llamadasBitrix.consultar);
+router.post('/bitrix/enviar',                llamadasBitrix.enviar);
+
 module.exports = router;

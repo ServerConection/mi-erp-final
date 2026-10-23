@@ -75,7 +75,7 @@ async function estadoLineasWhatsApp() {
     `SELECT COUNT(*)::int AS total,
             COUNT(*) FILTER (WHERE status = 'connected')::int AS conectadas
      FROM public.lines
-     WHERE COALESCE(activo, TRUE) = TRUE`
+     WHERE deleted_at IS NULL`
   );
   const { total, conectadas } = rows[0];
   return {
@@ -190,7 +190,7 @@ const CAPAS = [
       { id: 'webhook',        nombre: 'Leads del webhook', mide: 'bitrix_webhook_leads', alimenta: ['redes', 'contactabilidad_n'] },
       { id: 'mestra_bitrix',  nombre: 'Maestra Bitrix',    mide: 'mestra_bitrix',        alimenta: ['reporte_d1', 'vista_asesor', 'gerencial'] },
       { id: 'inversion',      nombre: 'Inversión en redes', alimenta: ['redes', 'gerencial'] },
-      { id: 'lineas_wa',      nombre: 'Líneas de WhatsApp', mide: 'whatsapp_lineas',     alimenta: ['wabot'] },
+      { id: 'lineas_wa',      nombre: 'Líneas de WhatsApp', mide: 'wa_lineas',           alimenta: ['wabot'] },
       { id: 'contactabilidad_n', nombre: 'Contactabilidad', mide: 'contactabilidad',     alimenta: ['contactabilidad_ui'] },
     ],
   },
@@ -310,11 +310,16 @@ async function getSalud(req, res) {
     }
   }
 
-  for (const extra of [estadoLineasWhatsApp, estadoColaNexoIa, estadoCierreDiario]) {
-    try { componentes.push(await extra()); }
+  const extras = [
+    { ejecutar: estadoLineasWhatsApp, id: 'wa_lineas', nombre: 'Líneas de WhatsApp', grupo: 'WhatsApp', critico: false },
+    { ejecutar: estadoColaNexoIa, id: 'nexo_ia', nombre: 'Cola de Nexo IA', grupo: 'IA', critico: false },
+    { ejecutar: estadoCierreDiario, id: 'cierre_diario', nombre: 'Cierre diario (PC de oficina)', grupo: 'Respaldos', critico: false },
+  ];
+  for (const extra of extras) {
+    try { componentes.push(await extra.ejecutar()); }
     catch (err) {
       componentes.push({
-        id: extra.name, nombre: extra.name, grupo: 'Otros', critico: false,
+        id: extra.id, nombre: extra.nombre, grupo: extra.grupo, critico: extra.critico,
         estado: 'DESCONOCIDO', medida: 'no se pudo consultar', error: err.message,
       });
     }

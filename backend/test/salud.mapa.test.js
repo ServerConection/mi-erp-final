@@ -15,7 +15,7 @@ const ctrlPath = path.resolve(__dirname, '../src/controllers/salud.controller.js
 const FRESCO = () => new Date()
 const VIEJO  = () => new Date(Date.now() - 90000000)   // ~25 h
 
-function cargar({ congelar = [] } = {}) {
+function cargar({ congelar = [], fallarLineas = false, lineasConectadas = 10 } = {}) {
   require.cache[dbPath] = {
     id: dbPath, filename: dbPath, loaded: true,
     exports: {
@@ -24,7 +24,11 @@ function cargar({ congelar = [] } = {}) {
           return { rows: [{ fecha_cierre: '2026-09-06', filas_total: 1, tablas_ok: 3, tablas_error: 0, detalle: '', actualizado_en: FRESCO() }] }
         }
         if (/nexo_ia_jobs/.test(sql)) return { rows: [{ pendientes: 3, ultimo: FRESCO() }] }
-        if (/FROM public\.lines/.test(sql)) return { rows: [{ total: 10, conectadas: 9 }] }
+        if (/FROM public\.lines/.test(sql)) {
+          assert.doesNotMatch(sql, /\bactivo\b/i, 'lines no tiene columna activo')
+          if (fallarLineas) throw new Error('fallo simulado de WhatsApp')
+          return { rows: [{ total: 10, conectadas: lineasConectadas }] }
+        }
         const roto = congelar.some(t => new RegExp(t).test(sql))
         return { rows: [{ ultimo: roto ? VIEJO() : FRESCO(), total: 10 }] }
       },
@@ -49,10 +53,36 @@ async function mapaCon(opts) {
 test('con todo al dia, las pantallas estan al dia', async () => {
   try {
     const m = await mapaCon()
-    for (const id of ['reporte_d1', 'vista_asesor', 'gerencial', 'redes']) {
+    for (const id of ['reporte_d1', 'vista_asesor', 'gerencial', 'redes', 'lineas_wa', 'wabot']) {
       assert.equal(m[id].estado, 'OK', `${id} deberia estar OK`)
       assert.equal(m[id].causa, null)
     }
+  } finally { limpiar() }
+})
+
+test('si falla WhatsApp conserva un diagnostico identificable', async () => {
+  try {
+    const ctrl = cargar({ fallarLineas: true })
+    let cuerpo = null
+    const res = { status: () => res, json: (b) => { cuerpo = b } }
+    await ctrl.getSalud({ query: {} }, res)
+    const componente = cuerpo.componentes.find(c => c.id === 'wa_lineas')
+    assert.equal(componente.nombre, 'Líneas de WhatsApp')
+    assert.equal(componente.grupo, 'WhatsApp')
+    assert.equal(componente.estado, 'DESCONOCIDO')
+    assert.match(componente.error, /fallo simulado/)
+  } finally { limpiar() }
+})
+
+test('si solo parte de las lineas WhatsApp esta conectada muestra retraso', async () => {
+  try {
+    const ctrl = cargar({ lineasConectadas: 9 })
+    let cuerpo = null
+    const res = { status: () => res, json: (b) => { cuerpo = b } }
+    await ctrl.getSalud({ query: {} }, res)
+    const componente = cuerpo.componentes.find(c => c.id === 'wa_lineas')
+    assert.equal(componente.estado, 'RETRASO')
+    assert.equal(componente.medida, '9 de 10 conectadas')
   } finally { limpiar() }
 })
 

@@ -16,7 +16,7 @@ const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Gu
 
 export default function AutomarcadorCargaBitrix() {
   const [opciones, setOpciones] = useState(null);
-  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
+  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], source_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,8 +36,7 @@ export default function AutomarcadorCargaBitrix() {
       const r = await fetch(`${API}/reporte?${qs}`, { headers: authH() });
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.error || "No se pudo generar el reporte");
-      const cols = [["campana", "Campaña"], ["asesor", "Asesor"], ["nombre_cliente", "Cliente"], ["telefono", "Teléfono"],
-        ["deal_id", "Negociación"], ["hora_llamada", "Hora llamada"], ["duracion_seg", "Duración (s)"], ["estado", "Resultado"],
+      const cols = [["campana", "Campaña"], ["asesor", "Asesor"], ["deal_id", "ID Bitrix"], ["nombre_cliente", "Cliente"], ["hora_llamada", "Hora llamada"], ["duracion_seg", "Duración (s)"], ["estado", "Resultado"],
         ["tipificacion", "Tipificación"], ["hora_tipificacion", "Hora tipificación"], ["intentos", "Intentos"]];
       const celda = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
       const csv = [cols.map(c => celda(c[1])).join(";"), ...j.data.map(f => cols.map(c => celda(f[c[0]])).join(";"))].join("\r\n");
@@ -92,8 +91,9 @@ export default function AutomarcadorCargaBitrix() {
       ? (opts.find(o => String(o.id) === String(ids[0]))?.name || "") : `${ids.length} seleccionados`;
     const etapa = resumen(f.stage_ids, opciones?.stages);
     const resp = resumen(f.responsible_ids, opciones?.responsibles);
+    const origen = resumen(f.source_ids, opciones?.sources);
     const fecha = f.date_from === f.date_to ? f.date_from : `${f.date_from} a ${f.date_to}`;
-    return [etapa, fecha, resp].filter(Boolean).join(" - ").toUpperCase();
+    return [etapa, origen, fecha, resp].filter(Boolean).join(" - ").toUpperCase();
   };
 
   const cambiar = (campo, valor) => {
@@ -136,7 +136,7 @@ export default function AutomarcadorCargaBitrix() {
     <div className="flex-1 overflow-y-auto p-1 space-y-4">
       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <p className="text-[10px] text-slate-500">Empresa: <b>{opciones?.empresa || "cargando…"}</b> · Igual que en WABOT, sin descargar nada de Bitrix.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div>
             <label className={lbl}>Etapas</label>
             <MultiSelectBuscable options={opciones?.stages || []} value={form.stage_ids} disabled={!opciones}
@@ -146,6 +146,11 @@ export default function AutomarcadorCargaBitrix() {
             <label className={lbl}>Responsables</label>
             <MultiSelectBuscable options={opciones?.responsibles || []} value={form.responsible_ids} disabled={!opciones}
               onChange={v => cambiar("responsible_ids", v)} placeholder="Buscar responsable…" todosLabel="Todos los responsables" />
+          </div>
+          <div>
+            <label className={lbl}>Orígenes</label>
+            <MultiSelectBuscable options={opciones?.sources || []} value={form.source_ids} disabled={!opciones}
+              onChange={v => cambiar("source_ids", v)} placeholder="Buscar origen…" todosLabel="Todos los orígenes" />
           </div>
           <div>
             <label className={lbl}>Creación desde</label>
@@ -210,29 +215,28 @@ export default function AutomarcadorCargaBitrix() {
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="grid grid-cols-3 gap-3 p-4 text-center border-b border-slate-100">
             <div><div className="text-xl font-bold text-slate-800">{preview.total_deals}</div><div className="text-[10px] text-slate-500">Negocios</div></div>
-            <div><div className="text-xl font-bold text-green-700">{preview.unique_contacts}</div><div className="text-[10px] text-slate-500">Teléfonos únicos</div></div>
+            <div><div className="text-xl font-bold text-green-700">{preview.unique_contacts}</div><div className="text-[10px] text-slate-500">Contactos únicos</div></div>
             <div><div className="text-xl font-bold text-amber-600">{preview.deals_without_phone}</div><div className="text-[10px] text-slate-500">Sin teléfono</div></div>
           </div>
           {preview.truncated && <p className="px-4 pt-2 text-[10px] text-amber-700">Se alcanzó el límite de 10.000 negocios. Reduce el rango de fechas.</p>}
           <div className="max-h-[380px] overflow-y-auto">
             <table className="w-full text-[10px]">
               <thead className="sticky top-0 bg-white border-b border-slate-200 text-slate-400 font-black uppercase">
-                <tr><th className="px-3 py-2 text-left">Negocio</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Teléfono</th></tr>
+                <tr><th className="px-3 py-2 text-left">ID Bitrix</th><th className="px-3 py-2 text-left">Cliente</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(preview.items || []).map(it => (
-                  <tr key={it.wa_number}>
-                    <td className="px-3 py-2 font-bold text-slate-700">#{it.variables?.bitrix_id}</td>
+                {(preview.items || []).map((it, i) => (
+                  <tr key={`${it.bitrix_id}-${i}`}>
+                    <td className="px-3 py-2 font-bold text-slate-700">#{it.bitrix_id}</td>
                     <td className="px-3 py-2">{it.name || "—"}</td>
-                    <td className="px-3 py-2 font-mono">+{it.wa_number}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!preview.items?.length && <div className="p-4 text-center text-[11px] text-slate-500">No se encontraron teléfonos válidos.</div>}
+            {!preview.items?.length && <div className="p-4 text-center text-[11px] text-slate-500">No se encontraron negociaciones con teléfono válido.</div>}
           </div>
           {preview.unique_contacts > (preview.items?.length || 0) && (
-            <p className="px-4 py-2 text-[10px] text-slate-400">Se muestran {preview.items.length}; la campaña incluirá los {preview.unique_contacts} números.</p>
+            <p className="px-4 py-2 text-[10px] text-slate-400">Se muestran {preview.items.length}; la campaña incluirá los {preview.unique_contacts} contactos.</p>
           )}
         </div>
       )}

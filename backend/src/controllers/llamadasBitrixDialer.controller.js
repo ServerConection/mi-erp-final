@@ -157,7 +157,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   // Al colgar: se muestran las tipificaciones y una cuenta regresiva antes de la siguiente llamada.
   function panelTipificar(item){
     ultimo=item; pararCuenta();
-    $('tipoCliente').textContent=item.nombre_cliente||('+'+item.telefono);
+    $('tipoCliente').textContent=item.nombre_cliente||(item.deal_id?('Negociación #'+item.deal_id):'el cliente');
     Array.prototype.forEach.call(document.querySelectorAll('#tipos button'),function(b){ b.classList.remove('sel'); });
     $('cardTipo').classList.remove('hidden');
     if(!corriendo){ $('cuenta').textContent='Detenido. Puedes tipificar igual.'; return; }

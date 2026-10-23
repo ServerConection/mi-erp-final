@@ -11,11 +11,11 @@ test('valida rango de fechas; etapas y responsables son opcionales y múltiples'
   assert.throws(() => service.validarFiltros({ stage_id: 'S', responsible_id: '1', date_from: '2026-10-08', date_to: '2026-10-07' }), /posterior/)
   assert.deepEqual(
     service.validarFiltros({ stage_id: 'S', responsible_id: '1', date_from: '2026-10-01', date_to: '2026-10-07' }),
-    { stageIds: ['S'], responsibleIds: ['1'], from: '2026-10-01', to: '2026-10-07' }
+    { stageIds: ['S'], responsibleIds: ['1'], sourceIds: [], from: '2026-10-01', to: '2026-10-07' }
   )
   assert.deepEqual(
     service.validarFiltros({ stage_ids: ['A', 'B', 'A'], responsible_ids: [], date_from: '2026-10-01', date_to: '2026-10-07' }),
-    { stageIds: ['A', 'B'], responsibleIds: [], from: '2026-10-01', to: '2026-10-07' }
+    { stageIds: ['A', 'B'], responsibleIds: [], sourceIds: [], from: '2026-10-01', to: '2026-10-07' }
   )
 })
 
@@ -46,4 +46,13 @@ test('sin etapas ni responsables trae todo el rango de fechas', async () => {
   } }
   const result = await service.consultar({ empresa: 'NOVONET' }, { date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.equal(result.total_deals, 0)
+})
+
+test('filtra por origen sin distinguir mayúsculas', async () => {
+  const db = { query: async (sql, params) => {
+    assert.match(sql, /UPPER\(BTRIM\(source\)\) = ANY/)
+    assert.deepEqual(params, ['novonet', '2026-10-01', '2026-10-07', ['FACEBOOK ADS', 'TIKTOK'], 10000])
+    return { rows: [] }
+  } }
+  await service.consultar({ empresa: 'NOVONET' }, { source_ids: ['Facebook Ads', 'TikTok'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
 })

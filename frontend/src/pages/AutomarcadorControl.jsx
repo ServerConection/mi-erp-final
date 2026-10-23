@@ -118,7 +118,7 @@ export default function AutomarcadorControl() {
                   </div>
                   {a.en_llamada_desde && (
                     <div className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-2 text-[11px]">
-                      <span className="font-bold text-emerald-800 truncate">☎ {a.en_llamada_con || `+${a.en_llamada_tel}`}</span>
+                      <span className="font-bold text-emerald-800 truncate">☎ {a.en_llamada_con || `Negociación #${a.en_llamada_deal || "—"}`}</span>
                       <span className="font-mono font-black text-emerald-700">{mmss((ahora - new Date(a.en_llamada_desde).getTime()) / 1000)}</span>
                     </div>
                   )}
@@ -156,7 +156,7 @@ export default function AutomarcadorControl() {
               return (
                 <div key={l.id} className="px-3 py-2.5 text-[11px]">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-700 truncate">{l.nombre_cliente || `+${l.telefono}`}</span>
+                    <span className="font-bold text-slate-700 truncate">{l.nombre_cliente || `Negociación #${l.deal_id || "—"}`}</span>
                     <span className="text-[10px] text-slate-400 shrink-0">{hora(l.ultimo_intento)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">

@@ -56,3 +56,7 @@ test('reporte exige un rango de fechas válido', async () => {
 test('el panel de reportes exige un rango de fechas válido', async () => {
   await assert.rejects(svc.resumen({ empresa: 'NOVONET' }, { desde: '', hasta: '2026-10-01' }, { query: async () => ({ rows: [] }) }), /rango/)
 })
+
+test('pausar campaña: solo acepta activa o pausada', async () => {
+  await assert.rejects(svc.cambiarEstadoCampana({ empresa: 'NOVONET' }, 1, 'borrada', { query: async () => ({ rows: [] }) }), /Estado inválido/)
+})

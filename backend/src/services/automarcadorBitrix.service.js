@@ -320,8 +320,21 @@ async function control(user, db) {
   return { asesores: asesores.rows, ultimas: ultimas.rows, generado: new Date().toISOString() }
 }
 
+// Pausa o reanuda una campaña. En pausa, los asesores terminan la llamada en
+// curso y ya no reciben más números de ella (siguiente() solo toma 'activa').
+async function cambiarEstadoCampana(user, campanaId, estado, db) {
+  if (!['activa', 'pausada'].includes(estado)) { const e = new Error('Estado inválido'); e.status = 400; throw e }
+  await asegurarEsquema(db)
+  const r = await db.query(
+    `UPDATE automarcador_bx_campanas SET estado = $3 WHERE id = $1 AND empresa = $2 RETURNING id, estado`,
+    [parseInt(campanaId, 10) || 0, empresaDe(user), estado]
+  )
+  if (!r.rows.length) { const e = new Error('Campaña no encontrada'); e.status = 404; throw e }
+  return r.rows[0]
+}
+
 module.exports = {
-  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
+  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
   resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
   _reset: () => { esquemaListo = null },
 }

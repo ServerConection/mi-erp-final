@@ -67,6 +67,18 @@ export default function AutomarcadorCargaBitrix() {
     finally { setBusy(false); }
   };
 
+  const cambiarEstado = async (c) => {
+    setError("");
+    const estado = c.estado === "pausada" ? "activa" : "pausada";
+    if (estado === "pausada" && !window.confirm(`¿Pausar "${c.nombre}"? Los asesores terminan la llamada en curso y no reciben más números de esta campaña.`)) return;
+    try {
+      const r = await fetch(`${API}/campanas/${c.id}/estado`, { method: "POST", headers: authH(), body: JSON.stringify({ estado }) });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || "No se pudo cambiar el estado");
+      cargarCampanas();
+    } catch (e) { setError(e.message); }
+  };
+
   const reintentar = async (id) => {
     setError("");
     try {
@@ -262,12 +274,21 @@ export default function AutomarcadorCargaBitrix() {
               {campanas.map(c => (
                 <tr key={c.id}>
                   <td className="px-3 py-2 font-bold">{c.id}</td>
-                  <td className="px-3 py-2">{c.nombre}</td>
+                  <td className="px-3 py-2">
+                    {c.nombre}
+                    <span className={`ml-2 text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${c.estado === "pausada" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                      {c.estado === "pausada" ? "En pausa" : "Activa"}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-center">{c.total}</td>
                   <td className="px-3 py-2 text-center">{c.pendientes}</td>
                   <td className="px-3 py-2 text-center text-green-700 font-bold">{c.contestadas}</td>
                   <td className="px-3 py-2 text-center text-amber-600 font-bold">{c.no_contesta}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap space-x-1">
+                    <button onClick={() => cambiarEstado(c)}
+                      className={`text-[9px] font-black px-2 py-1 rounded-lg border ${c.estado === "pausada" ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700"}`}>
+                      {c.estado === "pausada" ? "▶ Reanudar" : "⏸ Pausar"}
+                    </button>
                     <button onClick={() => reintentar(c.id)} disabled={!c.no_contesta}
                       className="text-[9px] font-black px-2 py-1 rounded-lg border border-slate-300 disabled:opacity-40">↻ Reintentar no contestados</button>
                   </td>

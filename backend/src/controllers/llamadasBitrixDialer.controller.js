@@ -190,7 +190,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   function llamar(){
     error('');
     api('siguiente',{}).then(function(item){
-      if(!item){ corriendo=false; $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('No tienes más números pendientes.'); return refrescar(); }
+      if(!item){ corriendo=false; $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('No tienes números pendientes en campañas activas (si tu campaña está en pausa, espera a que la reanuden).'); return refrescar(); }
       actual=item; pararCuenta(); $('cardTipo').classList.add('hidden');
       $('cardActual').classList.remove('hidden');
       $('cliente').textContent=item.nombre_cliente||'Cliente';

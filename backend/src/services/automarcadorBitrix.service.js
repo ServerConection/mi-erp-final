@@ -228,7 +228,7 @@ async function reporte(user, { desde, hasta, campana_id } = {}, db) {
   const r = await db.query(
     `SELECT c.id AS campana_id, c.nombre AS campana,
             TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor,
-            i.nombre_cliente, i.telefono, i.deal_id,
+            i.nombre_cliente, i.deal_id,
             to_char(i.ultimo_intento AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS hora_llamada,
             i.duracion_seg, i.estado, i.tipificacion,
             to_char(i.tipificado_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS hora_tipificacion,
@@ -301,7 +301,7 @@ async function control(user, db) {
                      COUNT(*) FILTER (WHERE ${hoy} AND i.estado IN ('contestada','no_contesta','fallida') AND i.tipificacion IS NULL)::int AS sin_tipificar_hoy,
                      COUNT(*) FILTER (WHERE ${hoy} AND i.tipificacion = 'Contrata')::int AS contrata_hoy,
                      MAX(i.nombre_cliente) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_con,
-                     MAX(i.telefono) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_tel,
+                     MAX(i.deal_id) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_deal,
                      MAX(i.ultimo_intento) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_desde,
                      MAX(i.ultimo_intento) AS ultima_actividad
                 FROM automarcador_bx_items i
@@ -309,7 +309,7 @@ async function control(user, db) {
                 LEFT JOIN usuarios u ON u.id = i.usuario_id
                GROUP BY i.usuario_id, 2
                ORDER BY (MAX(i.ultimo_intento) FILTER (WHERE i.estado = 'en_llamada')) IS NULL, ultima_actividad DESC NULLS LAST`, [emp]),
-    db.query(`SELECT i.id, TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor, i.nombre_cliente, i.telefono, i.deal_id,
+    db.query(`SELECT i.id, TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor, i.nombre_cliente, i.deal_id,
                      i.estado, i.tipificacion, i.duracion_seg, i.ultimo_intento
                 FROM automarcador_bx_items i
                 JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1

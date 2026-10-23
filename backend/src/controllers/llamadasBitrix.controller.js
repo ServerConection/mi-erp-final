@@ -37,7 +37,9 @@ async function opciones(req, res) {
 async function consultar(req, res) {
   try {
     const data = await bitrixLists.consultar(req.user, req.body)
-    res.json({ success: true, data: { ...data, items: data.items.slice(0, PREVIEW_MAX) } })
+    // La vista previa no expone teléfonos: solo el ID de Bitrix y el nombre.
+    const items = data.items.slice(0, PREVIEW_MAX).map(it => ({ bitrix_id: it.variables?.bitrix_id || '', name: it.name || null }))
+    res.json({ success: true, data: { ...data, items } })
   } catch (err) {
     console.error('[llamadasBitrix.consultar]', err)
     res.status(err.status || 502).json({ success: false, error: err.message || 'No se pudo consultar la base' })

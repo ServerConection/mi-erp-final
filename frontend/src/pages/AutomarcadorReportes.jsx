@@ -65,8 +65,7 @@ export default function AutomarcadorReportes() {
       const r = await fetch(`${API}/reporte?${new URLSearchParams(rango)}`, { headers: authH() });
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.error || "No se pudo generar el reporte");
-      const cols = [["campana", "Campaña"], ["asesor", "Asesor"], ["nombre_cliente", "Cliente"], ["telefono", "Teléfono"],
-        ["deal_id", "Negociación"], ["hora_llamada", "Hora llamada"], ["duracion_seg", "Duración (s)"], ["estado", "Resultado"],
+      const cols = [["campana", "Campaña"], ["asesor", "Asesor"], ["deal_id", "ID Bitrix"], ["nombre_cliente", "Cliente"], ["hora_llamada", "Hora llamada"], ["duracion_seg", "Duración (s)"], ["estado", "Resultado"],
         ["tipificacion", "Tipificación"], ["hora_tipificacion", "Hora tipificación"], ["intentos", "Intentos"]];
       const celda = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
       const csv = [cols.map(c => celda(c[1])).join(";"), ...j.data.map(f => cols.map(c => celda(f[c[0]])).join(";"))].join("\r\n");

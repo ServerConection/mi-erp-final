@@ -124,6 +124,7 @@ function calcularAsesores(ventas, reglas = REGLAS) {
     filas.push({
       codigo_asesor: sinAsesor ? [...new Set(vs.map((v) => v.codigo).filter(Boolean))].join(', ') : maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
       ultima_fecha_ingreso_telcos: maxTxt('fecha_telcos'),
+      ultima_fecha_activacion: maxTxt('fecha_activacion'),
       activas_por_regularizar: vs.length - regularizadas.length,
       activas_regularizadas: regularizadas.length,
       activas_totales: vs.length,
@@ -229,6 +230,7 @@ async function listar(req, res) {
         SELECT ${codigo} AS codigo, ${usuario} AS usuario,
           COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
+          public.parse_fecha_flex(e.fecha_activacion_netlife::text)::date AS fecha_activacion,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
           ${VELOCIDAD_VENTA} AS velocidad
@@ -251,7 +253,8 @@ async function listar(req, res) {
           AND ${filtrosFecha.join('\n          AND ')}
           ${filtroGlobal}
       ), cat AS (${catalogo})
-      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos, v.reg,
+      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
+             to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.reg,
              c.t1::float AS t1, c.t2::float AS t2, c.categoria
       FROM ventas v
       LEFT JOIN cat c ON c.tipo = v.tipo AND c.velocidad = v.velocidad

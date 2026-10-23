@@ -15,7 +15,8 @@ export const PLANO_VELSA = {
 
     // Bloque derecho: siete puestos a la izquierda y seis a la derecha.
     ...[72, 71, 70, 69, 68, 67, 66].map((numero, indice) => celda(numero, 1 + indice, 6)),
-    ...[65, 64, 63, 62, 61, 60].map((numero, indice) => celda(numero, 2 + indice, 7)),
+    celda(65, 8, 6),
+    ...[64, 63, 62, 61, 60].map((numero, indice) => celda(numero, 3 + indice, 7)),
 
     // Puesto independiente ubicado en la parte superior derecha.
     celda(83, 1, 10, 'OVALO'),

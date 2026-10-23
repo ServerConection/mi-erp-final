@@ -101,7 +101,7 @@ const idSolicitadoValido = (valor) => {
   const coincidencia = normalizarTexto(valor)?.match(ID_PLANO_REGEX);
   if (!coincidencia) return false;
   const numero = Number(coincidencia[1]);
-  return numero >= 1 && numero <= 52;
+  return numero >= 1 && numero <= 83;
 };
 
 const resolverUsuarioAsignado = async (db, req, recibido, { creando = false } = {}) => {
@@ -592,7 +592,7 @@ exports.plano = async (_req, res) => {
        FROM public.inventario_activos ia
        LEFT JOIN public.usuarios u ON u.id = ia.usuario_asignado_id
        WHERE ia.id ~ '^EQ-[0-9]{4}$'
-         AND SUBSTRING(ia.id FROM 4)::INTEGER BETWEEN 1 AND 52
+         AND SUBSTRING(ia.id FROM 4)::INTEGER BETWEEN 1 AND 83
        ORDER BY ia.id`
     );
     return res.json({ success: true, data: result.rows });
@@ -780,7 +780,7 @@ exports.crear = async (req, res) => {
 
   const idSolicitado = req.body.id_solicitado === undefined ? null : normalizarTexto(req.body.id_solicitado);
   if (idSolicitado && !idSolicitadoValido(idSolicitado)) {
-    return res.status(400).json({ success: false, error: 'id_solicitado debe estar entre EQ-0001 y EQ-0052.' });
+    return res.status(400).json({ success: false, error: 'id_solicitado debe estar entre EQ-0001 y EQ-0083.' });
   }
 
   const usuario = usuarioActual(req);

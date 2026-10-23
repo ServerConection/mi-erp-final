@@ -87,6 +87,7 @@ function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(
     cola: responder(req => svc.resumenAsesor(req.asesor.usuarioId, db).then(r => ({ ...r, asesor: req.asesor.nombre }))),
     siguiente: responder(req => svc.siguiente(req.asesor.usuarioId, db)),
     resultado: responder(req => svc.registrarResultado(req.asesor.usuarioId, req.body || {}, db)),
+    tipificar: responder(req => svc.tipificar(req.asesor.usuarioId, req.body || {}, db)),
     // La página pregunta aquí si la llamada ya terminó; el ERP lo resuelve con
     // el registro compartido (una consulta a Bitrix para todos los asesores).
     estado: responder(async (req) => {
@@ -103,6 +104,8 @@ function crearDialerController({ bitrixApp, db, portalUrl, now = () => Date.now(
 }
 
 const SDK = '<script src="https://api.bitrix24.com/api/v1/"></script>'
+const TIPOS_HTML = svc.TIPIFICACIONES
+  .map((t) => `<button class="tipo" data-t="${t}">${t}</button>`).join('')
 
 const PAGINA_INSTALL = `<!doctype html><html lang="es"><head><meta charset="utf-8">${SDK}</head>
 <body style="font-family:system-ui;padding:24px">Instalando Automarcador…
@@ -119,22 +122,25 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
 .actual{font-size:22px;font-weight:700;margin:6px 0}.estado{font-size:14px;color:#1687d9;font-weight:600}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}button{border:0;border-radius:9px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer}
 .go{background:#16a34a;color:#fff}.stop{background:#dc2626;color:#fff}.sec{background:#eef2f5;color:#455a64}button:disabled{opacity:.45;cursor:default}
-.err{color:#c62828;font-size:13px;margin-top:10px}.hidden{display:none}
+.err{color:#c62828;font-size:13px;margin-top:10px}.hidden{display:none}.tipo{background:#eef2f5;color:#263238;font-weight:600}.tipo.sel{background:#1687d9;color:#fff}
 </style></head><body><div class="wrap">
 <div class="card"><h1>📞 Automarcador</h1><div class="muted" id="quien">Conectando con Bitrix…</div>
 <div class="stats"><div class="stat"><b id="pend">–</b><span class="muted">Pendientes</span></div>
 <div class="stat"><b id="ok">–</b><span class="muted">Contestadas hoy</span></div>
 <div class="stat"><b id="nc">–</b><span class="muted">No contestaron hoy</span></div></div>
 <div class="row"><button class="go" id="btnIniciar" disabled>▶ Iniciar</button><button class="stop hidden" id="btnDetener">■ Detener</button>
-<label class="muted" style="align-self:center">Pausa entre llamadas <select id="pausa"><option>3</option><option selected>5</option><option>10</option><option>20</option></select> s</label></div>
+<label class="muted" style="align-self:center">Tiempo para tipificar <select id="pausa"><option selected>15</option><option>20</option><option>30</option></select> s</label></div>
 <div class="err" id="err"></div></div>
 <div class="card hidden" id="cardActual"><div class="muted">Llamada actual</div><div class="actual" id="cliente"></div>
 <div class="muted" id="deal"></div><div class="estado" id="estado"></div>
 <div class="row" id="manual"><button class="sec" data-r="contestada">✔ Contestó</button><button class="sec" data-r="no_contesta">✖ No contestó</button><button class="sec" data-r="omitida">⏭ Saltar</button></div></div>
+<div class="card hidden" id="cardTipo"><div class="muted">Tipifica la llamada con <b id="tipoCliente"></b></div>
+<div class="row" id="tipos">${TIPOS_HTML}</div>
+<div class="row"><span class="estado" id="cuenta"></span><button class="go hidden" id="btnYa">▶ Llamar ya</button></div></div>
 </div>
 <script>
 (function(){
-  var API='/api/llamadas/bitrix-dialer/', corriendo=false, actual=null, sondeo=null;
+  var API='/api/llamadas/bitrix-dialer/', corriendo=false, actual=null, sondeo=null, ultimo=null, cuenta=null;
   var $=function(id){return document.getElementById(id)};
   function error(m){ $('err').textContent=m||''; }
   function token(){ return new Promise(function(ok){ var a=BX24.getAuth(); if(a&&a.access_token) return ok(a.access_token); BX24.refreshAuth(function(n){ ok(n&&n.access_token); }); }); }
@@ -147,16 +153,30 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   function bx(metodo, params){ return new Promise(function(ok,ko){ BX24.callMethod(metodo, params, function(r){ r.error()?ko(new Error(r.error().ex?r.error().ex.error_description:String(r.error()))):ok(r.data()); }); }); }
   function refrescar(){ return api('cola').then(function(d){ $('quien').textContent='Asesor: '+(d.asesor||''); $('pend').textContent=d.pendientes; $('ok').textContent=d.contestadas_hoy; $('nc').textContent=d.no_contesta_hoy; $('btnIniciar').disabled=corriendo||!d.pendientes; }).catch(function(e){ error(e.message); }); }
 
+  function pararCuenta(){ clearInterval(cuenta); cuenta=null; $('btnYa').classList.add('hidden'); $('cuenta').textContent=''; }
+  // Al colgar: se muestran las tipificaciones y una cuenta regresiva antes de la siguiente llamada.
+  function panelTipificar(item){
+    ultimo=item; pararCuenta();
+    $('tipoCliente').textContent=item.nombre_cliente||('+'+item.telefono);
+    Array.prototype.forEach.call(document.querySelectorAll('#tipos button'),function(b){ b.classList.remove('sel'); });
+    $('cardTipo').classList.remove('hidden');
+    if(!corriendo){ $('cuenta').textContent='Detenido. Puedes tipificar igual.'; return; }
+    var s=parseInt($('pausa').value,10)||15;
+    $('btnYa').classList.remove('hidden');
+    $('cuenta').textContent='Siguiente llamada en '+s+' s';
+    cuenta=setInterval(function(){
+      s-=1;
+      if(s>0){ $('cuenta').textContent='Siguiente llamada en '+s+' s'; return; }
+      pararCuenta(); if(corriendo) llamar();
+    },1000);
+  }
   function terminar(resultado, dur, yaRegistrado){
     if(!actual) return;
     clearInterval(sondeo); sondeo=null;
     var item=actual; actual=null;
+    $('cardActual').classList.add('hidden');
     (yaRegistrado ? Promise.resolve() : api('resultado',{item_id:item.id, estado:resultado, duracion:dur||0}).catch(function(e){ error(e.message); }))
-      .then(refrescar).then(function(){
-        if(!corriendo){ $('estado').textContent='Detenido.'; return; }
-        var s=parseInt($('pausa').value,10)||5; $('estado').textContent='Siguiente llamada en '+s+' s…';
-        setTimeout(function(){ if(corriendo) llamar(); }, s*1000);
-      });
+      .then(refrescar).then(function(){ panelTipificar(item); });
   }
   function revisarRegistro(){
     if(!actual) return;
@@ -171,7 +191,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
     error('');
     api('siguiente',{}).then(function(item){
       if(!item){ corriendo=false; $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('No tienes más números pendientes.'); return refrescar(); }
-      actual=item;
+      actual=item; pararCuenta(); $('cardTipo').classList.add('hidden');
       $('cardActual').classList.remove('hidden');
       $('cliente').textContent=item.nombre_cliente||'Cliente';
       $('deal').textContent=item.deal_id?('Negociación #'+item.deal_id):'';
@@ -182,7 +202,15 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
     }).catch(function(e){ corriendo=false; error(e.message); $('btnDetener').classList.add('hidden'); refrescar(); });
   }
   $('btnIniciar').onclick=function(){ corriendo=true; this.disabled=true; $('btnDetener').classList.remove('hidden'); if(!actual) llamar(); else $('estado').textContent='Seguirá al terminar esta llamada.'; };
-  $('btnDetener').onclick=function(){ corriendo=false; this.classList.add('hidden'); $('estado').textContent=actual?'Se detendrá al terminar esta llamada.':'Detenido.'; refrescar(); };
+  $('btnYa').onclick=function(){ pararCuenta(); if(corriendo&&!actual) llamar(); };
+  Array.prototype.forEach.call(document.querySelectorAll('#tipos button'),function(b){ b.onclick=function(){
+    if(!ultimo) return;
+    var t=b.getAttribute('data-t');
+    api('tipificar',{item_id:ultimo.id, tipificacion:t}).then(function(){
+      Array.prototype.forEach.call(document.querySelectorAll('#tipos button'),function(x){ x.classList.toggle('sel', x===b); });
+    }).catch(function(e){ error(e.message); });
+  }; });
+  $('btnDetener').onclick=function(){ corriendo=false; this.classList.add('hidden'); if(cuenta){ pararCuenta(); $('cuenta').textContent='Detenido. Puedes tipificar igual.'; } $('estado').textContent=actual?'Se detendrá al terminar esta llamada.':'Detenido.'; refrescar(); };
   Array.prototype.forEach.call(document.querySelectorAll('#manual button'),function(b){ b.onclick=function(){ terminar(b.getAttribute('data-r'),0); }; });
   BX24.init(function(){
     BX24.fitWindow && BX24.fitWindow();

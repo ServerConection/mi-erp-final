@@ -42,5 +42,6 @@ router.get('/bitrix/asesores',                campanasBitrix.asesores);
 router.get('/bitrix/campanas',                campanasBitrix.campanas);
 router.post('/bitrix/campanas',               campanasBitrix.crear);
 router.post('/bitrix/campanas/:id/reintentar', campanasBitrix.reintentar);
+router.get('/bitrix/reporte',                 campanasBitrix.reporte);
 
 module.exports = router;

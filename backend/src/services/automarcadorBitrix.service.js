@@ -10,6 +10,9 @@
  * Tablas propias (automarcador_bx_*), creadas de forma idempotente.
  */
 const ESTADOS_FINALES = ['contestada', 'no_contesta', 'fallida', 'omitida']
+// Tipificaciones que el asesor elige al terminar cada llamada.
+const TIPIFICACIONES = ['Contrata', 'No contesta', 'Seguimiento', 'No desea', 'ATC',
+  'Fuera de Cobertura', 'Zona Peligrosa', 'Innegociable']
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS automarcador_bx_campanas (
@@ -36,6 +39,10 @@ CREATE TABLE IF NOT EXISTS automarcador_bx_items (
 );
 CREATE INDEX IF NOT EXISTS idx_automarcador_bx_items_cola
   ON automarcador_bx_items (usuario_id, estado, id);
+ALTER TABLE automarcador_bx_items ADD COLUMN IF NOT EXISTS tipificacion VARCHAR(40);
+ALTER TABLE automarcador_bx_items ADD COLUMN IF NOT EXISTS tipificado_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_automarcador_bx_items_fecha
+  ON automarcador_bx_items (ultimo_intento);
 `
 
 let esquemaListo = null
@@ -196,8 +203,50 @@ async function itemEnLlamada(usuarioId, itemId, db) {
   return r.rows[0] || null
 }
 
+// El asesor tipifica una llamada suya ya marcada (en curso o terminada).
+async function tipificar(usuarioId, { item_id, tipificacion }, db) {
+  if (!TIPIFICACIONES.includes(tipificacion)) { const e = new Error('Tipificación inválida'); e.status = 400; throw e }
+  await asegurarEsquema(db)
+  const r = await db.query(
+    `UPDATE automarcador_bx_items SET tipificacion = $3, tipificado_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND usuario_id = $2 AND estado <> 'pendiente' RETURNING id`,
+    [parseInt(item_id, 10) || 0, usuarioId, tipificacion]
+  )
+  if (!r.rows.length) { const e = new Error('No se encontró la llamada'); e.status = 404; throw e }
+  return { ok: true }
+}
+
+// Reporte de llamadas hechas (hora, duración, resultado, tipificación) por rango de fechas.
+async function reporte(user, { desde, hasta, campana_id } = {}, db) {
+  const fecha = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null
+  const d = fecha(desde), h = fecha(hasta)
+  if (!d || !h || d > h) { const e = new Error('Selecciona un rango de fechas válido'); e.status = 400; throw e }
+  await asegurarEsquema(db)
+  const params = [empresaDe(user), d, h]
+  let extra = ''
+  if (campana_id) { params.push(parseInt(campana_id, 10) || 0); extra = ` AND c.id = $${params.length}` }
+  const r = await db.query(
+    `SELECT c.id AS campana_id, c.nombre AS campana,
+            TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor,
+            i.nombre_cliente, i.telefono, i.deal_id,
+            to_char(i.ultimo_intento AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS hora_llamada,
+            i.duracion_seg, i.estado, i.tipificacion,
+            to_char(i.tipificado_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS hora_tipificacion,
+            i.intentos
+       FROM automarcador_bx_items i
+       JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1
+       LEFT JOIN usuarios u ON u.id = i.usuario_id
+      WHERE i.ultimo_intento IS NOT NULL
+        AND (i.ultimo_intento AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date${extra}
+      ORDER BY i.ultimo_intento DESC
+      LIMIT 20000`,
+    params
+  )
+  return r.rows
+}
+
 module.exports = {
-  DDL, ESTADOS_FINALES, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
+  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
   resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
   _reset: () => { esquemaListo = null },
 }

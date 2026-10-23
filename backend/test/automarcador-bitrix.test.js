@@ -43,3 +43,12 @@ test('exige asesores válidos y teléfonos', async () => {
 test('resultado solo acepta estados finales', async () => {
   await assert.rejects(svc.registrarResultado(1, { item_id: 1, estado: 'pendiente' }, { query: async () => ({ rows: [] }) }), /Estado inválido/)
 })
+
+test('tipificación: solo acepta las 8 opciones del equipo', async () => {
+  assert.deepEqual(svc.TIPIFICACIONES, ['Contrata', 'No contesta', 'Seguimiento', 'No desea', 'ATC', 'Fuera de Cobertura', 'Zona Peligrosa', 'Innegociable'])
+  await assert.rejects(svc.tipificar(1, { item_id: 1, tipificacion: 'Otra' }, { query: async () => ({ rows: [] }) }), /Tipificación inválida/)
+})
+
+test('reporte exige un rango de fechas válido', async () => {
+  await assert.rejects(svc.reporte({ empresa: 'NOVONET' }, { desde: '2026-10-05', hasta: '2026-10-01' }, { query: async () => ({ rows: [] }) }), /rango/)
+})

@@ -71,7 +71,10 @@ function hojasDeMetas(wb) {
     return {
       nombre,
       esMetas: n.startsWith('METAS'),
-      empresa: n.includes('VELSA') ? 'VELSA' : (n.includes('NOVONET') ? 'NOVONET' : null),
+      empresa: n.includes('VENTA EN LINEA') || n.includes('VENTAENLINEA') ? 'VENTAENLINEA'
+        : n.includes('SEMILLERO') ? 'SEMILLERO'
+          : n.includes('VELSA') ? 'VELSA'
+            : (n.includes('NOVONET') ? 'NOVONET' : null),
     };
   });
 }

@@ -14,7 +14,7 @@
  * En Descarte % es al revés (menos es mejor).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { exportarKpiExcel } from '../utils/exportarKpiExcel';
 
 // ── Definición de columnas ───────────────────────────────────────────────────
@@ -40,7 +40,12 @@ const COLUMNAS = [
   { grupo: '% 3ra Edad',           campo: 'pct_tercera_edad',  meta: 'meta_pct_tercera_edad',  tipo: 'pct' },
   { grupo: '% Planes 150/200',     campo: 'pct_planes_150_200', meta: 'meta_pct_planes',       tipo: 'pct' },
   { grupo: 'Por Regularizar',      campo: 'por_regularizar',   meta: null,                     tipo: 'calc' },
+  { grupo: 'ATC', campo: 'pct_atc', conteo: 'atc_n', etiquetaConteo: 'N. ATC', metaFija: 50, tipo: 'pct', invertido: true },
+  { grupo: 'Fuera de cobertura', campo: 'pct_fuera_cobertura', conteo: 'fuera_cobertura_n', etiquetaConteo: 'N. Fuera de cobertura', metaFija: 3, tipo: 'pct', invertido: true },
+  { grupo: 'Zona peligrosa', campo: 'pct_zona_peligrosa', conteo: 'zona_peligrosa_n', etiquetaConteo: 'N. Zona peligrosa', metaFija: 3, tipo: 'pct', invertido: true },
 ];
+
+const anchoColumna = (col) => col.conteo ? 3 : (col.meta ? 2 : 1);
 
 const n = (v) => Number(v || 0);
 
@@ -49,6 +54,7 @@ const n = (v) => Number(v || 0);
 // operativos del mes (26 en agosto). Los porcentajes NO se dividen: una meta
 // de 23% de efectividad es 23% tanto en el mes como en un día suelto.
 const metaMostrada = (col, fila, divisor = 1) => {
+  if (col.metaFija != null) return col.metaFija;
   if (!col.meta) return null;
   const v = n(fila[col.meta]);
   if (col.tipo === 'pct') return v * 100;
@@ -89,6 +95,19 @@ export default function TablaKpiComercial({
   contexto = null,
 }) {
   const [abiertos, setAbiertos] = useState({});
+  const scrollSuperiorRef = useRef(null);
+  const scrollTablaRef = useRef(null);
+  const tablaRef = useRef(null);
+  const [anchoTabla, setAnchoTabla] = useState(0);
+
+  useEffect(() => {
+    const actualizar = () => setAnchoTabla(tablaRef.current?.scrollWidth || 0);
+    actualizar();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(actualizar) : null;
+    if (tablaRef.current && observer) observer.observe(tablaRef.current);
+    window.addEventListener('resize', actualizar);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', actualizar); };
+  }, [filas, total, agrupado]);
 
   const grupos = useMemo(() => {
     if (!agrupado) return null;
@@ -134,6 +153,13 @@ export default function TablaKpiComercial({
         </td>
       );
     }
+    if (c.conteo) {
+      out.push(
+        <td key={`${c.campo}-n`} className={`${base} text-slate-700 border-r border-slate-100`}>
+          {fmt({ tipo: 'num' }, f[c.conteo])}
+        </td>
+      );
+    }
     out.push(
       <td key={`${c.campo}-real`} className={`${base} ${colorSemaforo(c, real, meta)} border-r border-slate-200`}>
         {fmt(c, real)}
@@ -152,6 +178,7 @@ export default function TablaKpiComercial({
         const meta = metaMostrada(c, total, divisorMeta);
         const out = [];
         if (meta !== null) out.push(<td key={`t-${c.campo}-p`} className="text-center px-2 py-2 text-slate-400 font-bold tabular-nums">{fmt(c, meta)}</td>);
+        if (c.conteo) out.push(<td key={`t-${c.campo}-n`} className="text-center px-2 py-2 font-black tabular-nums">{fmt({ tipo: 'num' }, total[c.conteo])}</td>);
         out.push(<td key={`t-${c.campo}-r`} className="text-center px-2 py-2 font-black tabular-nums border-r border-slate-700">{fmt(c, real)}</td>);
         return out;
       })}
@@ -174,8 +201,11 @@ export default function TablaKpiComercial({
         </button>
       </div>
 
-      <div className="overflow-x-auto max-h-[600px]">
-        <table className="w-full text-[9px] border-collapse">
+      <div ref={scrollSuperiorRef} onScroll={(e) => { if (scrollTablaRef.current) scrollTablaRef.current.scrollLeft = e.currentTarget.scrollLeft; }} className="overflow-x-auto overflow-y-hidden border-b border-slate-200">
+        <div style={{ width: anchoTabla, height: 8 }} />
+      </div>
+      <div ref={scrollTablaRef} onScroll={(e) => { if (scrollSuperiorRef.current) scrollSuperiorRef.current.scrollLeft = e.currentTarget.scrollLeft; }} className="overflow-x-auto max-h-[600px]">
+        <table ref={tablaRef} className="w-full text-[9px] border-collapse">
           <thead className="sticky top-0 z-30">
             {/* Fila 1: nombre del indicador */}
             <tr className="bg-slate-100 text-slate-700 font-black uppercase">
@@ -183,7 +213,7 @@ export default function TablaKpiComercial({
                 Entidad
               </th>
               {COLUMNAS.map((c) => (
-                <th key={c.grupo} colSpan={c.meta ? 2 : 1}
+                <th key={c.grupo} colSpan={anchoColumna(c)}
                     className="px-2 py-2 text-center border-r border-slate-300 border-b border-slate-200">
                   {c.grupo}
                 </th>
@@ -194,6 +224,8 @@ export default function TablaKpiComercial({
               {COLUMNAS.flatMap((c) => {
                 const out = [];
                 if (c.meta) out.push(<th key={`${c.campo}-hp`} className="px-2 py-1 text-center border-r border-slate-100">Pto</th>);
+                if (c.metaFija != null) out.push(<th key={`${c.campo}-hp`} className="px-2 py-1 text-center border-r border-slate-100">Pto</th>);
+                if (c.conteo) out.push(<th key={`${c.campo}-hn`} className="px-2 py-1 text-center border-r border-slate-100">{c.etiquetaConteo}</th>);
                 out.push(<th key={`${c.campo}-hr`} className="px-2 py-1 text-center border-r border-slate-300">Real</th>);
                 return out;
               })}
@@ -222,7 +254,7 @@ export default function TablaKpiComercial({
                     {abierto ? '▾' : '▸'} {sup}
                     <span className="ml-2 font-bold text-blue-200">({hijos.length})</span>
                   </td>
-                  <td colSpan={COLUMNAS.reduce((s, c) => s + (c.meta ? 2 : 1), 0)}
+                  <td colSpan={COLUMNAS.reduce((s, c) => s + anchoColumna(c), 0)}
                       className="px-3 py-1.5 text-blue-200 font-bold">
                     Leads: {hijos.reduce((s, h) => s + n(h.leads_total), 0).toLocaleString('es-EC')}
                     {'  ·  '}Gestionables: {hijos.reduce((s, h) => s + n(h.leads_gestion), 0).toLocaleString('es-EC')}

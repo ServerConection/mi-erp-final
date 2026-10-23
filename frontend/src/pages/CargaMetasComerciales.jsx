@@ -1,6 +1,6 @@
 // src/pages/CargaMetasComerciales.jsx
 // ============================================================================
-// Carga mensual del Excel de metas de gerencia (NOVONET / VELSA).
+// Carga mensual del Excel de metas de gerencia.
 //
 // 1. Se elige empresa, mes y el archivo -> "Analizar" (no guarda metas todavia).
 // 2. El sistema muestra cada asesor del Excel con el nombre que encontro en
@@ -43,7 +43,8 @@ export default function CargaMetasComerciales() {
   // Hoja sugerida: la de la empresa elegida que menciona el MES elegido
   // ("METAS NOVONET OCTUBRE"). Si no hay, ninguna: que el usuario elija a conciencia.
   const sugerirHoja = (lista, emp, m) => {
-    const delaEmpresa = lista.filter((n) => n.toUpperCase().includes(emp));
+    const claveEmpresa = emp.replace(/[^A-Z0-9]/g, "");
+    const delaEmpresa = lista.filter((n) => n.toUpperCase().replace(/[^A-Z0-9]/g, "").includes(claveEmpresa));
     return delaEmpresa.find((n) => n.toUpperCase().includes(MESES[m - 1].toUpperCase())) || "";
   };
   const [cargando, setCargando] = useState(false);
@@ -151,7 +152,7 @@ export default function CargaMetasComerciales() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
             <div><span style={lbl}>Empresa</span>
               <select style={inp} value={empresa} onChange={(e) => { setEmpresa(e.target.value); setHoja(sugerirHoja(hojas, e.target.value, mes)); setPrev(null); }}>
-                <option>NOVONET</option><option>VELSA</option>
+                <option>NOVONET</option><option>VELSA</option><option>SEMILLERO</option><option value="VENTAENLINEA">VENTA EN LÍNEA</option>
               </select></div>
             <div><span style={lbl}>Mes</span>
               <select style={inp} value={mes} onChange={(e) => { setMes(Number(e.target.value)); setHoja(sugerirHoja(hojas, empresa, Number(e.target.value))); setPrev(null); }}>

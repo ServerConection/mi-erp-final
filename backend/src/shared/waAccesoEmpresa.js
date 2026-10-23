@@ -1,9 +1,10 @@
 const normalizar = valor => String(valor || '').trim().toUpperCase();
 
-const PERFILES_MANDO_WABOT = new Set(['SUPERVISOR', 'GERENCIA', 'ANALISTA', 'ATC']);
+const PERFILES_MANDO_WABOT = new Set(['SUPERVISOR', 'GERENCIA', 'GERENTE', 'ANALISTA', 'ATC']);
 
 function esMandoWabot(usuario) {
-  return PERFILES_MANDO_WABOT.has(normalizar(usuario?.perfil));
+  const perfil = normalizar(usuario?.perfil);
+  return PERFILES_MANDO_WABOT.has(perfil) || /^GEREN(?:CIA|TE)[ _-]/.test(perfil);
 }
 
 function empresaVisibleWabot(usuario) {

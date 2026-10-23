@@ -25,7 +25,7 @@ const pool = require('../config/db');
 const { parseHojaMetas, hojasDeMetas, mesDelTexto, MESES } = require('../services/metasExcelParser.service');
 const { construirPool, cruzarAsesores, marcarDuplicados, claveNombre, ESTADOS_AUTOMATICOS } = require('../services/asesorMatcher.service');
 
-const EMPRESAS = new Set(['NOVONET', 'VELSA']);
+const EMPRESAS = new Set(['NOVONET', 'VELSA', 'SEMILLERO', 'VENTAENLINEA']);
 const DIAS_POOL = 120;   // ventana para buscar los nombres que aparecen en Bitrix
 
 const fail = (res, code, error, extra = {}) => res.status(code).json({ success: false, error, ...extra });
@@ -72,7 +72,7 @@ async function nombresBitrix(empresa) {
     await correr('empleados', `
       SELECT DISTINCT nombre_completo AS nombre, NULL::text AS codigo, 0 AS n
       FROM public.empleados WHERE nombre_completo IS NOT NULL`);
-  } else {
+  } else if (empresa === 'VELSA') {
     // VELSA: el asesor sale de Bitrix (mv.asesor) y el codigo de Jotform
     await correr('mv_velsa', `
       SELECT mv.asesor AS nombre, UPPER(BTRIM(mv.codigo_asesor::text)) AS codigo, COUNT(*)::int AS n
@@ -89,6 +89,14 @@ async function nombresBitrix(empresa) {
           AND mv.fecha_creacion_crm >= NOW() - INTERVAL '${DIAS_POOL} days'
         GROUP BY 1`);
     }
+  } else {
+    const empresaWebhook = empresa === 'VENTAENLINEA' ? 'ventaenlinea' : 'semillero';
+    await correr('webhook', `
+      SELECT NULLIF(TRIM(w.responsible), '') AS nombre, NULL::text AS codigo, COUNT(*)::int AS n
+      FROM public.bitrix_webhook_leads w
+      WHERE LOWER(BTRIM(w.empresa)) = '${empresaWebhook}'
+        AND w.created_at >= NOW() - INTERVAL '${DIAS_POOL} days'
+      GROUP BY 1`);
   }
   return { filas, fuentes };
 }
@@ -113,7 +121,7 @@ const preview = async (req, res) => {
     const empresa = String(req.body.empresa || '').toUpperCase();
     const anio = Number(req.body.anio);
     const mes = Number(req.body.mes);
-    if (!EMPRESAS.has(empresa)) return fail(res, 400, 'Empresa invalida (NOVONET o VELSA)');
+    if (!EMPRESAS.has(empresa)) return fail(res, 400, 'Empresa invalida');
     if (!(anio >= 2024 && anio <= 2100) || !(mes >= 1 && mes <= 12)) return fail(res, 400, 'Periodo invalido');
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
@@ -264,7 +272,7 @@ const confirmar = async (req, res) => {
     if (empresa === 'NOVONET') {
       snapshot.empleados = (await client.query(
         'SELECT * FROM public.empleados WHERE codigo::text = $1', [String(mes)])).rows;
-    } else if (await tablaExiste(client, 'catalogo_asesores_velsa')) {
+    } else if (empresa === 'VELSA' && await tablaExiste(client, 'catalogo_asesores_velsa')) {
       snapshot.catalogo_asesores_velsa = (await client.query(
         'SELECT * FROM public.catalogo_asesores_velsa WHERE periodo = $1::date', [periodo])).rows;
     }
@@ -328,7 +336,7 @@ const confirmar = async (req, res) => {
           resumen.empleados_insert++;
         }
       }
-    } else if (snapshot.catalogo_asesores_velsa) {
+    } else if (empresa === 'VELSA' && snapshot.catalogo_asesores_velsa) {
       const supCodigo = new Map(P.supervisores.map((s) => [s.supervisor, s.codigo]));
       for (const a of finales) {
         if (!a.codigo) continue;   // el catalogo Velsa va por codigo (el de Jotform)
@@ -450,7 +458,9 @@ const vigentes = async (req, res) => {
     const [emp, sup, ase] = await Promise.all([
       pool.query('SELECT * FROM public.metas_empresa WHERE empresa=$1 AND anio=$2 AND mes=$3', [empresa, anio, mes]),
       pool.query('SELECT * FROM public.metas_supervisor WHERE empresa=$1 AND anio=$2 AND mes=$3 AND activo ORDER BY supervisor', [empresa, anio, mes]),
-      pool.query(`SELECT asesor, codigo_asesor, supervisor, leads_total, leads_gestion, ingresos_jot, activas_totales
+      pool.query(`SELECT asesor, codigo_asesor, supervisor, leads_total, leads_gestion, ingresos_jot, activas_totales,
+                         pct_efect_leads, pct_efect_gestion, pct_descarte, pct_tasa_activacion,
+                         pct_tarjeta, pct_tercera_edad, pct_planes_150_200
                   FROM public.metas_asesor WHERE empresa=$1 AND anio=$2 AND mes=$3 AND activo ORDER BY supervisor, asesor`,
                  [empresa, anio, mes]),
     ]);

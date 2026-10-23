@@ -17,13 +17,14 @@ const portalDeLinea = (line) => (line.owner_empresa === "VELSA" ? "VELSA" : "NOV
 // Crear líneas SIN límite: ADMINISTRADOR y perfiles gerenciales (SUPERVISOR,
 // GERENCIA, ANALISTA) — ajuste 2026-08-13 a pedido de gerencia.
 // El resto (ASESOR) puede crear su línea solo si aún no tiene ninguna.
-const PERFILES_GERENCIALES = ["SUPERVISOR", "GERENCIA", "ANALISTA"];
+const PERFILES_GERENCIALES = ["SUPERVISOR", "GERENCIA", "GERENTE", "ANALISTA"];
 const USER_PROFILE = (() => {
   try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
   catch { return {}; }
 })();
 const IS_ADMIN = (USER_PROFILE.perfil || "").toUpperCase() === "ADMINISTRADOR";
-const IS_SUPERVISOR = PERFILES_GERENCIALES.includes((USER_PROFILE.perfil || "").toUpperCase());
+const PERFIL_USUARIO = (USER_PROFILE.perfil || "").trim().toUpperCase();
+const IS_SUPERVISOR = PERFILES_GERENCIALES.includes(PERFIL_USUARIO) || /^GEREN(?:CIA|TE)[ _-]/.test(PERFIL_USUARIO);
 const USER_ID  = USER_PROFILE.id || null;
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
@@ -267,8 +268,65 @@ export default function WaLineas() {
     </div>
   );
 
+  const lineasPorEmpresa = {
+    NOVONET: lines.filter(line => portalDeLinea(line) === "NOVONET"),
+    VELSA: lines.filter(line => portalDeLinea(line) === "VELSA"),
+  };
+
+  const renderLinea = (line) => (
+    <div key={line.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-semibold text-slate-800 break-words">{line.name}</div>
+          {line.phone_number && <div className="text-xs text-slate-500 mt-0.5">+{line.phone_number}</div>}
+        </div>
+        <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[line.status] || STATUS_COLORS.disconnected}`}>
+          {STATUS_LABEL[line.status] || line.status}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
+          👤 {line.owner_username || "—"}
+        </span>
+        {puedeAsignarCanal && (
+          <select
+            value={line.open_line_id || ""}
+            disabled={asignando === line.id}
+            onChange={e => asignarCanal(line, e.target.value)}
+            title={`Canal abierto de Bitrix ${portalDeLinea(line)} al que entrega esta línea`}
+            className={`min-w-0 flex-1 text-xs border rounded-lg px-2 py-1.5 ${line.open_line_id ? "border-green-300 text-green-700 bg-green-50" : "border-slate-200 text-slate-500"}`}
+          >
+            <option value="">Sin canal abierto</option>
+            {(canales[portalDeLinea(line)] || []).map(c => (
+              <option key={c.ID} value={c.ID}>🔗 {c.LINE_NAME || `Canal ${c.ID}`}</option>
+            ))}
+            {line.open_line_id && !(canales[portalDeLinea(line)] || []).some(c => String(c.ID) === String(line.open_line_id)) && (
+              <option value={line.open_line_id}>🔗 Canal {line.open_line_id}</option>
+            )}
+          </select>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+        {line.status === "connected" ? (
+          <button onClick={() => disconnect(line.id)} className="text-xs border border-slate-200 hover:border-red-300 hover:text-red-500 px-3 py-1.5 rounded-lg transition-colors">
+            Desconectar
+          </button>
+        ) : (
+          <button onClick={() => connect(line.id)} className="text-xs bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors">
+            Conectar QR
+          </button>
+        )}
+        <button onClick={() => remove(line.id)} title="Dar de baja la línea (se conserva el historial de chats)" className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
+          🗑️
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -347,61 +405,24 @@ export default function WaLineas() {
           <div className="text-sm mt-1">Crea una línea para empezar</div>
         </div>
       ) : (
-        <div className="space-y-3">
-          {lines.map(line => (
-            <div key={line.id} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4">
-              <div className="flex-1">
-                <div className="font-semibold text-slate-800">{line.name}</div>
-                {line.phone_number && (
-                  <div className="text-xs text-slate-500 mt-0.5">+{line.phone_number}</div>
-                )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {[
+            { empresa: "NOVONET", color: "blue" },
+            { empresa: "VELSA", color: "violet" },
+          ].map(({ empresa, color }) => (
+            <section key={empresa} className="min-w-0">
+              <div className={`mb-3 flex items-center justify-between rounded-xl border px-4 py-3 ${color === "blue" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-violet-200 bg-violet-50 text-violet-800"}`}>
+                <h2 className="text-sm font-black tracking-wide">{empresa}</h2>
+                <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-bold">
+                  {lineasPorEmpresa[empresa].length} línea(s)
+                </span>
               </div>
-
-              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
-                👤 {line.owner_username || "—"}
-              </span>
-
-              {puedeAsignarCanal && (
-                <select
-                  value={line.open_line_id || ""}
-                  disabled={asignando === line.id}
-                  onChange={e => asignarCanal(line, e.target.value)}
-                  title={`Canal abierto de Bitrix ${portalDeLinea(line)} al que entrega esta línea`}
-                  className={`text-xs border rounded-lg px-2 py-1 max-w-[180px] ${line.open_line_id ? "border-green-300 text-green-700 bg-green-50" : "border-slate-200 text-slate-500"}`}
-                >
-                  <option value="">Sin canal abierto</option>
-                  {(canales[portalDeLinea(line)] || []).map(c => (
-                    <option key={c.ID} value={c.ID}>🔗 {c.LINE_NAME || `Canal ${c.ID}`}</option>
-                  ))}
-                  {line.open_line_id && !(canales[portalDeLinea(line)] || []).some(c => String(c.ID) === String(line.open_line_id)) && (
-                    <option value={line.open_line_id}>🔗 Canal {line.open_line_id}</option>
-                  )}
-                </select>
-              )}
-
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[line.status] || STATUS_COLORS.disconnected}`}>
-                {STATUS_LABEL[line.status] || line.status}
-              </span>
-
-              <div className="flex gap-2">
-                {line.status === "connected" ? (
-                  <button onClick={() => disconnect(line.id)}
-                    className="text-xs border border-slate-200 hover:border-red-300 hover:text-red-500 px-3 py-1.5 rounded-lg transition-colors">
-                    Desconectar
-                  </button>
-                ) : (
-                  <button onClick={() => connect(line.id)}
-                    className="text-xs bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors">
-                    Conectar QR
-                  </button>
-                )}
-                <button onClick={() => remove(line.id)}
-                  title="Dar de baja la línea (se conserva el historial de chats)"
-                  className="text-xs text-slate-400 hover:text-red-400 px-2 py-1.5 rounded-lg transition-colors">
-                  🗑️
-                </button>
+              <div className="space-y-3">
+                {lineasPorEmpresa[empresa].length > 0
+                  ? lineasPorEmpresa[empresa].map(renderLinea)
+                  : <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-400">No hay líneas de {empresa}</div>}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       )}

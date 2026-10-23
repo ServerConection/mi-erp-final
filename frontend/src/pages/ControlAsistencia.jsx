@@ -333,8 +333,9 @@ export default function ControlAsistencia() {
   const PASOS = esComisionista ? PASOS_COMISIONISTA : PASOS_NOMINA;
   const TX = esComisionista ? TEXTOS_COMISIONISTA : TEXTOS_NOMINA;
   // El resumen de todos los usuarios solo lo ven perfiles administrativos.
-  const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "SUPERVISOR", "ATC"]
-    .includes(String(user?.perfil || "").trim().toUpperCase());
+  const perfilActual = String(user?.perfil || "").trim().toUpperCase();
+  const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "GERENTE"].includes(perfilActual)
+    || /^GEREN(?:CIA|TE)[ _-]/.test(perfilActual);
 
   const [
     actividad,
@@ -353,8 +354,9 @@ export default function ControlAsistencia() {
     useState(null);
 
   const [vistaActiva, setVistaActiva] = useState("REGISTRO");
-  const [fechaDesde, setFechaDesde] = useState(fechaInicioMesEcuador);
+  const [fechaDesde, setFechaDesde] = useState(fechaHoyEcuador);
   const [fechaHasta, setFechaHasta] = useState(fechaHoyEcuador);
+  const [filtroEmpresa, setFiltroEmpresa] = useState("TODAS");
   const [resumenDia, setResumenDia] = useState([]);
   const [cargandoResumen, setCargandoResumen] = useState(false);
 
@@ -413,6 +415,10 @@ export default function ControlAsistencia() {
     cargarPerfilVigente();
     return () => { activo = false; };
   }, []);
+
+  useEffect(() => {
+    if (!puedeVerResumen && vistaActiva === "MARCACIONES") setVistaActiva("REGISTRO");
+  }, [puedeVerResumen, vistaActiva]);
 
   // ─────────────────────────────────────────────
   // RELOJ EN TIEMPO REAL
@@ -1019,6 +1025,9 @@ export default function ControlAsistencia() {
     marginBottom: 6,
   };
 
+  const empresasResumen = [...new Set(resumenDia.map(fila => fila.empresa || "SIN EMPRESA"))].sort();
+  const filasResumen = resumenDia.filter(fila => filtroEmpresa === "TODAS" || (fila.empresa || "SIN EMPRESA") === filtroEmpresa);
+
   return (
     <div
       style={{
@@ -1040,7 +1049,7 @@ export default function ControlAsistencia() {
         aria-label="Vistas de control de asistencia"
         style={{
           width: "100%",
-          maxWidth: 1180,
+          maxWidth: vistaActiva === "MARCACIONES" ? 1600 : 1180,
           padding: 5,
           display: "flex",
           gap: 6,
@@ -1303,18 +1312,32 @@ export default function ControlAsistencia() {
         </aside>
       </div>
       ) : (
-      <section style={{ width: "100%", maxWidth: 1180, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, boxShadow: "0 10px 30px rgba(15,23,42,.07)", overflow: "hidden" }}>
+      <section style={{ width: "100%", maxWidth: 1600, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, boxShadow: "0 10px 30px rgba(15,23,42,.07)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px", borderBottom: "1px solid #e8eef5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", background: "linear-gradient(135deg,#f0fdfa 0%,#ffffff 65%)" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 11, background: "#ccfbf1", fontSize: 18 }}>📋</div>
               <div>
                 <h2 style={{ margin: 0, fontSize: 19, fontWeight: 900, color: "#0f172a" }}>Marcaciones del día</h2>
-                <p style={{ margin: "3px 0 0", fontSize: 12, color: "#64748b" }}>{resumenDia.length} usuario{resumenDia.length === 1 ? "" : "s"} con registros</p>
+                <p style={{ margin: "3px 0 0", fontSize: 12, color: "#64748b" }}>{filasResumen.length} usuario{filasResumen.length === 1 ? "" : "s"} con registros</p>
               </div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => { const hoy = fechaHoyEcuador(); setFechaDesde(hoy); setFechaHasta(hoy); }}
+              style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #99f6e4", background: "#f0fdfa", color: "#0f766e", fontSize: 11, fontWeight: 900, cursor: "pointer" }}
+            >
+              HOY
+            </button>
+            <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
+              Empresa
+              <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }}>
+                <option value="TODAS">Todas</option>
+                {empresasResumen.map(empresa => <option key={empresa} value={empresa}>{empresa}</option>)}
+              </select>
+            </label>
             <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
               Desde
               <input type="date" value={fechaDesde} max={fechaHasta} onChange={(e) => setFechaDesde(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 700, color: "#334155", background: "#fff", outline: "none" }} />
@@ -1328,43 +1351,43 @@ export default function ControlAsistencia() {
         {mensaje?.type === "error" && (
           <div style={{ margin: "16px 20px 0", padding: "11px 14px", borderRadius: 10, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12, fontWeight: 700 }}>{mensaje.text}</div>
         )}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 850 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                {["Fecha", "Usuario", "Ingreso", "Salida almuerzo", "Regreso almuerzo", "Salida"].map((titulo) => (
-                  <th key={titulo} style={{ padding: "13px 16px", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em", whiteSpace: "nowrap" }}>{titulo}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {resumenDia.map((fila) => (
-                <tr key={`${fila.fecha}-${fila.usuario_id}`}>
-                  <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9", fontSize: 12, fontWeight: 700 }}>{fechaVisible(fila.fecha)}</td>
-                  <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 32, height: 32, flex: "0 0 32px", display: "grid", placeItems: "center", borderRadius: "50%", color: "#0f766e", background: "#ccfbf1", fontSize: 11, fontWeight: 900 }}>{String(fila.nombre_completo || fila.usuario || "U").trim().charAt(0).toUpperCase()}</div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{fila.nombre_completo || fila.usuario || "Usuario"}</div>
-                        {fila.usuario && <div style={{ marginTop: 2, fontSize: 10, color: "#64748b" }}>@{fila.usuario}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  {[fila.ingreso, fila.salida_almuerzo, fila.regreso_almuerzo, fila.salida].map((hora, index) => (
-                    <td key={index} style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                      <span style={{ display: "inline-block", minWidth: 52, padding: "6px 9px", textAlign: "center", borderRadius: 8, fontSize: 12, fontWeight: 900, color: hora ? "#0f766e" : "#94a3b8", background: hora ? "#f0fdfa" : "#f8fafc" }}>{hora || "—"}</span>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {!cargandoResumen && resumenDia.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>No hay marcaciones registradas para esta fecha.</td></tr>
-              )}
-              {cargandoResumen && (
-                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#64748b", fontSize: 12 }}>Cargando marcaciones…</td></tr>
-              )}
-            </tbody>
-          </table>
+        <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 500px), 1fr))", gap: 18, alignItems: "start" }}>
+          {["NOVONET", "VELSA"].map((empresa) => {
+            const filas = filasResumen.filter(fila => (fila.empresa || "SIN EMPRESA") === empresa);
+            const color = empresa === "NOVONET" ? { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" } : { bg: "#f5f3ff", border: "#ddd6fe", text: "#6d28d9" };
+            return (
+              <section key={empresa} style={{ minWidth: 0, border: `1px solid ${color.border}`, borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+                <div style={{ padding: "12px 15px", display: "flex", justifyContent: "space-between", alignItems: "center", background: color.bg, color: color.text, fontSize: 12, fontWeight: 900, letterSpacing: ".06em" }}>
+                  <span>{empresa}</span><span>{filas.length} usuario{filas.length === 1 ? "" : "s"}</span>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 720 }}>
+                    <thead><tr style={{ background: "#f8fafc" }}>
+                      {["Fecha", "Usuario", "Ingreso", "Salida almuerzo", "Regreso almuerzo", "Salida"].map((titulo) => (
+                        <th key={titulo} style={{ padding: "11px 12px", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: 9, color: "#64748b", textTransform: "uppercase", whiteSpace: "nowrap" }}>{titulo}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {filas.map((fila) => (
+                        <tr key={`${fila.fecha}-${fila.usuario_id}`}>
+                          <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9", fontSize: 11, fontWeight: 700 }}>{fechaVisible(fila.fecha)}</td>
+                          <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>{fila.nombre_completo || fila.usuario || "Usuario"}</div>
+                            {fila.usuario && <div style={{ marginTop: 2, fontSize: 9, color: "#64748b" }}>@{fila.usuario}</div>}
+                          </td>
+                          {[fila.ingreso, fila.salida_almuerzo, fila.regreso_almuerzo, fila.salida].map((hora, index) => (
+                            <td key={index} style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}><span style={{ display: "inline-block", minWidth: 46, padding: "5px 7px", textAlign: "center", borderRadius: 8, fontSize: 11, fontWeight: 900, color: hora ? "#0f766e" : "#94a3b8", background: hora ? "#f0fdfa" : "#f8fafc" }}>{hora || "—"}</span></td>
+                          ))}
+                        </tr>
+                      ))}
+                      {!cargandoResumen && filas.length === 0 && <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>No hay marcaciones de {empresa}.</td></tr>}
+                      {cargandoResumen && <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "#64748b", fontSize: 12 }}>Cargando marcaciones…</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
         </div>
       </section>
       )}

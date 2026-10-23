@@ -578,6 +578,7 @@ export default function ReporteComercialCore({
   // Indicador de carga diferido: solo aparece si la consulta pasa de 250 ms.
   const cargandoVisible                 = useCargaDiferida(loading);
   const [refreshing, setRefreshing]     = useState(false);   // ← botón "Forzar Refresh"
+  const [dashboardError, setDashboardError] = useState('');
   const [alertas, setAlertas]           = useState([]);
   const [diaFiltrado, setDiaFiltrado]   = useState(null);
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoEmbudoPorDia: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
@@ -605,17 +606,36 @@ export default function ReporteComercialCore({
   // Semillero obtiene sus KPI del mismo resultado del dashboard (pipeline 41).
   // No usa /api/kpi-comercial porque ese endpoint pertenece exclusivamente a
   // las vistas comerciales de NOVONET y VELSA.
-  const construirKpiPipeline = useCallback((resultado, filtrosActivos) => {
+  const construirKpiPipeline = useCallback((resultado, filtrosActivos, metasVigentes = null) => {
     const porcentaje = (numerador, denominador) => denominador > 0
       ? Number(((numerador / denominador) * 100).toFixed(1))
       : 0;
-    const completar = (fila, nombre, supervisor = empresa.toUpperCase()) => {
+    const normalizarNombre = (valor) => String(valor || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    const convertirMeta = (meta) => ({
+      meta_leads_total: Number(meta?.leads_total || 0),
+      meta_leads_gestion: Number(meta?.leads_gestion || 0),
+      meta_ingresos_jot: Number(meta?.ingresos_jot || 0),
+      meta_activas_totales: Number(meta?.activas_totales || 0),
+      meta_pct_efect_leads: Number(meta?.pct_efect_leads || 0),
+      meta_pct_efect_gestion: Number(meta?.pct_efect_gestion || 0),
+      meta_pct_descarte: Number(meta?.pct_descarte || 0),
+      meta_pct_tasa_activacion: Number(meta?.pct_tasa_activacion || 0),
+      meta_pct_tarjeta: Number(meta?.pct_tarjeta || 0),
+      meta_pct_tercera_edad: Number(meta?.pct_tercera_edad || 0),
+      meta_pct_planes: Number(meta?.pct_planes_150_200 || 0),
+    });
+    const metasAsesor = new Map((metasVigentes?.asesores || []).map((m) => [normalizarNombre(m.asesor), m]));
+    const metasSupervisor = new Map((metasVigentes?.supervisores || []).map((m) => [normalizarNombre(m.supervisor), m]));
+    const completar = (fila, nombre, supervisor = empresa.toUpperCase(), meta = null) => {
       const leadsTotal = Number(fila.leads_totales || 0);
       const gestionables = Number(fila.gestionables || 0);
       const ingresosCrm = Number(fila.ventas_crm || 0);
       const ingresosJot = Number(fila.ingresos_reales || 0);
       const descarte = Number(fila.descarte_count || 0);
+      const activasTotales = Number(fila.real_mes || fila.activas_totales || 0);
+      const activaMes = Number(fila.activa_mes ?? activasTotales);
       return {
+        ...convertirMeta(meta),
         nombre,
         supervisor,
         leads_total: leadsTotal,
@@ -623,45 +643,70 @@ export default function ReporteComercialCore({
         ingresos_crm: ingresosCrm,
         ingresos_jot: ingresosJot,
         descarte_n: descarte,
-        ingresos_jot_efectivo: 0,
-        ingresos_jot_acido: 0,
-        activas_totales: 0,
-        activa_mes: 0,
-        activas_backlog: 0,
-        por_regularizar: 0,
+        ingresos_jot_efectivo: Number(fila.ingresos_jot_efectivo || 0),
+        ingresos_jot_acido: Number(fila.ingresos_jot_acido || 0),
+        activas_totales: activasTotales,
+        activa_mes: activaMes,
+        activas_backlog: Math.max(0, activasTotales - activaMes),
+        por_regularizar: Number(fila.por_regularizar || 0),
+        tarjeta_credito: Number(fila.tarjeta_credito || 0),
+        tercera_edad_n: Number(fila.tercera_edad_n || 0),
+        planes_150_200_n: Number(fila.planes_150_200_n || 0),
+        atc_n: Number(fila.atc_n || 0),
+        fuera_cobertura_n: Number(fila.fuera_cobertura_n || 0),
+        zona_peligrosa_n: Number(fila.zona_peligrosa_n || 0),
         pct_gestion_vs_total: porcentaje(gestionables, leadsTotal),
         pct_efect_vs_leads: porcentaje(ingresosJot, leadsTotal),
         pct_efect_vs_gestion: porcentaje(ingresosJot, gestionables),
-        pct_efectividad_efectiva: 0,
-        pct_efectividad_acida: 0,
+        pct_efectividad_efectiva: porcentaje(Number(fila.ingresos_jot_efectivo || 0), gestionables),
+        pct_efectividad_acida: porcentaje(Number(fila.ingresos_jot_acido || 0), gestionables),
         pct_descarte: porcentaje(descarte, gestionables),
-        pct_tasa_activacion: 0,
-        pct_tarjeta: 0,
-        pct_tercera_edad: 0,
-        pct_planes_150_200: 0,
+        pct_tasa_activacion: porcentaje(activasTotales, ingresosJot),
+        pct_tarjeta: porcentaje(Number(fila.tarjeta_credito || 0), ingresosJot),
+        pct_tercera_edad: porcentaje(Number(fila.tercera_edad_n || 0), ingresosJot),
+        pct_planes_150_200: porcentaje(Number(fila.planes_150_200_n || 0), ingresosJot),
+        pct_atc: porcentaje(Number(fila.atc_n || 0), leadsTotal),
+        pct_fuera_cobertura: porcentaje(Number(fila.fuera_cobertura_n || 0), leadsTotal),
+        pct_zona_peligrosa: porcentaje(Number(fila.zona_peligrosa_n || 0), leadsTotal),
       };
     };
 
-    const asesores = (resultado.asesores || []).map(fila =>
-      completar(fila, fila.nombre_grupo || 'SIN RESPONSABLE', fila.supervisor || 'SIN SUPERVISOR')
-    );
-    const supervisores = (resultado.supervisores || []).map(fila =>
-      completar(fila, fila.nombre_grupo || 'SIN SUPERVISOR', fila.nombre_grupo || 'SIN SUPERVISOR')
-    );
+    const asesores = (resultado.asesores || []).map((fila) => {
+      const nombre = fila.nombre_grupo || 'SIN RESPONSABLE';
+      return completar(fila, nombre, fila.supervisor || 'SIN SUPERVISOR', metasAsesor.get(normalizarNombre(nombre)));
+    });
+    const supervisores = (resultado.supervisores || []).map((fila) => {
+      const nombre = fila.nombre_grupo || 'SIN SUPERVISOR';
+      return completar(fila, nombre, nombre, metasSupervisor.get(normalizarNombre(nombre)));
+    });
     const totalBase = supervisores.reduce((total, fila) => ({
       leads_totales: total.leads_totales + fila.leads_total,
       gestionables: total.gestionables + fila.leads_gestion,
       ventas_crm: total.ventas_crm + fila.ingresos_crm,
       ingresos_reales: total.ingresos_reales + fila.ingresos_jot,
+      ingresos_jot_efectivo: total.ingresos_jot_efectivo + fila.ingresos_jot_efectivo,
+      ingresos_jot_acido: total.ingresos_jot_acido + fila.ingresos_jot_acido,
+      real_mes: total.real_mes + fila.activas_totales,
+      activa_mes: total.activa_mes + fila.activa_mes,
+      por_regularizar: total.por_regularizar + fila.por_regularizar,
+      tarjeta_credito: total.tarjeta_credito + Number(fila.tarjeta_credito || 0),
+      tercera_edad_n: total.tercera_edad_n + Number(fila.tercera_edad_n || 0),
+      planes_150_200_n: total.planes_150_200_n + Number(fila.planes_150_200_n || 0),
       descarte_count: total.descarte_count + fila.descarte_n,
-    }), { leads_totales: 0, gestionables: 0, ventas_crm: 0, ingresos_reales: 0, descarte_count: 0 });
+      atc_n: total.atc_n + fila.atc_n,
+      fuera_cobertura_n: total.fuera_cobertura_n + fila.fuera_cobertura_n,
+      zona_peligrosa_n: total.zona_peligrosa_n + fila.zona_peligrosa_n,
+    }), { leads_totales: 0, gestionables: 0, ventas_crm: 0, ingresos_reales: 0,
+      ingresos_jot_efectivo: 0, ingresos_jot_acido: 0, real_mes: 0, activa_mes: 0,
+      por_regularizar: 0, tarjeta_credito: 0, tercera_edad_n: 0, planes_150_200_n: 0,
+      descarte_count: 0, atc_n: 0, fuera_cobertura_n: 0, zona_peligrosa_n: 0 });
     return {
       empresa: empresa.toUpperCase(),
       fechaDesde: filtrosActivos.fechaDesde,
       fechaHasta: filtrosActivos.fechaHasta,
       asesores,
       supervisores,
-      total: asesores.length ? completar(totalBase, `TOTAL ${empresa.toUpperCase()}`) : null,
+      total: asesores.length ? completar(totalBase, `TOTAL ${empresa.toUpperCase()}`, empresa.toUpperCase(), metasVigentes?.empresa) : null,
     };
   }, [empresa]);
 
@@ -690,6 +735,7 @@ export default function ReporteComercialCore({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
+    setDashboardError('');
     try {
       const filtrosActivos = filtrosOverride || filtrosAplicados;
       // Fire-and-forget: nunca retrasa la carga del dashboard
@@ -701,8 +747,23 @@ export default function ReporteComercialCore({
       ));
       // /dashboard exige JWT (verificarToken): tiene que ir con Bearer o el
       // backend responde 401 y el interceptor global cierra la sesión.
-      const res    = await fetchConSesion(`${import.meta.env.VITE_API_URL}${apiBase}/dashboard?${p}`, { signal: ctrl.signal });
-      const result = await res.json();
+      const urlDashboard = `${import.meta.env.VITE_API_URL}${apiBase}/dashboard?${p}`;
+      let result;
+      let ultimoError;
+      for (let intento = 0; intento < 2; intento += 1) {
+        try {
+          const res = await fetchConSesion(urlDashboard, { signal: ctrl.signal });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.error || `Error HTTP ${res.status}`);
+          result = json;
+          break;
+        } catch (error) {
+          if (error.name === 'AbortError') throw error;
+          ultimoError = error;
+          if (intento === 0) await new Promise(resolve => setTimeout(resolve, 350));
+        }
+      }
+      if (!result) throw ultimoError || new Error('No se pudo cargar el dashboard');
       if (result.success) {
         setData({
           ...result,
@@ -717,12 +778,27 @@ export default function ReporteComercialCore({
         mostrarAlertas(result.supervisores);
 
         if (esPipelineWebhook) {
-          setKpiComercial(construirKpiPipeline(result, filtrosActivos));
+          const fechaMeta = String(filtrosActivos.fechaDesde || getFechaHoyEcuador()).slice(0, 10);
+          const [anioMeta, mesMeta] = fechaMeta.split('-').map(Number);
+          let metasVigentes = null;
+          try {
+            const paramsMetas = new URLSearchParams({ empresa: empresa.toUpperCase(), anio: String(anioMeta), mes: String(mesMeta) });
+            const respuestaMetas = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/metas-carga/vigentes?${paramsMetas}`, { signal: ctrl.signal });
+            const jsonMetas = await respuestaMetas.json();
+            if (jsonMetas.success) metasVigentes = jsonMetas.data;
+          } catch (errorMetas) {
+            if (errorMetas.name === 'AbortError') throw errorMetas;
+            console.error('[METAS-PIPELINE]', errorMetas);
+          }
+          setKpiComercial(construirKpiPipeline(result, filtrosActivos, metasVigentes));
         }
 
       }
     } catch (e) {
-      if (e.name !== 'AbortError') console.error("Error Dashboard:", e);
+      if (e.name !== 'AbortError') {
+        console.error("Error Dashboard:", e);
+        setDashboardError(e.message || 'No se pudieron cargar los indicadores');
+      }
     } finally { if (!ctrl.signal.aborted) setLoading(false); }
   };
 
@@ -1837,6 +1913,12 @@ ${asesoresPDF.length>0?`
 
       {tabActiva === "GENERAL" ? (
         <div className="animate-in fade-in duration-500">
+          {dashboardError && (
+            <div role="alert" className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
+              <span>No se pudieron cargar los indicadores: {dashboardError}</span>
+              <button type="button" onClick={() => fetchDashboard()} className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-[10px] font-black uppercase text-white">Reintentar</button>
+            </div>
+          )}
           {/* Panel de filtros */}
           <div className="relative z-30 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-8 overflow-visible border border-slate-200/80" style={{boxShadow:'0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(37,99,235,.04)'}}>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-9 gap-4 items-end">

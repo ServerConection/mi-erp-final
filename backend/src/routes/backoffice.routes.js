@@ -281,6 +281,109 @@ router.get('/opciones', async (req, res) => {
   }
 });
 
+// ─── GET /api/backoffice/reporte-gestion ────────────────────────────────────
+// Convierte el historial append-only de cada venta en filas consultables.
+// Conserva los mismos accesos del módulo porque hereda router.use().
+router.get('/reporte-gestion', async (req, res) => {
+  try {
+    const desde = String(req.query.desde || '').trim();
+    const hasta = String(req.query.hasta || '').trim();
+    const usuarioFiltro = String(req.query.usuario || '').trim().toUpperCase();
+    const empresaFiltro = String(req.query.empresa || '').trim().toUpperCase();
+    const campoFiltro = String(req.query.campo || '').trim().toLowerCase();
+    const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
+    if ((desde && !formatoFecha.test(desde)) || (hasta && !formatoFecha.test(hasta)) || (desde && hasta && desde > hasta)) {
+      return res.status(400).json({ success: false, error: 'Seleccione un período válido.' });
+    }
+    if (empresaFiltro && empresaFiltro !== 'TODOS' && !EMPRESAS_BACKOFFICE.has(empresaFiltro)) {
+      return res.status(400).json({ success: false, error: 'Empresa inválida.' });
+    }
+
+    const params = [];
+    let where = `WHERE ev.estatus_envio != 'BORRADOR'
+      AND ${condicionFechaBackoffice('ev.')}
+      AND ev.hist_cambio_estatus IS NOT NULL
+      AND BTRIM(ev.hist_cambio_estatus::text) NOT IN ('', '[]', 'null')`;
+    if (empresaFiltro && empresaFiltro !== 'TODOS') {
+      params.push(empresaFiltro);
+      where += ` AND UPPER(BTRIM(COALESCE(ev.distribuidor_autorizado, ''))) = $${params.length}`;
+    }
+    const { rows } = await pool.query(`
+      SELECT ev.id, ev.id_bitrix, ev.nombre_cliente_completo,
+             ev.numero_identificacion, ev.netlife_login,
+             UPPER(BTRIM(COALESCE(ev.distribuidor_autorizado, 'SIN EMPRESA'))) AS empresa,
+             ev.hist_cambio_estatus
+      FROM public.envios_ventas ev
+      ${where}
+      ORDER BY ev.id DESC
+    `, params);
+
+    const normalizar = valor => String(valor || '').trim().toUpperCase();
+    const detalle = [];
+    const usuarios = new Map();
+    const camposDisponibles = new Set();
+    for (const registro of rows) {
+      const eventos = normalizarHistorialBackoffice(registro.hist_cambio_estatus);
+      for (const evento of eventos) {
+        const fechaHora = String(evento?.fecha_hora || evento?.fecha || '');
+        const fecha = fechaHora.slice(0, 10);
+        if ((desde && fecha < desde) || (hasta && fecha > hasta)) continue;
+        const login = String(evento?.usuario || evento?.username || evento?.login_usuario || evento?.modificado_por || '').trim();
+        const nombre = String(evento?.nombre_usuario || evento?.usuario_nombre || evento?.nombreUsuario || login || (evento?.usuario_id ? `Usuario #${evento.usuario_id}` : 'Historial anterior')).trim();
+        const claveUsuario = String(evento?.usuario_id || login || nombre).trim();
+        usuarios.set(claveUsuario, { id: claveUsuario, login, nombre });
+        const coincideUsuario = !usuarioFiltro || [claveUsuario, login, nombre].some(valor => normalizar(valor) === usuarioFiltro);
+        if (!coincideUsuario) continue;
+        const cambios = Array.isArray(evento?.cambios)
+          ? evento.cambios
+          : Object.prototype.hasOwnProperty.call(evento || {}, 'estatus_nuevo')
+            ? [{ campo: evento.campo || 'netlife_estatus_real', anterior: evento.estatus_anterior ?? null, nuevo: evento.estatus_nuevo ?? null }]
+            : [];
+        for (const cambio of cambios) {
+          const campo = String(cambio?.campo || 'sin_campo');
+          camposDisponibles.add(campo);
+          if (campoFiltro && campo.toLowerCase() !== campoFiltro) continue;
+          detalle.push({
+            fecha, fecha_hora: fechaHora, usuario_id: evento?.usuario_id || null,
+            usuario: login, nombre_usuario: nombre,
+            perfil_usuario: evento?.perfil_usuario || '', empresa_usuario: evento?.empresa_usuario || '',
+            empresa: registro.empresa, registro_id: registro.id, id_bitrix: registro.id_bitrix || '',
+            cliente: registro.nombre_cliente_completo || '', identificacion: registro.numero_identificacion || '',
+            login_netlife: registro.netlife_login || '', campo,
+            anterior: cambio?.anterior ?? '', nuevo: cambio?.nuevo ?? '',
+            accion: cambio?.accion || (cambio?.reafirmacion ? 'REAFIRMACIÓN' : 'CAMBIO'),
+          });
+        }
+      }
+    }
+    detalle.sort((a, b) => String(b.fecha_hora).localeCompare(String(a.fecha_hora)) || Number(b.registro_id) - Number(a.registro_id));
+
+    const acumular = (mapa, clave, base) => {
+      if (!mapa.has(clave)) mapa.set(clave, { ...base, cantidad: 0 });
+      mapa.get(clave).cantidad += 1;
+    };
+    const diario = new Map();
+    const estatus = new Map();
+    for (const fila of detalle) {
+      acumular(diario, `${fila.fecha}|${fila.usuario_id || fila.usuario || fila.nombre_usuario}`, {
+        fecha: fila.fecha, usuario: fila.usuario, nombre_usuario: fila.nombre_usuario, empresa: fila.empresa,
+      });
+      if (fila.campo === 'netlife_estatus_real' || fila.campo === 'estatus_regularizacion') {
+        acumular(estatus, `${fila.nombre_usuario}|${fila.campo}|${String(fila.nuevo)}`, {
+          usuario: fila.usuario, nombre_usuario: fila.nombre_usuario, campo: fila.campo, estatus: fila.nuevo, empresa: fila.empresa,
+        });
+      }
+    }
+    const resumenDiario = [...diario.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.cantidad - a.cantidad);
+    const resumenEstatus = [...estatus.values()].sort((a, b) => b.cantidad - a.cantidad);
+    const campos = [...camposDisponibles].sort();
+    return res.json({ success: true, data: { detalle, resumenDiario, resumenEstatus, usuarios: [...usuarios.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)), campos } });
+  } catch (error) {
+    console.error('[BACKOFFICE] reporte gestión:', error);
+    return res.status(500).json({ success: false, error: 'No se pudo generar el reporte de gestión.' });
+  }
+});
+
 // ─── GET /api/backoffice/:id ──────────────────────────────────────────────────
 // Detalle completo de un registro
 router.get('/:id', async (req, res) => {

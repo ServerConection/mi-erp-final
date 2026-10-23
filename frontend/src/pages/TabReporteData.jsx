@@ -139,21 +139,25 @@ function TablaHorizontal({ filas, dias, accent = C.primary, d1Label = null }) {
             style={{ background: C.bgHeader, color: C.slate, borderColor: C.border }}>MÉTRICA</th>
           {d1Label && (
             <th className="px-3 py-2 text-center font-black border-r min-w-[86px]"
-              style={{ background: "#fef9c3", color: C.slate, borderColor: C.border }}>
+              style={{ background: C.bgHeader, color: C.slate, borderColor: C.border, fontWeight: 900,
+                fontFamily: "Inter, 'Segoe UI', Arial, sans-serif", fontSize: 12 }}>
               AL D-1<br /><span className="font-medium" style={{ color: C.muted }}>{d1Label}</span>
             </th>
           )}
           {dias.map((d) => (
             <th key={d.dia} className="px-2 py-2 text-center font-black border-r min-w-[52px]"
-              style={{ color: accent, borderColor: C.border }}>
+              style={{ color: C.slate, borderColor: C.border }}>
               {d.dia}<br /><span className="font-medium" style={{ color: C.muted }}>{d.nombre}</span>
             </th>
           ))}
-          <th className="px-3 py-2 text-center font-black border-l min-w-[72px]" style={{ color: accent, borderColor: C.border }}>TOTAL</th>
+          <th className="px-3 py-2 text-center font-black border-l min-w-[72px]" style={{ color: C.slate, borderColor: C.border }}>TOTAL</th>
         </tr>
       </thead>
       <tbody>
-        {filas.map((fila, fi) => (
+        {filas.map((fila, fi) => {
+          const esDesvio = String(fila.label || "").includes("DESVÍO");
+          const colorValor = esDesvio ? C.danger : C.slate;
+          return (
           <tr key={fi} className={`border-b transition-colors ${fila.separador ? "" : "hover:bg-blue-50/30"}`}
             style={{ borderColor: C.border, background: fila.separador ? "#f8fafc" : "white" }}>
             <td className="px-3 py-1.5 font-black text-[11px] border-r sticky left-0"
@@ -162,8 +166,9 @@ function TablaHorizontal({ filas, dias, accent = C.primary, d1Label = null }) {
             </td>
             {d1Label && (
               <td className="px-3 py-1.5 text-center font-black border-r"
-                style={{ background: fila.separador ? "#f8fafc" : "#fefce8", borderColor: C.border,
-                  color: fila.colorFn ? fila.colorFn(fila.totalD1) : (fila.color || C.muted) }}>
+                style={{ background: fila.separador ? "#f8fafc" : "white", borderColor: C.border,
+                  color: esDesvio ? C.danger : colorValor, fontWeight: 900,
+                  fontFamily: "Inter, 'Segoe UI', Arial, sans-serif", fontSize: 12 }}>
                 {fila.separador || fila.totalD1 === undefined ? "" :
                   fila.fmt ? fila.fmt(fila.totalD1) :
                   fila.totalD1 !== null ? String(n(fila.totalD1) % 1 !== 0 ? n(fila.totalD1).toFixed(2) : n(fila.totalD1)) : "—"}
@@ -179,12 +184,12 @@ function TablaHorizontal({ filas, dias, accent = C.primary, d1Label = null }) {
                 else display = (val !== undefined && val !== null && n(val) !== 0) ? String(n(val)) : "—";
               }
               return (
-                <td key={d.dia} className="px-2 py-1.5 text-center border-r" style={{ color: fila.colorFn ? fila.colorFn(val) : (fila.color || C.muted), borderColor: C.border }}>
+                <td key={d.dia} className="px-2 py-1.5 text-center border-r" style={{ color: colorValor, borderColor: C.border }}>
                   {display}
                 </td>
               );
             })}
-            <td className="px-3 py-1.5 text-center font-black border-l" style={{ color: fila.colorFn ? fila.colorFn(fila.total) : (fila.color || C.muted), borderColor: C.border }}>
+            <td className="px-3 py-1.5 text-center font-black border-l" style={{ color: colorValor, borderColor: C.border }}>
               {fila.separador ? "" :
                 fila.fmt ? fila.fmt(fila.total) :
                 fila.showPct ? fmtCantPct(fila.total, fila.totalPct) :
@@ -193,7 +198,8 @@ function TablaHorizontal({ filas, dias, accent = C.primary, d1Label = null }) {
                   : "—"}
             </td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );
@@ -449,6 +455,7 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState("");
   const [planDiario,   setPlanDiario]   = useState([]);
+  const [desgloseD1,   setDesgloseD1]   = useState({});
 
   const dataLoaded = useRef(false);
   const reportRequest = useRef(null);
@@ -488,6 +495,25 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
       if (!d.meta?.dias || !Array.isArray(d.inversion)) throw new Error("El backend devolvió un reporte incompleto");
       setData(d);
       dataLoaded.current = true;
+      if (empresa === "novonet" && canalesSel_.length === 0) {
+        const pares = await Promise.all(["ARTS", "VIDIKA"].map(async (agencia) => {
+          try {
+            const reporteParams = new URLSearchParams({ anio: anio_, mes: mes_, canales: agencia });
+            const planParams = new URLSearchParams({ empresa, anio: anio_, mes: mes_, agencias: agencia });
+            const [reporteResp, planResp] = await Promise.all([
+              fetch(`${API}${ruta}?${reporteParams}`, { headers: cabecerasSesion(), signal: controller.signal }),
+              fetch(`${API}/api/forecast/plan-diario?${planParams}`, { headers: cabecerasSesion(), signal: controller.signal }),
+            ]);
+            const [reporte, plan] = await Promise.all([reporteResp.json(), planResp.json()]);
+            return [agencia, reporte.success ? { data: reporte, plan: plan.success ? plan.dias || [] : [] } : null];
+          } catch {
+            return [agencia, null];
+          }
+        }));
+        setDesgloseD1(Object.fromEntries(pares.filter(([, valor]) => valor)));
+      } else {
+        setDesgloseD1({});
+      }
       // Plan aprobado: llamada aparte; si falla, el reporte se ve igual sin plan.
       const ags = agenciasPlan(empresa, canalesSel_);
       if (empresa !== "velsa" && canalesSel_.length > 0 && ags.length === 0) {
@@ -513,7 +539,7 @@ export default function TabReporteData({ ruta = "/api/redes/reporte-data", empre
   const handleCargar = () => cargarDatos(canalesSel, anio, mes);
   const cambiarPeriodo = (setter, value) => {
     reportRequest.current?.abort();
-    setCanalesSel([]); setData(null); dataLoaded.current = false; setCanalDetalle(null); setError("");
+    setCanalesSel([]); setData(null); setDesgloseD1({}); dataLoaded.current = false; setCanalDetalle(null); setError("");
     setter(value);
   };
 
@@ -929,6 +955,7 @@ ${horaData.length > 0 ? `
   };
 
   const dias = data?.meta?.dias || [];
+  const forecastAgencias = data?.forecast_agencias || [];
 
   return (
     <div className="space-y-4" style={{ background: C.bgPage }}>
@@ -1112,23 +1139,25 @@ ${horaData.length > 0 ? `
                 <div className="text-[11px] mt-1" style={{ color: C.muted }}>Promedio diario registrado × días del mes · fuente viva WinTracker</div>
               </div>
               <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: "#f5f3ff", color: C.violet }}>
-                {(data.forecast_agencias || []).length} agencia(s)
+                {forecastAgencias.length} agencia(s)
               </span>
             </div>
-            {(data.forecast_agencias || []).length > 0 ? (
+            {forecastAgencias.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {data.forecast_agencias.map((item) => (
-                  <div key={item.agencia} className="rounded-xl border p-3" style={{ borderColor: item.atrasada ? "#fca5a5" : "#bbf7d0", background: item.atrasada ? "#fef2f2" : "#f0fdf4" }}>
+                {forecastAgencias.map((item) => (
+                  <div key={item.agencia} className="rounded-xl border p-3"
+                    style={{ borderColor: C.border, background: "#ffffff" }}>
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-[11px] font-black" style={{ color: C.slate }}>{item.agencia}</span>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: item.atrasada ? "#fee2e2" : "#dcfce7", color: item.atrasada ? C.danger : C.success }}>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full"
+                        style={{ background: item.atrasada ? "#fef2f2" : "#f8fafc", color: item.atrasada ? C.danger : C.slate }}>
                         {item.atrasada ? "ATRASADA" : "ACTUALIZADA"}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div><span style={{ color: C.muted }}>Acumulado</span><div className="text-sm font-black" style={{ color: C.violet }}>${n(item.inversion_acumulada).toFixed(2)}</div></div>
-                      <div><span style={{ color: C.muted }}>Proyección cierre</span><div className="text-sm font-black" style={{ color: C.primary }}>${n(item.proyeccion_cierre).toFixed(2)}</div></div>
-                      <div><span style={{ color: C.muted }}>Por gastar estimado</span><div className="font-black" style={{ color: C.warning }}>${n(item.gasto_proyectado_restante).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Acumulado</span><div className="text-sm font-black" style={{ color: C.slate }}>${n(item.inversion_acumulada).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Proyección cierre</span><div className="text-sm font-black" style={{ color: C.slate }}>${n(item.proyeccion_cierre).toFixed(2)}</div></div>
+                      <div><span style={{ color: C.muted }}>Por gastar estimado</span><div className="font-black" style={{ color: C.slate }}>${n(item.gasto_proyectado_restante).toFixed(2)}</div></div>
                       <div><span style={{ color: C.muted }}>Promedio diario</span><div className="font-black" style={{ color: C.slate }}>${n(item.promedio_diario).toFixed(2)}</div></div>
                     </div>
                     <div className="text-[11px] mt-2 pt-2 border-t" style={{ borderColor: C.border, color: item.atrasada ? C.danger : C.muted }}>
@@ -1141,10 +1170,30 @@ ${horaData.length > 0 ? `
               <div className="text-[12px] rounded-lg p-3" style={{ background: "#fffbeb", color: C.warning }}>Sin inversión por agencia para este período. Usa “Forzar inversión”.</div>
             )}
           </div>
-          <Block title="Inversión & Costos de Adquisición" accent={C.violet} id="bloque-inversion">
+          <Block
+            title={`Inversión & Costos de Adquisición${empresa === "novonet" && canalesSel.length === 0 ? " · TOTAL NOVONET" : canalesSel.length === 1 ? ` · ${getCfg(canalesSel[0]).label}` : ""}`}
+            accent={C.violet}
+            id="bloque-inversion"
+          >
             <TablaHorizontal filas={buildInversionFilas(data, dias, planDiario)} dias={dias} accent={C.violet}
               d1Label={corteD1(data.meta) > 0 ? `1 al ${corteD1(data.meta)} ${MESES[data.meta.mes - 1].slice(0, 3).toLowerCase()}` : "sin días cerrados"} />
           </Block>
+
+          {empresa === "novonet" && canalesSel.length === 0 && ["ARTS", "VIDIKA"].map((agencia) => {
+            const detalle = desgloseD1[agencia];
+            if (!detalle) return null;
+            const diasAgencia = detalle.data.meta?.dias || dias;
+            return (
+              <Block key={agencia} title={`Inversión & Costos de Adquisición · ${agencia}`} accent={C.violet} id={`bloque-inversion-${agencia.toLowerCase()}`}>
+                <TablaHorizontal
+                  filas={buildInversionFilas(detalle.data, diasAgencia, detalle.plan)}
+                  dias={diasAgencia}
+                  accent={C.violet}
+                  d1Label={corteD1(detalle.data.meta) > 0 ? `1 al ${corteD1(detalle.data.meta)} ${MESES[detalle.data.meta.mes - 1].slice(0, 3).toLowerCase()}` : "sin días cerrados"}
+                />
+              </Block>
+            );
+          })}
 
           <Block title="Leads por Canal + Etapas Bitrix" accent={C.primary} id="bloque-etapas">
             <TablaHorizontal filas={buildEtapasFilas(data, dias)} dias={dias} accent={C.primary} />

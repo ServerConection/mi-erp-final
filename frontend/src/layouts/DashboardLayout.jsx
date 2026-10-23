@@ -692,7 +692,9 @@ export default function DashboardLayout() {
       return gruposConHijosVisibles.has(item.groupId);
     }
     return passaAcceso(item);
-  });
+  }).map((item) => item.path === RUTA_NOVONET_ACCESS
+    ? { ...item, name: (user?.empresa || "").trim().toUpperCase() === "VELSA" ? "VELSA ACCESS" : "NOVONET ACCESS" }
+    : item);
 
   // Solo ítems navegables (sin separadores) para búsqueda de título/icono
   const navItems = menuItems.filter(item => !item.isSeparator);

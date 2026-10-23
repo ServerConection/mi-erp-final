@@ -160,7 +160,9 @@ export default function SaludSistema() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const general = data?.resumen?.estado_general || "DESCONOCIDO";
+  // Si el backend se reinicia durante un deploy, la consulta puede fallar por
+  // unos segundos. Eso es una advertencia temporal, no una caída confirmada.
+  const general = error ? "RETRASO" : (data?.resumen?.estado_general || "DESCONOCIDO");
   const grupos = (data?.componentes || []).reduce((acc, c) => {
     (acc[c.grupo] = acc[c.grupo] || []).push(c);
     return acc;
@@ -197,8 +199,8 @@ export default function SaludSistema() {
       </div>
 
       {error && (
-        <p className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-4 py-3 rounded-xl">
-          ⚠️ {error}
+        <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-4 py-3 rounded-xl">
+          ⚠️ Consulta temporalmente interrumpida (puede ser un deploy). Estado en observación: {error}
         </p>
       )}
 

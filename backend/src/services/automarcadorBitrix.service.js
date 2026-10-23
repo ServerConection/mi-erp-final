@@ -245,8 +245,83 @@ async function reporte(user, { desde, hasta, campana_id } = {}, db) {
   return r.rows
 }
 
+// Panel de reportería: indicadores, tipificaciones, asesores y horas del rango.
+async function resumen(user, { desde, hasta } = {}, db) {
+  const fecha = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null
+  const d = fecha(desde), h = fecha(hasta)
+  if (!d || !h || d > h) { const e = new Error('Selecciona un rango de fechas válido'); e.status = 400; throw e }
+  await asegurarEsquema(db)
+  const base = `FROM automarcador_bx_items i
+       JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1
+      WHERE i.ultimo_intento IS NOT NULL AND i.estado <> 'pendiente'
+        AND (i.ultimo_intento AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date`
+  const p = [empresaDe(user), d, h]
+  const [k, t, a, hr, dia] = await Promise.all([
+    db.query(`SELECT COUNT(*)::int AS llamadas,
+                     COUNT(*) FILTER (WHERE i.estado = 'contestada')::int AS contestadas,
+                     COUNT(*) FILTER (WHERE i.estado IN ('no_contesta','fallida'))::int AS no_contestadas,
+                     COUNT(i.tipificacion)::int AS tipificadas,
+                     COALESCE(ROUND(AVG(i.duracion_seg) FILTER (WHERE i.estado = 'contestada')), 0)::int AS duracion_promedio,
+                     COALESCE(SUM(i.duracion_seg), 0)::int AS duracion_total,
+                     COUNT(DISTINCT i.usuario_id)::int AS asesores
+              ${base}`, p),
+    db.query(`SELECT COALESCE(i.tipificacion, 'Sin tipificar') AS tipificacion, COUNT(*)::int AS total
+              ${base} GROUP BY 1 ORDER BY 2 DESC`, p),
+    db.query(`SELECT TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor,
+                     COUNT(*)::int AS llamadas,
+                     COUNT(*) FILTER (WHERE i.estado = 'contestada')::int AS contestadas,
+                     COUNT(*) FILTER (WHERE i.tipificacion = 'Contrata')::int AS contrata,
+                     COUNT(*) FILTER (WHERE i.tipificacion IS NULL)::int AS sin_tipificar,
+                     COALESCE(ROUND(AVG(i.duracion_seg) FILTER (WHERE i.estado = 'contestada')), 0)::int AS duracion_promedio
+              ${base.replace('JOIN automarcador_bx_campanas', 'LEFT JOIN usuarios u ON u.id = i.usuario_id\n       JOIN automarcador_bx_campanas')}
+              GROUP BY 1 ORDER BY llamadas DESC`, p),
+    db.query(`SELECT EXTRACT(HOUR FROM i.ultimo_intento AT TIME ZONE 'America/Guayaquil')::int AS hora,
+                     COUNT(*)::int AS llamadas,
+                     COUNT(*) FILTER (WHERE i.estado = 'contestada')::int AS contestadas
+              ${base} GROUP BY 1 ORDER BY 1`, p),
+    db.query(`SELECT to_char((i.ultimo_intento AT TIME ZONE 'America/Guayaquil')::date, 'YYYY-MM-DD') AS dia,
+                     COUNT(*)::int AS llamadas,
+                     COUNT(*) FILTER (WHERE i.estado = 'contestada')::int AS contestadas,
+                     COUNT(*) FILTER (WHERE i.tipificacion = 'Contrata')::int AS contrata
+              ${base} GROUP BY 1 ORDER BY 1`, p),
+  ])
+  return { indicadores: k.rows[0], por_tipificacion: t.rows, por_asesor: a.rows, por_hora: hr.rows, por_dia: dia.rows }
+}
+
+// Control en vivo para el supervisor: estado de cada asesor hoy y últimas llamadas.
+async function control(user, db) {
+  await asegurarEsquema(db)
+  const emp = empresaDe(user)
+  const hoy = `(i.ultimo_intento AT TIME ZONE 'America/Guayaquil')::date = (NOW() AT TIME ZONE 'America/Guayaquil')::date`
+  const [asesores, ultimas] = await Promise.all([
+    db.query(`SELECT i.usuario_id, TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor,
+                     COUNT(*) FILTER (WHERE i.estado = 'pendiente')::int AS pendientes,
+                     COUNT(*) FILTER (WHERE ${hoy} AND i.estado <> 'pendiente')::int AS llamadas_hoy,
+                     COUNT(*) FILTER (WHERE ${hoy} AND i.estado = 'contestada')::int AS contestadas_hoy,
+                     COUNT(*) FILTER (WHERE ${hoy} AND i.estado IN ('contestada','no_contesta','fallida') AND i.tipificacion IS NULL)::int AS sin_tipificar_hoy,
+                     COUNT(*) FILTER (WHERE ${hoy} AND i.tipificacion = 'Contrata')::int AS contrata_hoy,
+                     MAX(i.nombre_cliente) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_con,
+                     MAX(i.telefono) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_tel,
+                     MAX(i.ultimo_intento) FILTER (WHERE i.estado = 'en_llamada') AS en_llamada_desde,
+                     MAX(i.ultimo_intento) AS ultima_actividad
+                FROM automarcador_bx_items i
+                JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1 AND c.estado = 'activa'
+                LEFT JOIN usuarios u ON u.id = i.usuario_id
+               GROUP BY i.usuario_id, 2
+               ORDER BY (MAX(i.ultimo_intento) FILTER (WHERE i.estado = 'en_llamada')) IS NULL, ultima_actividad DESC NULLS LAST`, [emp]),
+    db.query(`SELECT i.id, TRIM(CONCAT(u.nombres, ' ', u.apellidos)) AS asesor, i.nombre_cliente, i.telefono, i.deal_id,
+                     i.estado, i.tipificacion, i.duracion_seg, i.ultimo_intento
+                FROM automarcador_bx_items i
+                JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1
+                LEFT JOIN usuarios u ON u.id = i.usuario_id
+               WHERE i.ultimo_intento IS NOT NULL AND ${hoy}
+               ORDER BY i.ultimo_intento DESC LIMIT 25`, [emp]),
+  ])
+  return { asesores: asesores.rows, ultimas: ultimas.rows, generado: new Date().toISOString() }
+}
+
 module.exports = {
-  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
+  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
   resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
   _reset: () => { esquemaListo = null },
 }

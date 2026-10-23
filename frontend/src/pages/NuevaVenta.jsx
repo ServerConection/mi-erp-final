@@ -63,6 +63,7 @@ const CIUDADES_ECUADOR = [
   "MONTUBIO", "OTAVALO", "CATAMAYO", "PASAJE", "JIPIJAPA", "TENA"
 ];
 const CICLO_FACTURACION_NUEVOS = "CICLO (I) DEL 1 AL 30 - 31 DE CADA MES";
+const COSTO_INSTALACION_BASE = "145.00";
 const CICLOS_FACT = [
   CICLO_FACTURACION_NUEVOS,
   "CICLO (II) DEL 8 AL 7 DE CADA MES",
@@ -207,7 +208,7 @@ function generarResumenVenta(form, user, opcion = null) {
     `✅Precio regular (con impuestos): $${form.precio_regular || "—"}`,
     `✅Precio con promoción: $${form.precio_promocion || "—"}${form.meses_promocion ? ` durante ${form.meses_promocion} facturas` : ""}`,
     `✅Promoción aplicada: ${form.porcentaje_descuento ? `${form.porcentaje_descuento}% de descuento` : "—"}${form.meses_promocion ? ` por ${form.meses_promocion} facturas` : ""}`,
-    `⏳Método de pago y Banco: ${[form.forma_pago, form.banco].filter(Boolean).join(" - ") || "—"}`,
+    `⏳Método de pago: ${form.forma_pago || "—"}`,
     `⏳Ciclo de facturación: ${form.ciclo_facturacion || "—"}`,
     `⏳Costo de instalación: ${form.costo_instalacion ? `$${form.costo_instalacion} + IVA` : "—"}`,
     `⏳Descuento en instalación: ${form.descuento_instalacion || "—"}`,
@@ -1002,7 +1003,7 @@ export default function NuevaVenta() {
     if (form.sector_beneficiado === "SI") {
       setForm((actual) => ({
         ...actual,
-        costo_instalacion: "0.00",
+        costo_instalacion: COSTO_INSTALACION_BASE,
         descuento_instalacion: `100%`,
       }));
       return;
@@ -1012,7 +1013,7 @@ export default function NuevaVenta() {
       setForm((actual) => ({
         ...actual,
         banco: "", tipo_cuenta: "",
-        costo_instalacion: "5.00",
+        costo_instalacion: COSTO_INSTALACION_BASE,
         descuento_instalacion: `97% - EFECTIVO; FACTURA DE INSTALACIÓN $5.00${extraSector}`,
       }));
       setErrs((actual) => {
@@ -1025,14 +1026,14 @@ export default function NuevaVenta() {
       setForm((actual) => ({
         ...actual,
         tipo_cuenta: TIPOS_TARJETA_CREDITO.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
-        costo_instalacion: "0.00",
+        costo_instalacion: COSTO_INSTALACION_BASE,
         descuento_instalacion: `100% - TARJETA DE CRÉDITO${extraSector}`,
       }));
     } else if (PAGOS_CTA.includes(form.forma_pago)) {
       setForm((actual) => ({
         ...actual,
         tipo_cuenta: PAGOS_CTA.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
-        costo_instalacion: "5.00",
+        costo_instalacion: COSTO_INSTALACION_BASE,
         descuento_instalacion: `97% - CUENTA BANCARIA; FACTURA DE INSTALACIÓN $5.00${extraSector}`,
       }));
     } else {
@@ -2169,7 +2170,7 @@ export default function NuevaVenta() {
               </div>
             </Row>
             <Row label="Costo de instalación" required>
-              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="Automático según forma de pago" readOnly />
+              <FIn value={form.costo_instalacion} onChange={set("costo_instalacion")} placeholder="Precio base: $145.00 + IVA" readOnly />
               {err("costo_instalacion")}
             </Row>
             <Row label="Descuento en instalación" required>

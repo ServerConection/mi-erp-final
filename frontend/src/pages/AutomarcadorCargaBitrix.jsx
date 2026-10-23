@@ -16,7 +16,7 @@ const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Gu
 
 export default function AutomarcadorCargaBitrix() {
   const [opciones, setOpciones] = useState(null);
-  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
+  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], source_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -92,8 +92,9 @@ export default function AutomarcadorCargaBitrix() {
       ? (opts.find(o => String(o.id) === String(ids[0]))?.name || "") : `${ids.length} seleccionados`;
     const etapa = resumen(f.stage_ids, opciones?.stages);
     const resp = resumen(f.responsible_ids, opciones?.responsibles);
+    const origen = resumen(f.source_ids, opciones?.sources);
     const fecha = f.date_from === f.date_to ? f.date_from : `${f.date_from} a ${f.date_to}`;
-    return [etapa, fecha, resp].filter(Boolean).join(" - ").toUpperCase();
+    return [etapa, origen, fecha, resp].filter(Boolean).join(" - ").toUpperCase();
   };
 
   const cambiar = (campo, valor) => {
@@ -136,7 +137,7 @@ export default function AutomarcadorCargaBitrix() {
     <div className="flex-1 overflow-y-auto p-1 space-y-4">
       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <p className="text-[10px] text-slate-500">Empresa: <b>{opciones?.empresa || "cargando…"}</b> · Igual que en WABOT, sin descargar nada de Bitrix.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div>
             <label className={lbl}>Etapas</label>
             <MultiSelectBuscable options={opciones?.stages || []} value={form.stage_ids} disabled={!opciones}
@@ -146,6 +147,11 @@ export default function AutomarcadorCargaBitrix() {
             <label className={lbl}>Responsables</label>
             <MultiSelectBuscable options={opciones?.responsibles || []} value={form.responsible_ids} disabled={!opciones}
               onChange={v => cambiar("responsible_ids", v)} placeholder="Buscar responsable…" todosLabel="Todos los responsables" />
+          </div>
+          <div>
+            <label className={lbl}>Orígenes</label>
+            <MultiSelectBuscable options={opciones?.sources || []} value={form.source_ids} disabled={!opciones}
+              onChange={v => cambiar("source_ids", v)} placeholder="Buscar origen…" todosLabel="Todos los orígenes" />
           </div>
           <div>
             <label className={lbl}>Creación desde</label>

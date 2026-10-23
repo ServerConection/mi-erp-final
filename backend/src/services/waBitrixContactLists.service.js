@@ -80,6 +80,7 @@ function aLista(lista, unico) {
 function validarFiltros(input = {}) {
   const stageIds = aLista(input.stage_ids, input.stage_id)
   const responsibleIds = aLista(input.responsible_ids, input.responsible_id)
+  const sourceIds = aLista(input.source_ids, input.source_id)
   const from = String(input.date_from || '').trim()
   const to = String(input.date_to || '').trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -92,12 +93,12 @@ function validarFiltros(input = {}) {
     err.status = 400
     throw err
   }
-  return { stageIds, responsibleIds, from, to }
+  return { stageIds, responsibleIds, sourceIds, from, to }
 }
 
 async function obtenerOpciones(user, db = require('../config/db')) {
   const empresa = empresaUsuario(user)
-  const [stageResult, responsibleResult] = await Promise.all([
+  const [stageResult, responsibleResult, sourceResult] = await Promise.all([
     db.query(
       `SELECT etapa AS id,
               COALESCE(NULLIF(MAX(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS name
@@ -109,8 +110,13 @@ async function obtenerOpciones(user, db = require('../config/db')) {
          FROM bitrix_webhook_leads
         WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL
         GROUP BY responsible ORDER BY responsible`, [empresa.toLowerCase()]),
+    db.query(
+      `SELECT BTRIM(source) AS id, BTRIM(source) AS name
+         FROM bitrix_webhook_leads
+        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL
+        GROUP BY BTRIM(source) ORDER BY 2`, [empresa.toLowerCase()]),
   ])
-  return { empresa, stages: stageResult.rows, responsibles: responsibleResult.rows }
+  return { empresa, stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
 }
 
 function extraerTelefonos(contact) {
@@ -144,9 +150,13 @@ async function consultar(user, input, db = require('../config/db')) {
     params.push(f.responsibleIds.map(r => r.toUpperCase()))
     filtrosExtra += `\n        AND UPPER(BTRIM(responsible)) = ANY($${params.length}::text[])`
   }
+  if (f.sourceIds.length) {
+    params.push(f.sourceIds.map(o => o.toUpperCase()))
+    filtrosExtra += `\n        AND UPPER(BTRIM(source)) = ANY($${params.length}::text[])`
+  }
   params.push(MAX_DEALS)
   const result = await db.query(
-    `SELECT bitrix_id, phone, etapa, etapa_bitrix, responsible, created_at,
+    `SELECT bitrix_id, phone, etapa, etapa_bitrix, responsible, source, created_at,
             COALESCE(NULLIF(BTRIM(raw_query->>'title'), ''), NULLIF(BTRIM(raw_query->>'TITLE'), '')) AS contact_name
        FROM bitrix_webhook_leads
       WHERE empresa=$1
@@ -168,7 +178,7 @@ async function consultar(user, input, db = require('../config/db')) {
         name: deal.contact_name || null,
         variables: {
           bitrix_id: String(deal.bitrix_id), bitrix_stage: String(deal.etapa_bitrix || deal.etapa || ''),
-          bitrix_responsible: String(deal.responsible || ''),
+          bitrix_responsible: String(deal.responsible || ''), bitrix_source: String(deal.source || ''),
           bitrix_date_create: deal.created_at || null, bitrix_company: empresa,
         },
       })

@@ -23,7 +23,7 @@ function crearCampanasController({ db = require('../config/db'), lists = bitrixL
       const consulta = await lists.consultar(req.user, body, db)
       return svc.crearCampana(req.user, {
         nombre: body.name,
-        filtros: { stage_ids: body.stage_ids, responsible_ids: body.responsible_ids, date_from: body.date_from, date_to: body.date_to },
+        filtros: { stage_ids: body.stage_ids, responsible_ids: body.responsible_ids, source_ids: body.source_ids, date_from: body.date_from, date_to: body.date_to },
         asesorIds: body.asesor_ids,
         items: consulta.items,
       }, db)

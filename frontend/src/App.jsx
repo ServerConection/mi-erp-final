@@ -178,7 +178,7 @@ export default function App() {
             <Route path="comparativa-supervisores"  element={<ComparativaSupervisores />} />
             <Route path="ventas"                    element={<Ventas />} />
             <Route path="rrhh"                      element={<TalentoHumano />} />
-            <Route path="horarios"                  element={<Horarios />} />
+            <Route path="horarios"                  element={<AdministracionRoute><Horarios /></AdministracionRoute>} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
             <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />

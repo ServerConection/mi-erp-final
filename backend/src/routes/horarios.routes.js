@@ -15,6 +15,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { verificarToken } = require('../middleware/auth');
+const { soloAdministracion } = require('../shared/accesoAdministracion');
 const { claveNombre, mismaPalabra } = require('../services/asesorMatcher.service');
 
 const EMPRESAS = new Set(['NOVONET']);           // por ahora solo NOVONET
@@ -101,7 +102,7 @@ const empresaDe = (req) => {
 };
 const quien = (req) => req.user?.usuario || req.user?.nombreCompleto || String(req.user?.id || '');
 
-router.use(verificarToken);
+router.use(verificarToken, soloAdministracion); // solo administradores
 
 // ── GET /semanas ────────────────────────────────────────────────────────────
 router.get('/semanas', async (req, res) => {

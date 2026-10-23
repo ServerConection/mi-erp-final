@@ -17,11 +17,8 @@ assert.doesNotMatch(fuente, /GROUP BY \$\{codigo\}, \$\{usuario\}/);
 assert.match(fuente, /b\.activas_regularizadas - a\.activas_regularizadas/);
 assert.doesNotMatch(fuente, /ORDER BY ultima_fecha_ingreso_telcos DESC/);
 assert.equal(puedeAccederAdministracion('ADMINISTRADOR'), true);
-assert.equal(puedeAccederAdministracion('gerencia'), true);
-for (const p of ['GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'GERENCIA_FINANCIERA']) {
-  assert.equal(puedeAccederAdministracion(p), true, p);
-}
-for (const p of ['SUPERVISOR','ATC','ANALISTA','USUARIO','ASESOR','']) assert.equal(puedeAccederAdministracion(p), false, p);
+assert.equal(puedeAccederAdministracion('administrador'), true);
+for (const p of ['gerencia', 'GERENTE', 'GERENCIA COMERCIAL', 'GERENTE GENERAL', 'GERENCIA_FINANCIERA', 'SUPERVISOR','ATC','ANALISTA','USUARIO','ASESOR','']) assert.equal(puedeAccederAdministracion(p), false, p);
 console.log('OK comisiones: envios_ventas, fechas independientes y acceso');
 
 // ── Catálogo y cálculo de valores ──

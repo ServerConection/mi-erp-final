@@ -115,11 +115,14 @@ function calcularAsesores(ventas, reglas = REGLAS) {
   const filas = [];
   for (const [usuario, vs] of grupos) {
     const regularizadas = vs.filter((v) => v.reg === 'REGULARIZADO');
-    const total = calcularValor(vs, reglas);
-    const disp = calcularValor(regularizadas, reglas);
+    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 41".
+    const sinAsesor = usuario === 'SIN ASIGNAR';
+    const reglasGrupo = sinAsesor ? { ...reglas, meta: Infinity, desdeTramo2: Infinity } : reglas;
+    const total = calcularValor(vs, reglasGrupo);
+    const disp = calcularValor(regularizadas, reglasGrupo);
     const maxTxt = (k) => vs.reduce((m, v) => (v[k] && String(v[k]) > String(m || '') ? v[k] : m), null);
     filas.push({
-      codigo_asesor: maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
+      codigo_asesor: sinAsesor ? [...new Set(vs.map((v) => v.codigo).filter(Boolean))].join(', ') : maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
       ultima_fecha_ingreso_telcos: maxTxt('fecha_telcos'),
       activas_por_regularizar: vs.length - regularizadas.length,
       activas_regularizadas: regularizadas.length,
@@ -217,17 +220,30 @@ async function listar(req, res) {
     }
 
     const codigo = `COALESCE(NULLIF(BTRIM(u.codigo_vendedor), ''), NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN CODIGO')`;
-    const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), 'SIN ASIGNAR')`;
+    // Ventas del histórico JotForm no traen usuario_id: se resuelve el asesor por su código de vendedor (uc).
+    const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(uc.usuario), ''),
+      NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''),
+      'COD ' || NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN ASIGNAR')`;
     const { rows: ventas } = await pool.query(`
       WITH ventas AS (
         SELECT ${codigo} AS codigo, ${usuario} AS usuario,
-          COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), ${usuario}) AS nombre_asesor,
+          COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
           ${VELOCIDAD_VENTA} AS velocidad
         FROM public.envios_ventas e
         LEFT JOIN public.usuarios u ON u.id = e.usuario_id
+        LEFT JOIN LATERAL (
+          SELECT u2.usuario, u2.nombres, u2.apellidos
+            FROM public.usuarios u2
+           WHERE u.id IS NULL
+             AND NULLIF(BTRIM(e.codigo_asesor), '') IS NOT NULL
+             AND UPPER(BTRIM(COALESCE(u2.codigo_vendedor, ''))) = UPPER(BTRIM(e.codigo_asesor))
+             AND UPPER(COALESCE(u2.empresa, '')) LIKE '%' || $1 || '%'
+           ORDER BY u2.activo DESC NULLS LAST, u2.id DESC
+           LIMIT 1
+        ) uc ON true
         WHERE UPPER(BTRIM(COALESCE(e.distribuidor_autorizado, ''))) = $1
           AND e.origen_dato IN ($2, 'ERP')
           AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'

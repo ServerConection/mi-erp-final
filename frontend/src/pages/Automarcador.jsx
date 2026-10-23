@@ -11,6 +11,18 @@
  */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import AutomarcadorCargaBitrix from "./AutomarcadorCargaBitrix";
+import AutomarcadorControl from "./AutomarcadorControl";
+import AutomarcadorReportes from "./AutomarcadorReportes";
+
+// El método anterior (panel del Automarcador por ngrok) queda oculto, no borrado.
+// Ponerlo en true lo vuelve a mostrar.
+const MOSTRAR_PANEL_ANTERIOR = false;
+const PESTANAS = [
+  ...(MOSTRAR_PANEL_ANTERIOR ? [["panel", "Panel"]] : []),
+  ["control", "🎛 Control"],
+  ["base", "📋 Cargar base"],
+  ["reportes", "📊 Reportes"],
+];
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3050";
 // URL pública del servicio del Automarcador (mismo dominio que el iframe del panel).
@@ -298,7 +310,7 @@ function CargarBase() {
 }
 
 export default function Automarcador() {
-  const [tab, setTab] = useState("panel");
+  const [tab, setTab] = useState("control");
 
   return (
     <div className="animate-fade-in-up flex flex-col h-[calc(100vh-80px)]">
@@ -314,16 +326,12 @@ export default function Automarcador() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-0.5">
-            <button
-              onClick={() => setTab("panel")}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${tab === "panel" ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-200"}`}>
-              Panel
-            </button>
-            <button
-              onClick={() => setTab("base")}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${tab === "base" ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-200"}`}>
-              📋 Cargar base
-            </button>
+            {PESTANAS.map(([id, txt]) => (
+              <button key={id} onClick={() => setTab(id)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${tab === id ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-200"}`}>
+                {txt}
+              </button>
+            ))}
           </div>
           {tab === "panel" && (
             <a
@@ -348,6 +356,10 @@ export default function Automarcador() {
             allow="microphone; camera; autoplay"
           />
         </div>
+      ) : tab === "control" ? (
+        <AutomarcadorControl />
+      ) : tab === "reportes" ? (
+        <AutomarcadorReportes />
       ) : (
         <AutomarcadorCargaBitrix />
       )}

@@ -52,3 +52,7 @@ test('tipificación: solo acepta las 8 opciones del equipo', async () => {
 test('reporte exige un rango de fechas válido', async () => {
   await assert.rejects(svc.reporte({ empresa: 'NOVONET' }, { desde: '2026-10-05', hasta: '2026-10-01' }, { query: async () => ({ rows: [] }) }), /rango/)
 })
+
+test('el panel de reportes exige un rango de fechas válido', async () => {
+  await assert.rejects(svc.resumen({ empresa: 'NOVONET' }, { desde: '', hasta: '2026-10-01' }, { query: async () => ({ rows: [] }) }), /rango/)
+})

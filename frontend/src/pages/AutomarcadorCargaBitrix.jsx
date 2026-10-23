@@ -10,6 +10,8 @@ import MultiSelectBuscable from "../components/MultiSelectBuscable";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:3050"}/api/llamadas/bitrix`;
 const authH = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` });
+// El envío al Automarcador anterior (ngrok) queda oculto, no borrado.
+const MOSTRAR_METODO_ANTERIOR = false;
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
 
 export default function AutomarcadorCargaBitrix() {
@@ -163,10 +165,12 @@ export default function AutomarcadorCargaBitrix() {
             className="text-[11px] font-black uppercase bg-slate-800 text-white rounded-lg px-4 py-2 disabled:opacity-40">
             {busy && !preview ? "Consultando…" : "🔍 Consultar"}
           </button>
+          {MOSTRAR_METODO_ANTERIOR && (
           <button onClick={enviar} disabled={busy || !preview?.unique_contacts}
             className="text-[11px] font-black uppercase bg-pink-600 text-white rounded-lg px-4 py-2 disabled:opacity-40">
             {busy && preview ? "Enviando…" : `📲 Crear campaña en Automarcador${preview ? ` (${preview.unique_contacts})` : ""}`}
           </button>
+          )}
         </div>
       </div>
 

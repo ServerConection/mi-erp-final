@@ -53,19 +53,111 @@ function normalizarFilaCatalogo(f) {
     nombre_erp: String(f?.nombre_erp ?? '').trim() || null,
     com_t1: comT1, com_t2: numero(f?.com_t2), com_t3: numero(f?.com_t3),
     impulso: numero(f?.impulso), bono_tc: numero(f?.bono_tc),
+    categoria: categoriaDesdeTexto(f?.categoria),
   };
 }
 const mesValido = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || ''));
+
+// ── Modelo de pago (catálogo NOVONET, oct-2026) ─────────────────────────────
+// Categoría de cada plan (columna "Consideración" del Excel):
+//   TABLA     = "Suma a tabla": cuenta para llegar a las 35 del asegurado
+//   PYME      = suma a tabla (regla especial >35 queda para la fase 2)
+//   COMISION  = se paga por unidad y NO cuenta para el asegurado
+//   NO_VENDER = no autorizado; se paga como comisión y se marca
+const CATEGORIAS = new Set(['TABLA', 'PYME', 'COMISION', 'NO_VENDER']);
+function categoriaDesdeTexto(texto) {
+  const t = String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  if (!t) return null;
+  if (CATEGORIAS.has(t)) return t;
+  if (t.includes('NO VENDER')) return 'NO_VENDER';
+  if (t.includes('TABLA') && t.includes('35')) return 'PYME';
+  if (t.includes('TABLA')) return 'TABLA';
+  if (t.includes('COMISION')) return 'COMISION';
+  return null;
+}
+const REGLAS = { asegurado: 550, meta: 35, desdeTramo2: 41 };
+const cuentaParaAsegurado = (cat) => !cat || cat === 'TABLA' || cat === 'PYME';
+
+/**
+ * Valor de un conjunto de ventas de UN asesor.
+ * ventas: [{ t1, t2, categoria }] (t1 = tabla "hasta 40", t2 = "desde 41"; null = sin tarifa)
+ *  - N = ventas que suman a tabla (las de categoría COMISION / NO_VENDER no cuentan)
+ *  - tramo: N >= 41 → tabla "desde 41"; si no → "hasta 40"
+ *  - N >= 35 → la parte de tabla nunca baja de $550 (asegurado garantizado)
+ *  - las de comisión se suman aparte con el mismo tramo
+ */
+function calcularValor(ventas, reglas = REGLAS) {
+  const tabla = ventas.filter((v) => cuentaParaAsegurado(v.categoria));
+  const directas = ventas.filter((v) => !cuentaParaAsegurado(v.categoria));
+  const n = tabla.length;
+  const tramo = n >= reglas.desdeTramo2 ? 2 : 1;
+  const valorDe = (v) => Number((tramo === 2 ? (v.t2 ?? v.t1) : v.t1) ?? 0);
+  const sumaTabla = tabla.reduce((a, v) => a + valorDe(v), 0);
+  const aseguradoAplica = n >= reglas.meta;
+  const valorTabla = aseguradoAplica ? Math.max(reglas.asegurado, sumaTabla) : sumaTabla;
+  const valorDirecto = directas.reduce((a, v) => a + valorDe(v), 0);
+  return {
+    n_tabla: n, tramo, asegurado_aplica: aseguradoAplica,
+    valor_tabla: valorTabla, valor_directo: valorDirecto, valor: valorTabla + valorDirecto,
+  };
+}
+
+const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+const TRAMO_TXT = { 1: 'HASTA 40', 2: 'DESDE 41' };
+
+/** Agrupa las ventas por asesor y calcula total (todas las activas) y disponible (solo REGULARIZADO). */
+function calcularAsesores(ventas, reglas = REGLAS) {
+  const grupos = new Map();
+  for (const v of ventas) {
+    if (!grupos.has(v.usuario)) grupos.set(v.usuario, []);
+    grupos.get(v.usuario).push(v);
+  }
+  const filas = [];
+  for (const [usuario, vs] of grupos) {
+    const regularizadas = vs.filter((v) => v.reg === 'REGULARIZADO');
+    const total = calcularValor(vs, reglas);
+    const disp = calcularValor(regularizadas, reglas);
+    const maxTxt = (k) => vs.reduce((m, v) => (v[k] && String(v[k]) > String(m || '') ? v[k] : m), null);
+    filas.push({
+      codigo_asesor: maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
+      ultima_fecha_ingreso_telcos: maxTxt('fecha_telcos'),
+      activas_por_regularizar: vs.length - regularizadas.length,
+      activas_regularizadas: regularizadas.length,
+      activas_totales: vs.length,
+      ventas_tabla: disp.n_tabla,
+      tramo: TRAMO_TXT[disp.tramo],
+      asegurado_aplicado: disp.asegurado_aplica,
+      valor_comision_directa: r2(disp.valor_directo),
+      valor_total: r2(total.valor),
+      valor_disponible: r2(disp.valor),
+      sin_valor: vs.filter((v) => v.t1 === null || v.t1 === undefined).length,
+      no_vender: vs.filter((v) => v.categoria === 'NO_VENDER').length,
+    });
+  }
+  filas.sort((a, b) => b.activas_regularizadas - a.activas_regularizadas
+    || b.activas_totales - a.activas_totales || String(a.usuario).localeCompare(String(b.usuario)));
+  return filas;
+}
 
 const tablaCatalogoExiste = async () => {
   const { rows } = await pool.query(`SELECT to_regclass('public.comisiones_catalogo') IS NOT NULL AS ok`);
   return rows[0].ok;
 };
 
+// La columna "categoria" se agrega con COMISIONES_CATALOGO_V2.sql; sin ella todo cuenta como TABLA.
+let columnaCategoria = false;
+async function tieneCategoria(db = pool) {
+  if (columnaCategoria) return true;
+  const { rows } = await db.query(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'comisiones_catalogo' AND column_name = 'categoria') AS ok`);
+  columnaCategoria = rows[0].ok === true;
+  return columnaCategoria;
+}
+
 // Mes del catálogo a usar: el último cargado que no pase del mes consultado.
 async function mesCatalogo(query) {
   if (!(await tablaCatalogoExiste())) return null;
-  const ref = String(query.telcosHasta || query.activacionHasta || query.jotformHasta || '').slice(0, 7);
+  const ref = String(query.activacionHasta || query.telcosHasta || query.jotformHasta || '').slice(0, 7);
   const { rows } = await pool.query(`
     SELECT mes FROM public.comisiones_catalogo
      WHERE activo AND ($1 = '' OR mes <= $1)
@@ -78,7 +170,9 @@ const REG_NORM = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.estatus_regularizaci
 
 // Cómo se clasifica cada venta para cruzarla con el catálogo.
 const PLAN_TXT = `UPPER(COALESCE(e.plan_contratado, '') || ' ' || COALESCE(e.plan_contratado_final, ''))`;
+const TIPO_BASE = `UPPER(BTRIM(TRANSLATE(COALESCE(e.plan_contratado, ''), 'ÁÉÍÓÚ', 'AEIOU')))`;
 const TIPO_VENTA = `CASE
+      WHEN ${TIPO_BASE} IN ('HOME', 'TERCERA EDAD', 'PRO', 'PYME', 'GAMER') THEN ${TIPO_BASE}
       WHEN ${PLAN_TXT} LIKE '%GAMER%' THEN 'GAMER'
       WHEN ${PLAN_TXT} LIKE '%TERCERA%' OR ${PLAN_TXT} LIKE '%ADULTO%'
         OR UPPER(BTRIM(COALESCE(e.aplica_descuento_3ra_edad, ''))) LIKE 'SI%' THEN 'TERCERA EDAD'
@@ -111,27 +205,27 @@ async function listar(req, res) {
       filtroGlobal = `AND (to_jsonb(e)::text || ' ' || COALESCE(u.usuario, '') || ' ' || COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellidos, '') || ' ' || COALESCE(u.codigo_vendedor, '')) ILIKE $${values.length}`;
     }
 
-    // Mientras el mes está en curso todos se calculan con el tramo "menor a 35".
+    // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 40", com_t2 = "desde 41".
     const mes = await mesCatalogo(req.query);
-    let catalogo = `SELECT NULL::text AS tipo, NULL::int AS velocidad, NULL::int AS n_servicios, NULL::numeric AS com WHERE false`;
+    let catalogo = `SELECT NULL::text AS tipo, NULL::int AS velocidad, NULL::numeric AS t1, NULL::numeric AS t2, NULL::text AS categoria WHERE false`;
     if (mes) {
       values.push(mes);
-      catalogo = `SELECT tipo, velocidad, n_servicios, MAX(com_t1) AS com
+      const cat = (await tieneCategoria()) ? 'MAX(categoria)' : 'NULL::text';
+      catalogo = `SELECT tipo, velocidad, MAX(com_t1) AS t1, MAX(com_t2) AS t2, ${cat} AS categoria
         FROM public.comisiones_catalogo WHERE activo AND mes = $${values.length}
-        GROUP BY tipo, velocidad, n_servicios`;
+        GROUP BY tipo, velocidad`;
     }
 
     const codigo = `COALESCE(NULLIF(BTRIM(u.codigo_vendedor), ''), NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN CODIGO')`;
     const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), 'SIN ASIGNAR')`;
-    const { rows } = await pool.query(`
+    const { rows: ventas } = await pool.query(`
       WITH ventas AS (
         SELECT ${codigo} AS codigo, ${usuario} AS usuario,
           COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
-          ${VELOCIDAD_VENTA} AS velocidad,
-          ${SERVICIOS_VENTA} AS n_servicios
+          ${VELOCIDAD_VENTA} AS velocidad
         FROM public.envios_ventas e
         LEFT JOIN public.usuarios u ON u.id = e.usuario_id
         WHERE UPPER(BTRIM(COALESCE(e.distribuidor_autorizado, ''))) = $1
@@ -141,37 +235,26 @@ async function listar(req, res) {
           AND ${filtrosFecha.join('\n          AND ')}
           ${filtroGlobal}
       ), cat AS (${catalogo})
-      SELECT MAX(v.codigo) AS codigo_asesor, v.usuario AS usuario,
-        MAX(v.nombre_asesor) AS nombre_asesor,
-        MAX(v.fecha_telcos) AS ultima_fecha_ingreso_telcos,
-        -- Solo REGULARIZADO se paga; todo lo demás (incl. NO REQUIERE REGULARIZAR) es por regularizar
-        COUNT(*) FILTER (WHERE v.reg IS DISTINCT FROM 'REGULARIZADO')::int AS activas_por_regularizar,
-        COUNT(*) FILTER (WHERE v.reg = 'REGULARIZADO')::int AS activas_regularizadas,
-        COUNT(*)::int AS activas_totales,
-        ROUND(COALESCE(SUM(c.com), 0), 2)::float AS valor_total,
-        ROUND(COALESCE(SUM(c.com) FILTER (WHERE v.reg = 'REGULARIZADO'), 0), 2)::float AS valor_disponible,
-        COUNT(*) FILTER (WHERE c.com IS NULL)::int AS sin_valor
+      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos, v.reg,
+             c.t1::float AS t1, c.t2::float AS t2, c.categoria
       FROM ventas v
-      LEFT JOIN LATERAL (
-        SELECT cat.com FROM cat
-         WHERE cat.tipo = v.tipo AND cat.velocidad = v.velocidad
-         ORDER BY ABS(cat.n_servicios - v.n_servicios), cat.n_servicios
-         LIMIT 1
-      ) c ON true
-      GROUP BY v.usuario
-      ORDER BY activas_regularizadas DESC, activas_totales DESC, usuario, codigo_asesor
+      LEFT JOIN cat c ON c.tipo = v.tipo AND c.velocidad = v.velocidad
     `, values);
 
+    // Solo REGULARIZADO se paga (disponible); valor total = si todas sus activas se regularizan.
+    const rows = calcularAsesores(ventas);
     const suma = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
     const totales = {
       activas_por_regularizar: suma('activas_por_regularizar'),
       activas_regularizadas: suma('activas_regularizadas'),
       activas_totales: suma('activas_totales'),
-      valor_total: Math.round(suma('valor_total') * 100) / 100,
-      valor_disponible: Math.round(suma('valor_disponible') * 100) / 100,
+      valor_total: r2(suma('valor_total')),
+      valor_disponible: r2(suma('valor_disponible')),
       sin_valor: suma('sin_valor'),
+      no_vender: suma('no_vender'),
+      con_asegurado: rows.filter((r) => r.asegurado_aplicado).length,
     };
-    return res.json({ success: true, data: { empresa, filas: rows, totales, mes_catalogo: mes, tramo: 'MENOR A 35', filtros: req.query } });
+    return res.json({ success: true, data: { empresa, filas: rows, totales, mes_catalogo: mes, reglas: REGLAS, filtros: req.query } });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
     console.error('[comisiones.listar]', error);
@@ -201,7 +284,7 @@ async function catalogoCargar(req, res) {
   const entrada = Array.isArray(req.body?.filas) ? req.body.filas : [];
   if (!entrada.length || entrada.length > 5000) return res.status(400).json({ success: false, error: 'El archivo no trae filas validas.' });
   const filas = entrada.map(normalizarFilaCatalogo).filter(Boolean);
-  if (!filas.length) return res.status(400).json({ success: false, error: 'Ninguna fila tiene TIPO, VELOCIDAD y COM MENOR A 35.' });
+  if (!filas.length) return res.status(400).json({ success: false, error: 'Ninguna fila tiene TIPO, VELOCIDAD y valor de comisión.' });
   if (!(await tablaCatalogoExiste().catch(() => false))) {
     return res.status(409).json({ success: false, error: 'Falta crear la tabla comisiones_catalogo (ejecutar COMISIONES_CATALOGO.sql).' });
   }
@@ -210,12 +293,14 @@ async function catalogoCargar(req, res) {
     await client.query('BEGIN');
     await client.query('UPDATE public.comisiones_catalogo SET activo = false WHERE mes = $1 AND activo', [mes]);
     const usuario = req.user?.usuario || null;
+    const conCategoria = await tieneCategoria(client);
     for (const f of filas) {
-      await client.query(`
-        INSERT INTO public.comisiones_catalogo
-          (mes, tipo, velocidad, n_servicios, plan, servicios, nombre_erp, com_t1, com_t2, com_t3, impulso, bono_tc, cargado_por)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [mes, f.tipo, f.velocidad, f.n_servicios, f.plan, f.servicios, f.nombre_erp, f.com_t1, f.com_t2, f.com_t3, f.impulso, f.bono_tc, usuario]);
+      const cols = ['mes', 'tipo', 'velocidad', 'n_servicios', 'plan', 'servicios', 'nombre_erp', 'com_t1', 'com_t2', 'com_t3', 'impulso', 'bono_tc', 'cargado_por'];
+      const vals = [mes, f.tipo, f.velocidad, f.n_servicios, f.plan, f.servicios, f.nombre_erp, f.com_t1, f.com_t2, f.com_t3, f.impulso, f.bono_tc, usuario];
+      if (conCategoria) { cols.push('categoria'); vals.push(f.categoria); }
+      await client.query(
+        `INSERT INTO public.comisiones_catalogo (${cols.join(', ')}) VALUES (${vals.map((_, i) => `$${i + 1}`).join(',')})`,
+        vals);
     }
     await client.query('COMMIT');
     return res.json({ success: true, data: { mes, cargadas: filas.length, omitidas: entrada.length - filas.length } });
@@ -230,5 +315,6 @@ async function catalogoCargar(req, res) {
 
 module.exports = {
   listar, catalogoResumen, catalogoCargar,
-  _test: { fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido },
+  _test: { fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido,
+    categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS },
 };

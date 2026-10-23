@@ -13,7 +13,7 @@ const rangoVacio = { desde: '', hasta: '' };
 const dinero = (v) => Number(v || 0).toLocaleString('es-EC', { style: 'currency', currency: 'USD' });
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-// Carga del catálogo mensual (Excel con columnas TIPO ... COM MENOR A 35).
+// Carga del catálogo mensual: pestaña CATALOGOS DE PLANES (formato oficial) o el formato anterior.
 function CargaCatalogo({ onCargado }) {
   const [mes, setMes] = useState(actual.primero.slice(0, 7));
   const [archivo, setArchivo] = useState(null);
@@ -30,7 +30,7 @@ function CargaCatalogo({ onCargado }) {
     try {
       const libro = XLSX.read(await archivo.arrayBuffer(), { type: 'array' });
       const leido = filasDesdeLibro(XLSX, libro);
-      if (!leido) throw new Error('No encontré una hoja con las columnas TIPO y COM MENOR A 35.');
+      if (!leido) throw new Error('No encontré la pestaña CATALOGOS DE PLANES ni una hoja con TIPO y COM MENOR A 35.');
       const r = await fetch(`${API}/api/comisiones/catalogo`, { method: 'POST', headers: { ...auth(), 'Content-Type': 'application/json' }, body: JSON.stringify({ mes, filas: leido.filas }) });
       const b = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
@@ -65,10 +65,11 @@ function RangoFecha({ titulo, ayuda, value, onChange, destacado }) {
 export default function Comisiones() {
   const [empresa, setEmpresa] = useState('NOVONET');
   const [buscar, setBuscar] = useState('');
-  const [telcos, setTelcos] = useState({ desde: actual.primero, hasta: actual.hoy });
+  // Se paga por FECHA DE ACTIVACIÓN del mes (incluye backlog), igual que el Excel de comisiones.
+  const [telcos, setTelcos] = useState(rangoVacio);
   const [jotform, setJotform] = useState(rangoVacio);
-  const [activacion, setActivacion] = useState(rangoVacio);
-  const [filtros, setFiltros] = useState({ telcosDesde: actual.primero, telcosHasta: actual.hoy });
+  const [activacion, setActivacion] = useState({ desde: actual.primero, hasta: actual.hoy });
+  const [filtros, setFiltros] = useState({ activacionDesde: actual.primero, activacionHasta: actual.hoy });
   const [data, setData] = useState({ filas: [], totales: {} });
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [recarga, setRecarga] = useState(0);
@@ -99,7 +100,7 @@ export default function Comisiones() {
   const consultar=e=>{e.preventDefault();if(!rangoCorrecto(telcos,'Ingreso Telcos')||!rangoCorrecto(jotform,'Creación Jotform')||!rangoCorrecto(activacion,'Activación'))return;
     if(!telcos.desde&&!jotform.desde&&!activacion.desde)return setError('Selecciona al menos un rango de fechas.');
     setFiltros({buscar:buscar.trim(),telcosDesde:telcos.desde,telcosHasta:telcos.hasta,jotformDesde:jotform.desde,jotformHasta:jotform.hasta,activacionDesde:activacion.desde,activacionHasta:activacion.hasta});};
-  const limpiarOpcionales=()=>{setJotform(rangoVacio);setActivacion(rangoVacio);};
+  const limpiarOpcionales=()=>{setJotform(rangoVacio);setTelcos(rangoVacio);};
   const cards=[['Por regularizar','activas_por_regularizar','text-amber-600'],['Regularizadas','activas_regularizadas','text-emerald-600'],['Activas totales','activas_totales','text-blue-700']];
   const t=data.totales||{};
 
@@ -109,7 +110,7 @@ export default function Comisiones() {
     <CargaCatalogo onCargado={()=>setRecarga(x=>x+1)} />
     <form onSubmit={consultar} className="space-y-4 rounded-2xl border bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-end"><label className="flex-1 text-xs font-bold text-slate-600">Búsqueda global<input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Usuario, código, ID Bitrix, login, estado, plan, ciudad…" className="mt-1 w-full rounded-lg border px-3 py-2.5 text-sm font-normal" /></label><button type="button" onClick={limpiarOpcionales} className="rounded-lg border px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">Limpiar opcionales</button><button className="rounded-lg bg-slate-900 px-7 py-2.5 text-sm font-bold text-white hover:bg-slate-700">Consultar</button></div>
-      <div className="grid gap-3 lg:grid-cols-3"><RangoFecha titulo="Ingreso Telcos" ayuda="Por defecto: desde el primer día del mes hasta hoy." value={telcos} onChange={setTelcos} destacado/><RangoFecha titulo="Creación Jotform" ayuda="Opcional. Vacío no restringe los resultados." value={jotform} onChange={setJotform}/><RangoFecha titulo="Fecha de activación" ayuda="Opcional. Vacío no restringe los resultados." value={activacion} onChange={setActivacion}/></div>
+      <div className="grid gap-3 lg:grid-cols-3"><RangoFecha titulo="Fecha de activación" ayuda="Base de pago. Por defecto: del primer día del mes hasta hoy." value={activacion} onChange={setActivacion} destacado/><RangoFecha titulo="Ingreso Telcos" ayuda="Opcional. Vacío no restringe los resultados." value={telcos} onChange={setTelcos}/><RangoFecha titulo="Creación Jotform" ayuda="Opcional. Vacío no restringe los resultados." value={jotform} onChange={setJotform}/></div>
     </form>
     {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
     <div className="grid grid-cols-3 gap-3">{cards.map(([l,k,c])=><div key={k} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase text-slate-400">{l}</div><div className={`mt-1 text-3xl font-black ${c}`}>{Number(data.totales?.[k]||0)}</div></div>)}</div>
@@ -117,9 +118,9 @@ export default function Comisiones() {
       <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase text-slate-400">Valor total · sobre activas totales</div><div className="mt-1 text-3xl font-black text-slate-800">{dinero(t.valor_total)}</div><div className="text-[11px] text-slate-500">Lo que se pagaría si todas sus activas se regularizan.</div></div>
       <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"><div className="text-xs font-bold uppercase text-emerald-700">Disponible · solo regularizadas</div><div className="mt-1 text-3xl font-black text-emerald-700">{dinero(t.valor_disponible)}</div><div className="text-[11px] text-emerald-700/80">Lo que hoy se puede pagar.</div></div>
     </div>
-    <p className="text-xs text-slate-500">Cálculo con tramo <b>{data.tramo||'MENOR A 35'}</b> y catálogo <b>{data.mes_catalogo||'—'}</b>.{Number(t.sin_valor)>0&&<span className="ml-1 font-bold text-red-600">{t.sin_valor} activas sin valor en el catálogo (plan no encontrado).</span>}</p>
-    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Usuario Jotform/ERP</th><th className="px-5 py-3">Código asesor</th><th className="px-5 py-3">Último ingreso Telcos</th><th className="px-5 py-3 text-center">Por regularizar</th><th className="px-5 py-3 text-center">Regularizadas</th><th className="px-5 py-3 text-center">Activas totales</th><th className="px-5 py-3 text-right">Valor total</th><th className="px-5 py-3 text-right text-emerald-700">Disponible</th></tr></thead><tbody className="divide-y">
-      {loading?<tr><td colSpan="8" className="p-14 text-center text-slate-500">Calculando comisiones…</td></tr>:!data.filas?.length?<tr><td colSpan="8" className="p-14 text-center text-slate-500">No existen activaciones para los filtros aplicados.</td></tr>:data.filas.map((r,i)=><tr key={`${r.codigo_asesor}-${r.usuario}-${i}`} className="hover:bg-slate-50"><td className="px-5 py-3 font-bold">{r.usuario}</td><td className="px-5 py-3 text-slate-500">{r.codigo_asesor}</td><td className="px-5 py-3 whitespace-nowrap text-slate-600">{formatearFechaTelcos(r.ultima_fecha_ingreso_telcos)}</td><td className="px-5 py-3 text-center font-bold text-amber-600">{r.activas_por_regularizar}</td><td className="px-5 py-3 text-center font-bold text-emerald-600">{r.activas_regularizadas}</td><td className="px-5 py-3 text-center font-black text-blue-700">{r.activas_totales}</td><td className="px-5 py-3 text-right whitespace-nowrap font-semibold text-slate-700">{dinero(r.valor_total)}{r.sin_valor>0&&<div className="text-[10px] font-bold text-red-500">{r.sin_valor} sin valor</div>}</td><td className="px-5 py-3 text-right whitespace-nowrap"><span className="rounded-lg bg-emerald-50 px-2 py-1 font-black text-emerald-700">{dinero(r.valor_disponible)}</span><div className="mt-1 text-[10px] text-slate-400">de {dinero(r.valor_total)}</div></td></tr>)}
-    </tbody></table></div><div className="border-t bg-slate-50 px-5 py-3 text-xs text-slate-500">Solo se cuentan registros activos, no borradores. Valor total = comisión de todas las activas; Disponible = solo las regularizadas (lo que se paga).</div></div>
+    <p className="text-xs text-slate-500">Catálogo <b>{data.mes_catalogo||'—'}</b> · Asegurado <b>{dinero(data.reglas?.asegurado||550)}</b> al llegar a <b>{data.reglas?.meta||35}</b> regularizadas que suman a tabla (los planes de comisión no cuentan) · tabla “desde 41” a partir de la venta {data.reglas?.desdeTramo2||41}. Solo se paga lo REGULARIZADO.{Number(t.con_asegurado)>0&&<span className="ml-1 font-bold text-emerald-700">{t.con_asegurado} asesores con asegurado.</span>}{Number(t.no_vender)>0&&<span className="ml-1 font-bold text-amber-600">{t.no_vender} ventas de planes “No vender”.</span>}{Number(t.sin_valor)>0&&<span className="ml-1 font-bold text-red-600">{t.sin_valor} activas sin valor en el catálogo (plan no encontrado).</span>}</p>
+    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Usuario Jotform/ERP</th><th className="px-5 py-3">Código asesor</th><th className="px-5 py-3">Último ingreso Telcos</th><th className="px-5 py-3 text-center">Por regularizar</th><th className="px-5 py-3 text-center">Regularizadas</th><th className="px-5 py-3 text-center">Activas totales</th><th className="px-5 py-3 text-center">Tramo</th><th className="px-5 py-3 text-right">Valor total</th><th className="px-5 py-3 text-right text-emerald-700">Disponible</th></tr></thead><tbody className="divide-y">
+      {loading?<tr><td colSpan="9" className="p-14 text-center text-slate-500">Calculando comisiones…</td></tr>:!data.filas?.length?<tr><td colSpan="9" className="p-14 text-center text-slate-500">No existen activaciones para los filtros aplicados.</td></tr>:data.filas.map((r,i)=><tr key={`${r.codigo_asesor}-${r.usuario}-${i}`} className="hover:bg-slate-50"><td className="px-5 py-3 font-bold">{r.usuario}</td><td className="px-5 py-3 text-slate-500">{r.codigo_asesor}</td><td className="px-5 py-3 whitespace-nowrap text-slate-600">{formatearFechaTelcos(r.ultima_fecha_ingreso_telcos)}</td><td className="px-5 py-3 text-center font-bold text-amber-600">{r.activas_por_regularizar}</td><td className="px-5 py-3 text-center font-bold text-emerald-600">{r.activas_regularizadas}</td><td className="px-5 py-3 text-center font-black text-blue-700">{r.activas_totales}</td><td className="px-5 py-3 text-center whitespace-nowrap"><div className="text-xs font-bold text-slate-700">{r.tramo||'—'}</div><div className="text-[10px] text-slate-500">{r.ventas_tabla??0}/{data.reglas?.meta||35} a tabla</div>{r.asegurado_aplicado&&<span className="mt-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">ASEGURADO</span>}</td><td className="px-5 py-3 text-right whitespace-nowrap font-semibold text-slate-700">{dinero(r.valor_total)}{r.sin_valor>0&&<div className="text-[10px] font-bold text-red-500">{r.sin_valor} sin valor</div>}</td><td className="px-5 py-3 text-right whitespace-nowrap"><span className="rounded-lg bg-emerald-50 px-2 py-1 font-black text-emerald-700">{dinero(r.valor_disponible)}</span><div className="mt-1 text-[10px] text-slate-400">de {dinero(r.valor_total)}</div></td></tr>)}
+    </tbody></table></div><div className="border-t bg-slate-50 px-5 py-3 text-xs text-slate-500">Solo activas por fecha de activación, sin borradores. Valor total = lo que cobraría si todas sus activas se regularizan; Disponible = solo REGULARIZADO (lo que se paga). Con 35 o más a tabla nunca cobra menos del asegurado.</div></div>
   </div></div>;
 }

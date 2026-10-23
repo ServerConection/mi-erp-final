@@ -24,6 +24,27 @@ export default function AutomarcadorCargaBitrix() {
   const [asesorIds, setAsesorIds] = useState([]);
   const [campanas, setCampanas] = useState([]);
   const [creadaBx, setCreadaBx] = useState(null);
+  const [rango, setRango] = useState({ desde: hoy(), hasta: hoy() });
+
+  // Reporte de llamadas: hora, duración, resultado y tipificación (CSV para Excel)
+  const descargarReporte = async () => {
+    setError("");
+    try {
+      const qs = new URLSearchParams(rango).toString();
+      const r = await fetch(`${API}/reporte?${qs}`, { headers: authH() });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || "No se pudo generar el reporte");
+      const cols = [["campana", "Campaña"], ["asesor", "Asesor"], ["nombre_cliente", "Cliente"], ["telefono", "Teléfono"],
+        ["deal_id", "Negociación"], ["hora_llamada", "Hora llamada"], ["duracion_seg", "Duración (s)"], ["estado", "Resultado"],
+        ["tipificacion", "Tipificación"], ["hora_tipificacion", "Hora tipificación"], ["intentos", "Intentos"]];
+      const celda = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const csv = [cols.map(c => celda(c[1])).join(";"), ...j.data.map(f => cols.map(c => celda(f[c[0]])).join(";"))].join("\r\n");
+      const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `reporte_automarcador_${rango.desde}_${rango.hasta}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError(e.message); }
+  };
 
   const cargarCampanas = () => fetch(`${API}/campanas`, { headers: authH() })
     .then(r => r.json()).then(j => { if (j.success) setCampanas(j.data); }).catch(() => {});
@@ -214,7 +235,17 @@ export default function AutomarcadorCargaBitrix() {
 
       {campanas.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <p className="px-4 pt-3 text-[11px] font-black text-slate-700">Campañas Bitrix</p>
+          <div className="flex flex-wrap items-end gap-2 px-4 pt-3">
+            <p className="text-[11px] font-black text-slate-700 mr-auto">Campañas Bitrix</p>
+            <label className="text-[9px] font-black text-slate-400 uppercase">Desde
+              <input type="date" className={inp} value={rango.desde} onChange={e => setRango(x => ({ ...x, desde: e.target.value }))} />
+            </label>
+            <label className="text-[9px] font-black text-slate-400 uppercase">Hasta
+              <input type="date" className={inp} value={rango.hasta} onChange={e => setRango(x => ({ ...x, hasta: e.target.value }))} />
+            </label>
+            <button onClick={descargarReporte}
+              className="text-[11px] font-black uppercase bg-emerald-600 text-white rounded-lg px-4 py-2">⬇ Reporte de llamadas</button>
+          </div>
           <table className="w-full text-[10px] mt-2">
             <thead className="bg-slate-50 text-slate-400 font-black uppercase">
               <tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Nombre</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Pendientes</th><th className="px-3 py-2">Contestadas</th><th className="px-3 py-2">No contestan</th><th className="px-3 py-2"></th></tr>

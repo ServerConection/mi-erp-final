@@ -29,6 +29,7 @@ function crearCampanasController({ db = require('../config/db'), lists = bitrixL
       }, db)
     }),
     reintentar: responder(req => svc.reintentarNoContestados(req.user, req.params.id, db)),
+    reporte: responder(req => svc.reporte(req.user, req.query || {}, db)),
   }
 }
 

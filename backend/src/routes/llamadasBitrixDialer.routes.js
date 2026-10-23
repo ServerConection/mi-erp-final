@@ -20,6 +20,7 @@ function crearRouter({
   router.post('/siguiente', express.json({ limit: '4kb' }), c.autenticar, c.siguiente)
   router.post('/resultado', express.json({ limit: '4kb' }), c.autenticar, c.resultado)
   router.post('/estado', express.json({ limit: '4kb' }), c.autenticar, c.estado)
+  router.post('/tipificar', express.json({ limit: '4kb' }), c.autenticar, c.tipificar)
   return router
 }
 

@@ -346,6 +346,8 @@ const ALL_MENU_ITEMS = [
 
   // ── NOVONET ACCESS (asistencia / conexión) — visible para todos los perfiles
   { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
+  // Horarios semanales (por ahora NOVONET): el asesor ve solo el suyo; admin/gerencia/supervisor ven y editan todos.
+  { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p, e) => p === 'ADMINISTRADOR' || e === 'NOVONET' },
 
   // ── Indicadores ──────────────────────────────────────────────────────────
   { name: "Indicadores", path: null, icon: "📊", isGroup: true, groupId: "indicadores" },
@@ -422,7 +424,6 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => puedeAccederAdministracion(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
-  { name: "Horarios",   path: "/horarios",   icon: "⏰", permiso: "Horarios",   isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },

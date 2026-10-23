@@ -10,10 +10,10 @@ import Login          from "./pages/Login";
 import DashboardLayout from "./layouts/DashboardLayout";
 import HomeModules    from "./pages/HomeModules";
 // Módulos con exports nombrados — pequeños, se mantienen estáticos
-import { Horarios } from "./pages/Modules";
 // Páginas pesadas → carga diferida (code splitting)
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
+const Horarios             = lazy(() => import("./pages/Horarios"));
 const IndicadoresVelsa     = lazy(() => import("./pages/IndicadoresVelsa"));
 const ComparativaSupervisores = lazy(() => import("./pages/ComparativaSupervisores"));
 const Seguimientoventas    = lazy(() => import("./pages/Seguimientoventas"));

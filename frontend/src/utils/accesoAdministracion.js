@@ -9,4 +9,5 @@ export function perfilAdministracion(valor) {
   return null;
 }
 
-export const puedeAccederAdministracion = (perfil) => perfilAdministracion(perfil) !== null;
+// Administración y Horarios: SOLO perfil ADMINISTRADOR.
+export const puedeAccederAdministracion = (perfil) => perfilAdministracion(perfil) === 'ADMINISTRADOR';

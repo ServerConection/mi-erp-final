@@ -40,6 +40,7 @@ app.use('/api/envios-ventas',     require('../routes/envios-ventas.routes'));
 app.use('/api/planes-catalogo',   require('../routes/planes-catalogo.routes'));
 app.use('/api/metas-carga',       require('../routes/metasCarga.routes'));
 app.use('/api/horarios',          require('../routes/horarios.routes'));
+app.use('/api/piloto-llamadas',   require('../routes/pilotoLlamadas.routes'));
 app.use('/api/comisiones',        require('../routes/comisiones.routes'));
 app.use('/api/backoffice',        require('../routes/backoffice.routes'));
 app.use('/api/backoffice-jotform',require('../routes/backofficeJotform.routes'));

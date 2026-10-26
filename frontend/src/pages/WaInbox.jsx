@@ -9,6 +9,8 @@ import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waIn
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
+const PILOTO_API = `${ORIGIN}/api/piloto-llamadas`; // Piloto Llamadas PC
+const AGENTE_PC = "http://127.0.0.1:5005";            // agente en la PC del asesor piloto
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 const isImage = (msg) => ["image", "sticker"].includes(msg.type) || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
@@ -137,6 +139,22 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   // Perfiles gerenciales (ven todos los chats/líneas de su empresa)
   const CAN_PICK_LINE = ["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "ANALISTA"].includes(USER_PERFIL);
   const IS_ADMIN = USER_PERFIL === "ADMINISTRADOR";
+
+  // ── Piloto Llamadas PC: solo usuarios activados en el módulo "Piloto Llamadas" ──
+  const [pilotoPc, setPilotoPc] = useState(false);
+  const [llamadaPc, setLlamadaPc] = useState(null);   // { inicio } | null
+  const [llamandoPc, setLlamandoPc] = useState(false);
+  const [, setTickPc] = useState(0);
+  useEffect(() => {
+    fetch(`${PILOTO_API}/mi-estado`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
+      .then(r => r.json()).then(d => setPilotoPc(!!d?.activo)).catch(() => setPilotoPc(false));
+  }, []);
+  useEffect(() => {
+    if (!llamadaPc) return;
+    const t = setInterval(() => setTickPc(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [llamadaPc]);
+  const numVisible = (n) => (pilotoPc ? "Número oculto" : `+${n || ""}`);
   const BITRIX_DEAL_BASE = {
     VELSA: "https://aclopecuador.bitrix24.es/crm/deal/details",
     NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
@@ -261,7 +279,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
         && (document.hidden || selectedRef.current?.id !== msg.conversation_id)) {
         try {
           const conv = conversationsRef.current.find(c => c.id === msg.conversation_id);
-          const notification = new Notification(conv?.contact_name || `WhatsApp +${conv?.wa_number || ""}`, {
+          const notification = new Notification(conv?.contact_name || `WhatsApp ${numVisible(conv?.wa_number)}`, {
             body: msg.content || msg.text || (msg.media_url ? "Imagen recibida" : "Nuevo mensaje de WhatsApp"),
             icon: "/favicon.ico",
             tag: `wa-conversation-${msg.conversation_id}`,
@@ -567,6 +585,47 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     popup.opener = null;
   };
 
+  // ── Piloto Llamadas PC: el agente local pide el número al backend; aquí nunca se usa ──
+  const agentePc = async (ruta, body) => {
+    const r = await fetch(`${AGENTE_PC}${ruta}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    return r.json();
+  };
+  const llamarDesdePc = async () => {
+    if (!selected?.id || llamandoPc) return;
+    setLlamandoPc(true);
+    try {
+      const d = await agentePc("/llamar", {
+        conversation_id: String(selected.id),
+        token: localStorage.getItem("token"),
+      });
+      if (d.ok) setLlamadaPc({ inicio: Date.now() });
+      else alert(d.error || "No se pudo iniciar la llamada");
+    } catch {
+      alert("El agente de llamadas no responde en esta PC. Usa el Inbox del ERP (no la pestaña de Bitrix) y avisa a Desarrollo.");
+    } finally {
+      setLlamandoPc(false);
+    }
+  };
+  const colgarPc = async () => {
+    try {
+      const d = await agentePc("/colgar");
+      if (!d.ok) alert("La llamada ya había terminado o no se pudo colgar.");
+    } catch {
+      alert("El agente de llamadas no responde en esta PC.");
+    } finally {
+      setLlamadaPc(null);
+    }
+  };
+  const duracionPc = () => {
+    if (!llamadaPc) return "00:00";
+    const seg = Math.floor((Date.now() - llamadaPc.inicio) / 1000);
+    return `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
+  };
+
   const takeOver = async () => {
     await fetch(`${API}/conversations/${selected.id}/takeover`, { method: "POST", headers: authH(false) });
     setSelected(s => ({ ...s, status: "human_takeover" }));
@@ -582,7 +641,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   // Eliminar chat (solo Administrador). Borra la conversación y sus mensajes.
   const deleteConv = async () => {
     if (!selected) return;
-    if (!confirm(`¿Eliminar el chat con +${selected.wa_number}? Se borrarán todos sus mensajes. Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar el chat con ${numVisible(selected.wa_number)}? Se borrarán todos sus mensajes. Esta acción no se puede deshacer.`)) return;
     try {
       const r = await fetch(`${API}/conversations/${selected.id}`, { method: "DELETE", headers: authH(false) });
       const d = await r.json();
@@ -734,12 +793,12 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                 }`}
             >
               <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
-                {(conv.contact_name || conv.wa_number || "?").charAt(0).toUpperCase()}
+                {(conv.contact_name || (pilotoPc ? "" : conv.wa_number) || "?").charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-slate-800 truncate">
-                    {conv.contact_name || `+${conv.wa_number}`}
+                    {conv.contact_name || numVisible(conv.wa_number)}
                   </span>
                   <span className="text-xs text-slate-400 flex-shrink-0">{timeAgo(conv.last_msg_at)}</span>
                 </div>
@@ -774,22 +833,45 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
             <button onClick={() => setSelected(null)} className="md:hidden text-slate-400 mr-1">←</button>
             <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
-              {(selected.contact_name || selected.wa_number || "?").charAt(0).toUpperCase()}
+              {(selected.contact_name || (pilotoPc ? "" : selected.wa_number) || "?").charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-slate-800 text-sm truncate">
-                {selected.contact_name || `+${selected.wa_number}`}
+                {selected.contact_name || numVisible(selected.wa_number)}
               </div>
-              <div className="text-xs text-slate-500">+{selected.wa_number}</div>
+              <div className="text-xs text-slate-500">{numVisible(selected.wa_number)}</div>
             </div>
             <div className="flex gap-2">
               {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
                   negociación en Bitrix -- el enlace/botón sería redundante. */}
+              {pilotoPc ? (
+                <>
+                  <button onClick={llamarDesdePc} disabled={llamandoPc || !!llamadaPc}
+                    title="Llamar desde esta PC"
+                    className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
+                    {llamandoPc ? "Llamando…" : "📞 Llamar (PC)"}
+                  </button>
+                  {llamadaPc && (
+                    <div className="fixed bottom-6 right-6 z-50 bg-white border border-emerald-200 shadow-xl rounded-xl px-4 py-3 flex items-center gap-3">
+                      <span className="text-lg">📞</span>
+                      <div className="text-sm">
+                        <div className="font-semibold text-slate-700">Llamada en curso</div>
+                        <div className="text-xs text-slate-500 tabular-nums">{duracionPc()}</div>
+                      </div>
+                      <button onClick={colgarPc}
+                        className="ml-2 text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors">
+                        Colgar
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
               <button onClick={openWhatsAppForCall}
                 title="Abrir este contacto en WhatsApp para iniciar una llamada de voz o video"
                 className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
                 📞 Abrir para llamar
               </button>
+              )}
               {!dealId && (selected.bitrix_deal_id ? (
                 <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
                   onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}
@@ -977,7 +1059,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
             <div className="p-5 border-b border-slate-100">
               <h3 className="font-bold text-slate-800">Asociar ID Bitrix</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Vincula el ID de negociación a la conversación con +{selected?.wa_number}.
+                Vincula el ID de negociación a la conversación con {numVisible(selected?.wa_number)}.
               </p>
             </div>
             <div className="p-5">

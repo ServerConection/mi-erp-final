@@ -1,3 +1,5 @@
+import { ordenarFilasKpi } from './ordenKpi';
+
 /**
  * EXPORTAR KPI COMERCIAL A EXCEL — con el formato de gerencia
  *
@@ -201,6 +203,7 @@ export async function exportarKpiExcel({
   fechaHasta,
 }) {
   const ExcelJS = (await import('exceljs')).default;
+  const filasOrdenadas = ordenarFilasKpi(filas);
 
   const emp = (empresa || String(total?.nombre || '').replace(/^TOTAL\s+/i, '') || 'NOVONET').toUpperCase();
   const refFecha = fechaDesde ? new Date(`${String(fechaDesde).slice(0, 10)}T12:00:00`) : new Date();
@@ -208,7 +211,7 @@ export async function exportarKpiExcel({
 
   // Metas % comunes (para filas de supervisor/total y para la cabecera "Meta %")
   const metasPct = {};
-  for (const c of COLS) if (c.k === 'mpct') metasPct[c.f] = c.fixed ?? (moda(filas, c.f) || moda(filasMeta || [], c.f) || n(total?.[c.f]));
+  for (const c of COLS) if (c.k === 'mpct') metasPct[c.f] = c.fixed ?? (moda(filasOrdenadas, c.f) || moda(filasMeta || [], c.f) || n(total?.[c.f]));
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'ERP Novo-Velsa';
@@ -428,7 +431,7 @@ export async function exportarKpiExcel({
   const refsSubtotales = [];
   if (agrupado) {
     const grupos = new Map();
-    for (const f of filas) {
+    for (const f of filasOrdenadas) {
       const k = f.supervisor || 'SIN ASIGNAR';
       if (!grupos.has(k)) grupos.set(k, []);
       grupos.get(k).push(f);
@@ -448,8 +451,8 @@ export async function exportarKpiExcel({
     }
   } else {
     const desde = fila;
-    filas.forEach((f, i) => escribirFilaDato(f, i + 1));
-    if (filas.length) rangosTodos.push([desde, fila - 1]);
+    filasOrdenadas.forEach((f, i) => escribirFilaDato(f, i + 1));
+    if (filasOrdenadas.length) rangosTodos.push([desde, fila - 1]);
     fila += 1;
   }
 
@@ -461,7 +464,7 @@ export async function exportarKpiExcel({
     });
   }
 
-  if (!filas.length) {
+  if (!filasOrdenadas.length) {
     ws.getCell(`D${fila + 1}`).value = 'Sin datos en el rango seleccionado';
     ws.getCell(`D${fila + 1}`).font = font({ italic: true, color: { argb: 'FF808080' } });
   }

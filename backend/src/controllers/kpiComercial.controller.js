@@ -287,7 +287,9 @@ metas AS (
            MAX(pct_tarjeta)         AS m_pct_tarjeta,
            MAX(pct_tercera_edad)    AS m_pct_tercera_edad,
            MAX(pct_planes_150_200)  AS m_pct_planes,
-           MAX(NULLIF(BTRIM(supervisor), '')) AS m_supervisor
+           MAX(NULLIF(BTRIM(asesor), '')) AS m_asesor_display,
+           MAX(NULLIF(BTRIM(supervisor), '')) AS m_supervisor,
+           MAX(NULLIF(BTRIM(codigo_asesor), '')) AS m_codigo_asesor
     FROM public.metas_asesor
     WHERE empresa = $3 AND activo
       AND anio = EXTRACT(YEAR  FROM $1::date)::int
@@ -295,6 +297,9 @@ metas AS (
     GROUP BY 1
 )
 SELECT d.*,
+       COALESCE(d.persona, m.persona)            AS persona,
+       COALESCE(d.asesor_display, m.m_asesor_display) AS asesor_display,
+       COALESCE(d.supervisor, m.m_supervisor, 'SIN ASIGNAR') AS supervisor,
        COALESCE(m.m_leads_total,0)          AS meta_leads_total,
        COALESCE(m.m_leads_gestion,0)        AS meta_leads_gestion,
        COALESCE(m.m_ingresos_jot,0)         AS meta_ingresos_jot,
@@ -306,9 +311,10 @@ SELECT d.*,
        COALESCE(m.m_pct_tarjeta,0)          AS meta_pct_tarjeta,
        COALESCE(m.m_pct_tercera_edad,0)     AS meta_pct_tercera_edad,
        COALESCE(m.m_pct_planes,0)           AS meta_pct_planes,
-       m.m_supervisor                       AS meta_supervisor
+       m.m_supervisor                       AS meta_supervisor,
+       m.m_codigo_asesor                    AS codigo_asesor
 FROM datos d
-LEFT JOIN metas m ON m.persona = d.persona
+__JOIN_METAS__ metas m ON m.persona = d.persona
 `;
 
 // Calcula los porcentajes derivados sobre una fila (asesor o supervisor)
@@ -396,12 +402,34 @@ function fusionarPorNombreSimilar(filas, campoNombre, camposSuma) {
       fusion.meta_supervisor = conMeta.meta_supervisor;
       fusion.supervisor = conMeta.supervisor;
     }
+    if (!fusion.codigo_asesor) {
+      fusion.codigo_asesor = g.filas.find(f => f.codigo_asesor)?.codigo_asesor || null;
+    }
     for (const c of camposSuma) {
       fusion[c] = g.filas.reduce((acc, f) => acc + Number(f[c] || 0), 0);
     }
     return fusion;
   });
 }
+
+const compararOrdenFijo = (a, b) => {
+  const opciones = { numeric: true, sensitivity: 'base' };
+  const porSupervisor = String(a.supervisor || 'SIN ASIGNAR')
+    .localeCompare(String(b.supervisor || 'SIN ASIGNAR'), 'es', opciones);
+  if (porSupervisor) return porSupervisor;
+
+  const codigoA = String(a.codigo_asesor || '').trim();
+  const codigoB = String(b.codigo_asesor || '').trim();
+  if (codigoA && codigoB) {
+    const porCodigo = codigoA.localeCompare(codigoB, 'es', opciones);
+    if (porCodigo) return porCodigo;
+  } else if (codigoA || codigoB) {
+    return codigoA ? -1 : 1;
+  }
+
+  return String(a.nombre || a.asesor_display || '')
+    .localeCompare(String(b.nombre || b.asesor_display || ''), 'es', opciones);
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/kpi-comercial?fechaDesde=&fechaHasta=
@@ -459,7 +487,6 @@ async function getKpiComercial(req, res) {
         };
 
     const q = req.query;
-
     // FIX 2026-10-06: si hay metas cargadas para el mes (modulo Carga de metas),
     // el EXCEL manda la asignacion de equipos (NOVONET y VELSA): supervisor = el del
     // Excel; quien no esta en el Excel va a "SIN ASIGNAR". Sin metas del mes,
@@ -474,6 +501,19 @@ async function getKpiComercial(req, res) {
             AND mes  = EXTRACT(MONTH FROM $2::date)::int`, [empresa, rango.desde]);
       usarMetas = c.n > 0;
     }
+
+    const filtrosDeDetalle = [
+      'asesor', 'supervisor', 'estadoNetlife', 'etapaJotform',
+      'estadoRegularizacion', 'etapaCRM', 'idBitrix', 'gestionables',
+      'origen', 'canal', 'fechaActivacionDesde', 'fechaActivacionHasta',
+    ];
+    // Sin filtros de detalle se completa el resultado con toda la nomina de
+    // metas del mes. Asi un asesor con cero movimientos no desaparece al
+    // consultar una semana y conserva la misma fila entre periodos.
+    const incluirNominaCompleta = usarMetas && !filtrosDeDetalle.some((campo) => {
+      const valor = q[campo];
+      return Array.isArray(valor) ? valor.length > 0 : valor != null && String(valor).trim() !== '';
+    });
 
     const values = [rango.desde, rango.hasta, empresa];
     const filtros = [
@@ -532,6 +572,7 @@ async function getKpiComercial(req, res) {
       .replace('__SUPERVISOR__', () => cfg.supervisor)
       .replace('__JOIN_EMPLEADOS__', () => cfg.joinEmpleados)
       .replace('__FILTROS__', () => filtros.join(' AND '))
+      .replace('__JOIN_METAS__', () => incluirNominaCompleta ? 'FULL OUTER JOIN' : 'LEFT JOIN')
       .replaceAll('__DISCRIMINACION__', () => empresa === 'NOVONET' ? sumaReporteExpr('mb.b_origen', 'mb.b_etapa_de_la_negociacion') : 'TRUE');
 
     let { rows } = await pool.query(sql, values);
@@ -552,7 +593,7 @@ async function getKpiComercial(req, res) {
       // Conservar también asesores que solo aportan activaciones/backlog en el
       // rango. Las tarjetas los incluyen aunque su lead/Jotform sea anterior.
       .filter(r => r.leads_total > 0 || r.ingresos_jot > 0 || r.activas_totales > 0 || r.meta_leads_total > 0)
-      .sort((a, b) => b.leads_total - a.leads_total);
+      .sort(compararOrdenFijo);
 
     // Nivel SUPERVISOR — se agregan los absolutos y se recalculan los %
     const porSup = new Map();
@@ -566,7 +607,7 @@ async function getKpiComercial(req, res) {
     }
     const supervisores = [...porSup.values()]
       .map(derivar)
-      .sort((a, b) => b.leads_total - a.leads_total);
+      .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
 
     // TOTAL general
     const total = derivar(

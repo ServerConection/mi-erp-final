@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { exportarKpiExcel } from '../utils/exportarKpiExcel';
+import { ordenarFilasKpi } from '../utils/ordenKpi';
 
 // ── Definición de columnas ───────────────────────────────────────────────────
 // tipo: 'num' entero | 'pct' porcentaje | 'calc' solo real (sin meta)
@@ -99,6 +100,7 @@ export default function TablaKpiComercial({
   const scrollTablaRef = useRef(null);
   const tablaRef = useRef(null);
   const [anchoTabla, setAnchoTabla] = useState(0);
+  const filasOrdenadas = useMemo(() => ordenarFilasKpi(filas), [filas]);
 
   useEffect(() => {
     const actualizar = () => setAnchoTabla(tablaRef.current?.scrollWidth || 0);
@@ -112,12 +114,12 @@ export default function TablaKpiComercial({
   const grupos = useMemo(() => {
     if (!agrupado) return null;
     const m = {};
-    for (const f of filas) {
+    for (const f of filasOrdenadas) {
       const k = f.supervisor || 'SIN ASIGNAR';
       (m[k] = m[k] || []).push(f);
     }
     return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filas, agrupado]);
+  }, [filasOrdenadas, agrupado]);
 
   // Descarga con el formato de gerencia (FORMATO CONTROL SEMANAL VENTAS …,
   // hoja METAS NOVONET): mismas columnas, Pto/Real, subtotales por supervisor.
@@ -127,7 +129,7 @@ export default function TablaKpiComercial({
     setExportando(true);
     try {
       await exportarKpiExcel({
-        titulo, filas, total, agrupado, divisorMeta,
+        titulo, filas: filasOrdenadas, total, agrupado, divisorMeta,
         empresa: contexto?.empresa,
         fechaDesde: contexto?.fechaDesde,
         fechaHasta: contexto?.fechaHasta,
@@ -235,7 +237,7 @@ export default function TablaKpiComercial({
           <tbody>
             {filaTotal}
 
-            {!agrupado && filas.map((f, i) => (
+            {!agrupado && filasOrdenadas.map((f, i) => (
               <tr key={f.nombre || i} className={`border-b border-slate-100 ${i % 2 ? 'bg-slate-50/40' : 'bg-white'} hover:bg-blue-50/50`}>
                 <td className={`px-3 py-1.5 font-black text-slate-700 sticky left-0 z-10 border-r border-slate-200 whitespace-nowrap ${i % 2 ? 'bg-slate-50' : 'bg-white'}`}>
                   {f.nombre}

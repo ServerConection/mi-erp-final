@@ -263,6 +263,7 @@ app.use('/api/comisiones',         comisionesRoutes);
 // Carga mensual de metas comerciales (Excel de gerencia) -> metas_asesor / empleados / catalogo Velsa
 app.use('/api/metas-carga',        require('./routes/metasCarga.routes'));
 app.use('/api/horarios',           require('./routes/horarios.routes'));
+app.use('/api/piloto-llamadas',    require('./routes/pilotoLlamadas.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);

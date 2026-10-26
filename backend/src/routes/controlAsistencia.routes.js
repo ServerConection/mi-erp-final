@@ -29,8 +29,7 @@ const MENSAJES_ACTIVIDAD = {
 const PERFILES_PERMITIDOS = new Set([
   "ADMINISTRADOR",
   "GERENCIA",
-  "SUPERVISOR",
-  "ATC",
+  "GERENTE",
 ]);
 
 // Asesores comisionistas: solo registran y ven SUS propias marcaciones
@@ -50,6 +49,11 @@ const normalizarTexto = (valor) =>
   String(valor || "")
     .trim()
     .toUpperCase();
+
+const puedeVerResumenGeneral = (perfil) => {
+  const normalizado = normalizarTexto(perfil);
+  return PERFILES_PERMITIDOS.has(normalizado) || /^GEREN(?:CIA|TE)[ _-]/.test(normalizado);
+};
 
 // ─────────────────────────────────────────────────────────────
 // OBTENER IP
@@ -345,7 +349,7 @@ router.get("/resumen-dia", verificarToken, async (req, res) => {
     if (!usuario?.id) {
       return res.status(401).json({ success: false, error: "Usuario no autenticado" });
     }
-    if (!PERFILES_PERMITIDOS.has(normalizarTexto(usuario.perfil))) {
+    if (!puedeVerResumenGeneral(usuario.perfil)) {
       return res.status(403).json({ success: false, error: "No tiene permiso para consultar marcaciones" });
     }
 
@@ -361,23 +365,25 @@ router.get("/resumen-dia", verificarToken, async (req, res) => {
 
     const result = await pool.query(`
       SELECT
-        fecha::text AS fecha,
-        usuario_id,
-        MAX(NULLIF(TRIM(usuario), '')) AS usuario,
-        MAX(NULLIF(TRIM(nombre_completo), '')) AS nombre_completo,
-        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'INGRESO'), 'HH24:MI') AS ingreso,
-        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'SALIDA ALMUERZO'), 'HH24:MI') AS salida_almuerzo,
-        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'INGRESO ALMUERZO'), 'HH24:MI') AS regreso_almuerzo,
-        TO_CHAR(MIN(hora) FILTER (WHERE actividad = 'SALIDA'), 'HH24:MI') AS salida
-      FROM public.control_asistencia
-      WHERE fecha BETWEEN
+        ca.fecha::text AS fecha,
+        ca.usuario_id,
+        MAX(NULLIF(TRIM(ca.usuario), '')) AS usuario,
+        MAX(NULLIF(TRIM(ca.nombre_completo), '')) AS nombre_completo,
+        COALESCE(MAX(NULLIF(UPPER(TRIM(u.empresa)), '')), 'SIN EMPRESA') AS empresa,
+        TO_CHAR(MIN(ca.hora) FILTER (WHERE ca.actividad = 'INGRESO'), 'HH24:MI') AS ingreso,
+        TO_CHAR(MIN(ca.hora) FILTER (WHERE ca.actividad = 'SALIDA ALMUERZO'), 'HH24:MI') AS salida_almuerzo,
+        TO_CHAR(MIN(ca.hora) FILTER (WHERE ca.actividad = 'INGRESO ALMUERZO'), 'HH24:MI') AS regreso_almuerzo,
+        TO_CHAR(MIN(ca.hora) FILTER (WHERE ca.actividad = 'SALIDA'), 'HH24:MI') AS salida
+      FROM public.control_asistencia ca
+      LEFT JOIN public.usuarios u ON u.id = ca.usuario_id
+      WHERE ca.fecha BETWEEN
         COALESCE(NULLIF($1, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
         AND COALESCE(NULLIF($2, '')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date)
-      GROUP BY fecha, usuario_id
-      ORDER BY fecha DESC, COALESCE(
-        MIN(hora) FILTER (WHERE actividad = 'INGRESO'),
-        MIN(hora)
-      ) ASC, MAX(nombre_completo) ASC
+      GROUP BY ca.fecha, ca.usuario_id
+      ORDER BY ca.fecha DESC, COALESCE(
+        MIN(ca.hora) FILTER (WHERE ca.actividad = 'INGRESO'),
+        MIN(ca.hora)
+      ) DESC, MAX(ca.nombre_completo) ASC
     `, [desde, hasta]);
 
     return res.json({ success: true, data: result.rows });

@@ -26,6 +26,14 @@ export default function Evaluaciones() {
   const [tomando, setTomando]                   = useState(null);
   const [viendoResultados, setViendoResultados] = useState(null);
   const [aviso, setAviso]                       = useState(null);
+  const puedeGestionar = useMemo(() => {
+    try {
+      const perfil = JSON.parse(localStorage.getItem('userProfile') || '{}')?.perfil;
+      return !['USUARIO', 'ATC'].includes(String(perfil || '').trim().toUpperCase());
+    } catch {
+      return false;
+    }
+  }, []);
 
   const notificar = (mensaje, tipo = 'info') => setAviso({ mensaje, tipo });
 
@@ -61,8 +69,10 @@ export default function Evaluaciones() {
                 valor={tab}
                 onCambiar={setTab}
                 opciones={[
-                  { id: 'mias',     etiqueta: 'Mis evaluaciones', icono: Sparkles },
-                  { id: 'gestionar', etiqueta: 'Gestionar',       icono: BarChart3 },
+                  { id: 'mias', etiqueta: 'Mis evaluaciones', icono: Sparkles },
+                  ...(puedeGestionar
+                    ? [{ id: 'gestionar', etiqueta: 'Gestionar', icono: BarChart3 }]
+                    : []),
                 ]}
               />
             </div>
@@ -71,7 +81,7 @@ export default function Evaluaciones() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {tab === 'mias'
+        {tab === 'mias' || !puedeGestionar
           ? <TabMias onTomar={setTomando} />
           : <TabGestionar onVerResultados={setViendoResultados} notificar={notificar} />}
       </div>

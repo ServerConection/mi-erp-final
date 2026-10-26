@@ -162,9 +162,9 @@ export default function HomeModules() {
       const perfil = (up.perfil || '').toUpperCase();
       const empresa = (up.empresa || '').toUpperCase();
       if (perfil === 'TV') {
-        if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos'].includes(m.path));
-        if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos'].includes(m.path));
-        return modules.filter(m => ['/llamadas', '/inventario-activos'].includes(m.path));
+        if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos', '/evaluaciones'].includes(m.path));
+        if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos', '/evaluaciones'].includes(m.path));
+        return modules.filter(m => ['/llamadas', '/inventario-activos', '/evaluaciones'].includes(m.path));
       }
     } catch (e) {
       // ignore parse errors and fall back to normal filtering
@@ -173,6 +173,10 @@ export default function HomeModules() {
     return modules.filter(mod => {
       // Inventario de Activos TI es transversal: basta con tener sesion activa.
       if (mod.path === '/inventario-activos') {
+        return !q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q);
+      }
+      // Evaluaciones es transversal: cualquier perfil autenticado puede entrar.
+      if (mod.path === '/evaluaciones') {
         return !q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q);
       }
       if (userRol === 'ANALISTA' && !rutaPermitidaAnalista(mod.path)) return false;

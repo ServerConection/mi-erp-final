@@ -4196,6 +4196,15 @@ const SUBMODULOS = [
     fondo: "#cffafe",
     listo: true,
   },
+  {
+    id: "reporte-gestion",
+    nombre: "Reporte de gestión ATC",
+    icono: "📊",
+    descripcion: "Historial de cambios por usuario, fecha y estatus, con exportación detallada a Excel.",
+    color: "#2563eb",
+    fondo: "#dbeafe",
+    listo: true,
+  },
 ];
 
 function TarjetaSubmodulo({ sub, onAbrir }) {
@@ -8386,6 +8395,76 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
   );
 }
 
+function ReporteGestionAtc({ onVolver, empresa, onCambiarEmpresa }) {
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [filtros, setFiltros] = useState({ desde: `${hoy.slice(0, 7)}-01`, hasta: hoy, usuario: "", campo: "" });
+  const [data, setData] = useState({ detalle: [], resumenDiario: [], resumenEstatus: [], usuarios: [], campos: [] });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const cargar = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const query = new URLSearchParams({ ...filtros, empresa: empresa || "TODOS" });
+      const token = localStorage.getItem("token");
+      const respuesta = await fetch(`${API}/api/backoffice/reporte-gestion?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const json = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo cargar el reporte");
+      setData(json.data || { detalle: [], resumenDiario: [], resumenEstatus: [], usuarios: [], campos: [] });
+    } catch (e) { setError(e.message || "No se pudo cargar el reporte"); }
+    finally { setLoading(false); }
+  }, [filtros, empresa]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const exportarExcel = () => {
+    const libro = XLSX.utils.book_new();
+    const diario = data.resumenDiario.map(f => ({ FECHA: f.fecha, USUARIO: f.nombre_usuario, LOGIN: f.usuario, EMPRESA: f.empresa, "TOTAL CAMBIOS": f.cantidad }));
+    const estatus = data.resumenEstatus.map(f => ({ USUARIO: f.nombre_usuario, LOGIN: f.usuario, EMPRESA: f.empresa, CAMPO: FIELD_LABELS[f.campo] || f.campo, ESTATUS: f.estatus, CANTIDAD: f.cantidad }));
+    const detalle = data.detalle.map(f => ({ "FECHA Y HORA": f.fecha_hora, USUARIO: f.nombre_usuario, LOGIN: f.usuario, "EMPRESA USUARIO": f.empresa_usuario, EMPRESA: f.empresa, "ID REGISTRO": f.registro_id, "ID BITRIX": f.id_bitrix, CLIENTE: f.cliente, IDENTIFICACIÓN: f.identificacion, "LOGIN NETLIFE": f.login_netlife, CAMPO: FIELD_LABELS[f.campo] || f.campo, ANTERIOR: f.anterior, NUEVO: f.nuevo, ACCIÓN: f.accion }));
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(diario), "Resumen diario");
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(estatus), "Resumen por estatus");
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(detalle), "Detalle de cambios");
+    XLSX.writeFile(libro, `Reporte_Gestion_ATC_${filtros.desde}_${filtros.hasta}.xlsx`);
+  };
+
+  const inputStyle = { border: "1px solid #cbd5e1", borderRadius: 10, padding: "9px 11px", fontSize: 12, color: "#334155", background: "#fff" };
+  return (
+    <div style={{ padding: 18, minHeight: "100vh", background: "#f3f4f6", color: "#0f172a" }}>
+      <div style={{ maxWidth: 1500, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button type="button" onClick={onVolver} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 10, padding: "9px 13px", cursor: "pointer", fontWeight: 800 }}>← Volver</button>
+            <div><h2 style={{ margin: 0, fontSize: 23, fontWeight: 900 }}>Reporte de gestión ATC</h2><p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12 }}>Historial real de cambios realizados por cada usuario.</p></div>
+          </div>
+          <button type="button" onClick={exportarExcel} disabled={!data.detalle.length || loading} style={{ border: 0, borderRadius: 10, padding: "10px 16px", color: "#fff", background: "#16a34a", fontWeight: 900, cursor: data.detalle.length ? "pointer" : "not-allowed", opacity: data.detalle.length ? 1 : .5 }}>↓ EXCEL</button>
+        </div>
+
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 16, marginBottom: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>EMPRESA<select value={empresa} onChange={e => onCambiarEmpresa(e.target.value)} style={inputStyle}><option value="TODOS">TODAS</option><option value="NOVONET">NOVONET</option><option value="VELSA">VELSA</option><option value="SEMILLERO">SEMILLERO</option></select></label>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>DESDE<input type="date" value={filtros.desde} max={filtros.hasta} onChange={e => setFiltros(f => ({ ...f, desde: e.target.value }))} style={inputStyle} /></label>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>HASTA<input type="date" value={filtros.hasta} min={filtros.desde} onChange={e => setFiltros(f => ({ ...f, hasta: e.target.value }))} style={inputStyle} /></label>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900, minWidth: 250 }}>USUARIO<select value={filtros.usuario} onChange={e => setFiltros(f => ({ ...f, usuario: e.target.value }))} style={inputStyle}><option value="">TODOS</option>{data.usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.login ? ` (@${u.login})` : ""}</option>)}</select></label>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900, minWidth: 220 }}>CAMPO<select value={filtros.campo} onChange={e => setFiltros(f => ({ ...f, campo: e.target.value }))} style={inputStyle}><option value="">TODOS LOS CAMBIOS</option>{data.campos.map(c => <option key={c} value={c}>{FIELD_LABELS[c] || c.replaceAll("_", " ").toUpperCase()}</option>)}</select></label>
+        </div>
+        {error && <div style={{ padding: 12, borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", marginBottom: 14 }}>{error}</div>}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 16 }}>
+          {[['Eventos de cambio', data.detalle.length, '#2563eb'], ['Días con gestión', new Set(data.resumenDiario.map(f => f.fecha)).size, '#7c3aed'], ['Usuarios', new Set(data.detalle.map(f => f.usuario_id || f.usuario)).size, '#0891b2'], ['Cambios de estatus', data.resumenEstatus.reduce((s, f) => s + Number(f.cantidad || 0), 0), '#059669']].map(([label, valor, color]) => <div key={label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16 }}><div style={{ color: "#64748b", fontSize: 10, fontWeight: 900 }}>{label.toUpperCase()}</div><div style={{ marginTop: 7, color, fontSize: 26, fontWeight: 900 }}>{loading ? "…" : valor}</div></div>)}
+        </div>
+
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ padding: "15px 18px", borderBottom: "1px solid #e2e8f0", fontWeight: 900 }}>Detalle de cambios · {data.detalle.length}{data.detalle.length > 1000 ? " (se muestran los 1.000 más recientes; el Excel incluye todos)" : ""}</div>
+          <div style={{ overflow: "auto", maxHeight: "calc(100vh - 390px)" }}><table style={{ width: "100%", minWidth: 1250, borderCollapse: "collapse", fontSize: 11 }}><thead style={{ position: "sticky", top: 0, background: "#f8fafc", zIndex: 1 }}><tr>{["Fecha y hora", "Usuario", "Empresa", "ID Bitrix", "Cliente", "Campo", "Anterior", "Nuevo", "Acción"].map(h => <th key={h} style={{ padding: 11, textAlign: "left", borderBottom: "1px solid #cbd5e1", color: "#475569" }}>{h}</th>)}</tr></thead><tbody>
+            {data.detalle.slice(0, 1000).map((f, i) => <tr key={`${f.registro_id}-${f.fecha_hora}-${f.campo}-${i}`}><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" }}>{f.fecha_hora ? new Date(f.fecha_hora).toLocaleString("es-EC", { timeZone: "America/Guayaquil" }) : "—"}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9" }}><b>{f.nombre_usuario}</b><br/><span style={{ color: "#64748b" }}>{f.usuario ? `@${f.usuario}` : ""}</span></td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9" }}>{f.empresa}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9" }}>{f.id_bitrix || "—"}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9" }}>{f.cliente || "—"}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9", fontWeight: 800 }}>{FIELD_LABELS[f.campo] || f.campo}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9", color: "#991b1b" }}>{String(f.anterior ?? "") || "—"}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9", color: "#047857", fontWeight: 800 }}>{String(f.nuevo ?? "") || "—"}</td><td style={{ padding: 10, borderBottom: "1px solid #f1f5f9" }}>{f.accion}</td></tr>)}
+            {!loading && !data.detalle.length && <tr><td colSpan={9} style={{ padding: 35, textAlign: "center", color: "#94a3b8" }}>No existen cambios para los filtros seleccionados.</td></tr>}
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function VistaBackoffice() {
   const [params, setParams] = useSearchParams();
   const idActivo = params.get("m");
@@ -8462,6 +8541,10 @@ export default function VistaBackoffice() {
         empresa={empresa} onCambiarEmpresa={setEmpresa}
       />
     );
+  }
+
+  if (sub.id === "reporte-gestion") {
+    return <ReporteGestionAtc onVolver={volver} empresa={empresa} onCambiarEmpresa={setEmpresa} />;
   }
 
   return <EnConstruccion sub={sub} onVolver={volver} />;

@@ -24,11 +24,12 @@
 const EMPRESAS = {
   novonet: { distribuidor: 'NOVONET', origenJotform: 'JOTFORM_NOVONET' },
   velsa:   { distribuidor: 'VELSA',   origenJotform: 'JOTFORM_VELSA' },
+  semillero: { distribuidor: 'SEMILLERO', origenJotform: 'JOTFORM_SEMILLERO', aceptarTodoOrigen: true },
 };
 
 /**
  * Subconsulta (tabla derivada) sobre envios_ventas para una empresa.
- * @param {'novonet'|'velsa'} empresa
+ * @param {'novonet'|'velsa'|'semillero'} empresa
  * @param {string} alias  alias de la tabla derivada ('mb' Novonet, 'mv' Velsa)
  */
 function fuenteDetalleJotform(empresa, alias) {
@@ -142,7 +143,7 @@ function fuenteDetalleJotform(empresa, alias) {
            ON bw0.empresa = '${empresa}'
           AND BTRIM(bw0.bitrix_id::text) = BTRIM(e.id_bitrix::text)
     WHERE e.distribuidor_autorizado = '${cfg.distribuidor}'
-      AND e.origen_dato IN ('${cfg.origenJotform}', 'ERP')
+      AND ${cfg.aceptarTodoOrigen ? 'TRUE' : `e.origen_dato IN ('${cfg.origenJotform}', 'ERP')`}
       AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'
   ) ${alias}`;
 }
@@ -287,6 +288,15 @@ async function consultarDetalleJotform(pool, empresa, query = {}) {
   agregar(query.loginNetlife, `COALESCE(${alias}.netlife_login, '')`);
   agregar(query.idBitrix, `COALESCE(${alias}.id_bitrix, '')`);
   agregar(query.busquedaGeneral, `COALESCE(${alias}.codigo_asesor, '') || ' ' || COALESCE(${alias}.responsable, '') || ' ' || COALESCE(${alias}.asesor_usuario, '') || ' ' || COALESCE(${alias}.netlife_login, '') || ' ' || COALESCE(${alias}.id_bitrix, '') || ' ' || COALESCE(${alias}.netlife_estatus_real, '')`);
+  agregar(query.supervisor, `COALESCE(${alias}.supervisor_venta, ejot.supervisor, eresp.supervisor, '')`);
+  agregar(query.estadoNetlife || query.etapaJotform, `COALESCE(${alias}.netlife_estatus_real, '')`);
+  agregar(query.estadoRegularizacion, `COALESCE(${alias}.estatus_regularizacion, '')`);
+  agregar(query.etapaCRM, `COALESCE(${alias}.etapa_bitrix, '')`);
+  agregar(query.canal || query.origen, `COALESCE(${alias}.origen_bitrix, '')`);
+  if (query.fechaActivacionDesde && query.fechaActivacionHasta) {
+    values.push(query.fechaActivacionDesde, query.fechaActivacionHasta);
+    filtros += ` AND COALESCE(${alias}.f_act, public.parse_fecha_flex(${alias}.fecha_activacion_netlife::text)) BETWEEN $${values.length - 1}::date AND $${values.length}::date`;
+  }
 
   const result = await pool.query(`
     SELECT

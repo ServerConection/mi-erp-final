@@ -11,6 +11,14 @@ const origen = `COALESCE(NULLIF(BTRIM(w.source), ''), 'SIN ORIGEN')`;
 const responsable = `COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE')`;
 const fecha = fechaWebhookExpr('w');
 const supervisor = `COALESCE((
+  SELECT NULLIF(BTRIM(m.supervisor), '')
+  FROM public.metas_asesor m
+  WHERE m.empresa = 'VENTAENLINEA' AND m.activo
+    AND m.anio = EXTRACT(YEAR FROM $2::date)::int
+    AND m.mes = EXTRACT(MONTH FROM $2::date)::int
+    AND UPPER(BTRIM(m.asesor)) = UPPER(BTRIM(w.responsible))
+  ORDER BY m.actualizado_en DESC LIMIT 1
+), (
   SELECT NULLIF(BTRIM(e.supervisor), '')
   FROM public.empleados e
   WHERE UPPER(BTRIM(e.nombre_completo)) = UPPER(BTRIM(w.responsible))
@@ -63,6 +71,9 @@ router.get('/dashboard', async (req, res) => {
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA')::int AS ingresos_reales,
         COUNT(*) FILTER (WHERE ${etapa} = 'VENTA SUBIDA' AND ${fecha} = CURRENT_DATE)::int AS ventas_del_dia,
         COUNT(*) FILTER (WHERE ${esDescarteExactoExpr(etapa)})::int AS descarte_count,
+        COUNT(*) FILTER (WHERE ${etapa} ~ '^ATC([ /-]?SOPORTE)?$')::int AS atc_n,
+        COUNT(*) FILTER (WHERE ${etapa} = 'FUERA DE COBERTURA')::int AS fuera_cobertura_n,
+        COUNT(*) FILTER (WHERE ${etapa} IN ('ZONA PELIGROSA', 'ZONAS PELIGROSAS'))::int AS zona_peligrosa_n,
         COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)})::int AS descarte_base, 0::int AS real_mes, 0::int AS backlog,
         0::int AS regularizacion, 0::int AS tarjeta_credito,
         CASE WHEN COUNT(*) FILTER (WHERE ${esGestionableExpr(etapa)}) > 0
@@ -90,11 +101,12 @@ router.get('/dashboard', async (req, res) => {
           nombre_grupo: nombre, supervisor: nombre,
           leads_totales: 0, gestionables: 0, ventas_crm: 0,
           ingresos_reales: 0, descarte_count: 0, descarte_base: 0,
+          atc_n: 0, fuera_cobertura_n: 0, zona_peligrosa_n: 0,
           real_mes: 0, backlog: 0, eficiencia: 0,
         });
       }
       const grupo = porSupervisor.get(nombre);
-      for (const campo of ['leads_totales', 'gestionables', 'ventas_crm', 'ingresos_reales', 'descarte_count', 'descarte_base']) {
+      for (const campo of ['leads_totales', 'gestionables', 'ventas_crm', 'ingresos_reales', 'descarte_count', 'descarte_base', 'atc_n', 'fuera_cobertura_n', 'zona_peligrosa_n']) {
         grupo[campo] += Number(row[campo] || 0);
       }
     }

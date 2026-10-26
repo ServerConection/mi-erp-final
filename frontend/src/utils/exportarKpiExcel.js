@@ -66,7 +66,7 @@ const ESTADOS_BO = [
 ];
 // Letra de columna Excel a partir de su número (1 = A)
 const letra = (num) => { let t = ''; while (num > 0) { const m = (num - 1) % 26; t = String.fromCharCode(65 + m) + t; num = Math.floor((num - 1) / 26); } return t; };
-const COL_INI_ESTADOS = 37; // AK
+const COL_INI_ESTADOS = 46; // AT
 const COL_FIN_ESTADOS = COL_INI_ESTADOS + ESTADOS_BO.length - 1;
 const ULTIMA_COL = letra(COL_FIN_ESTADOS);
 
@@ -106,7 +106,16 @@ const COLS = [
   { L: 'AG', k: 'mpct',  w: 8.5,  f: 'meta_pct_planes',      sub: 'meta' },
   { L: 'AH', k: 'pct',   w: 8.5,  f: 'pct_planes_150_200',   sub: ['divn', 'planes_150_200_n', 'U'], meta: 'AG' },
   { L: 'AI', k: 'num',   w: 10,   f: 'por_regularizar',      sub: 'sum' },
-  { L: 'AJ', k: 'vacio', w: 2 },
+  { L: 'AJ', k: 'mpct', w: 8, f: 'meta_pct_atc', fixed: 0.50, sub: 'meta' },
+  { L: 'AK', k: 'num', w: 9, f: 'atc_n', sub: 'sum' },
+  { L: 'AL', k: 'pct', w: 8, f: 'pct_atc', sub: ['div', 'AK', 'F'], meta: 'AJ', invertido: true },
+  { L: 'AM', k: 'mpct', w: 8, f: 'meta_pct_fuera_cobertura', fixed: 0.03, sub: 'meta' },
+  { L: 'AN', k: 'num', w: 14, f: 'fuera_cobertura_n', sub: 'sum' },
+  { L: 'AO', k: 'pct', w: 8, f: 'pct_fuera_cobertura', sub: ['div', 'AN', 'F'], meta: 'AM', invertido: true },
+  { L: 'AP', k: 'mpct', w: 8, f: 'meta_pct_zona_peligrosa', fixed: 0.03, sub: 'meta' },
+  { L: 'AQ', k: 'num', w: 13, f: 'zona_peligrosa_n', sub: 'sum' },
+  { L: 'AR', k: 'pct', w: 8, f: 'pct_zona_peligrosa', sub: ['div', 'AQ', 'F'], meta: 'AP', invertido: true },
+  { L: 'AS', k: 'vacio', w: 2 },
   ...ESTADOS_BO.map(([f, h], i) => (f
     ? { L: letra(COL_INI_ESTADOS + i), k: 'num', w: 10, f, sub: 'sum', h }
     : { L: letra(COL_INI_ESTADOS + i), k: 'vacio', w: 6, h, borde: true })),
@@ -140,10 +149,15 @@ const HEAD7 = [
   ['AG7:AG8', 'PTO Planes 150, 200', { sz: 9, b: false }],
   ['AH7:AH8', 'REAL Planes 150, 200', { sz: 9, b: false }],
   ['AI7:AI8', 'POR REGULARIZAR', { sz: 9, b: false }],
-  [`AK7:${ULTIMA_COL}7`, 'STATUS DE CADA RAZÓN'],
+  ['AJ7:AL7', 'ATC'],
+  ['AM7:AO7', 'FUERA DE COBERTURA'],
+  ['AP7:AR7', 'ZONA PELIGROSA'],
+  [`AT7:${ULTIMA_COL}7`, 'STATUS DE CADA RAZÓN'],
 ];
 const HEAD8 = { E: 'Pto', F: 'Real', G: 'Pto', H: 'Real', J: 'Pto', K: 'Real', L: 'Pto', M: 'Real',
-  P: 'Pto', Q: 'N. DESCARTE', R: 'Real', T: 'Pto', U: 'Real', Y: 'Pto', Z: 'Real', AA: 'Pto', AB: 'Real' };
+  P: 'Pto', Q: 'N. DESCARTE', R: 'Real', T: 'Pto', U: 'Real', Y: 'Pto', Z: 'Real', AA: 'Pto', AB: 'Real',
+  AJ: 'Pto', AK: 'N. ATC', AL: 'Real %', AM: 'Pto', AN: 'N. Fuera de cobertura', AO: 'Real %',
+  AP: 'Pto', AQ: 'N. Zona peligrosa', AR: 'Real %' };
 
 // Valor más frecuente (> 0) de una meta %. Las metas % son iguales para todo
 // el equipo; el backend no las trae en la fila de supervisor/total.
@@ -194,7 +208,7 @@ export async function exportarKpiExcel({
 
   // Metas % comunes (para filas de supervisor/total y para la cabecera "Meta %")
   const metasPct = {};
-  for (const c of COLS) if (c.k === 'mpct') metasPct[c.f] = moda(filas, c.f) || moda(filasMeta || [], c.f) || n(total?.[c.f]);
+  for (const c of COLS) if (c.k === 'mpct') metasPct[c.f] = c.fixed ?? (moda(filas, c.f) || moda(filasMeta || [], c.f) || n(total?.[c.f]));
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'ERP Novo-Velsa';
@@ -297,7 +311,7 @@ export async function exportarKpiExcel({
       case 'num':  return Math.round(n(f[col.f]));
       case 'mnum': return divisorMeta > 1 ? n(f[col.f]) / divisorMeta : n(f[col.f]);
       case 'pct':  return n(f[col.f]) / 100;
-      case 'mpct': return n(f[col.f]) || metasPct[col.f] || 0;
+      case 'mpct': return col.fixed ?? (n(f[col.f]) || metasPct[col.f] || 0);
       case 'dif':  return n(f.ingresos_jot) - n(f.ingresos_crm);
       default:     return null;
     }
@@ -362,7 +376,7 @@ export async function exportarKpiExcel({
     // 1) valores numéricos (resultado cacheado)
     for (const col of COLS) {
       if (col.sub === 'sum') vals[col.L] = col.k === 'mnum' && divisorMeta > 1 ? n(datos[col.f]) / divisorMeta : n(datos[col.f]);
-      if (col.sub === 'meta') vals[col.L] = metasPct[col.f] || 0;
+      if (col.sub === 'meta') vals[col.L] = col.fixed ?? (metasPct[col.f] || 0);
     }
     vals.V = n(datos.ingresos_jot) - n(datos.ingresos_crm);
     for (const col of COLS) {

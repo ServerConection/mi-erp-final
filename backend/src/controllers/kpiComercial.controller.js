@@ -256,6 +256,18 @@ WITH datos AS (
                   BETWEEN $1::date AND $2::date
               AND ${esPorRegularizarExpr('mb.j_estatus_regularizacion')}
         )                                                  AS por_regularizar
+        ,COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) ~ '^ATC([ /-]?SOPORTE)?$'
+        )                                                  AS atc_n
+        ,COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) = 'FUERA DE COBERTURA'
+        )                                                  AS fuera_cobertura_n
+        ,COUNT(DISTINCT mb.b_id) FILTER (
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND UPPER(TRIM(mb.b_etapa_de_la_negociacion)) IN ('ZONA PELIGROSA', 'ZONAS PELIGROSAS')
+        )                                                  AS zona_peligrosa_n
     FROM __VISTA__ mb
     __JOIN_EMPLEADOS__
     WHERE __FILTROS__
@@ -328,6 +340,9 @@ const derivar = (f) => {
     pct_tercera_edad:     pct(f.tercera_edad_n,     f.ingresos_jot),
     pct_tarjeta:          pct(f.tarjeta_n,          f.ingresos_jot),
     pct_planes_150_200:   pct(f.planes_150_200_n,   f.ingresos_jot),
+    pct_atc:               pct(f.atc_n,               f.leads_total),
+    pct_fuera_cobertura:   pct(f.fuera_cobertura_n,   f.leads_total),
+    pct_zona_peligrosa:    pct(f.zona_peligrosa_n,    f.leads_total),
   };
 };
 
@@ -335,7 +350,8 @@ const CAMPOS_SUMA = [
   'leads_total', 'leads_gestion', 'ingresos_crm', 'descarte_n', 'ingresos_jot',
   'ingresos_jot_efectivo', 'ingresos_jot_acido',
   'activas_totales', 'activa_mes', 'activas_backlog', 'tercera_edad_n',
-  'tarjeta_n', 'planes_150_200_n', 'por_regularizar',
+  'tarjeta_n', 'planes_150_200_n', 'por_regularizar', 'atc_n',
+  'fuera_cobertura_n', 'zona_peligrosa_n',
   'meta_leads_total', 'meta_leads_gestion', 'meta_ingresos_jot', 'meta_activas_totales',
   ...ESTADOS_BO.map(([c]) => c),
 ];

@@ -14,6 +14,7 @@ import HomeModules    from "./pages/HomeModules";
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
 const Horarios             = lazy(() => import("./pages/Horarios"));
+const PilotoLlamadas       = lazy(() => import("./pages/PilotoLlamadas"));
 const IndicadoresVelsa     = lazy(() => import("./pages/IndicadoresVelsa"));
 const ComparativaSupervisores = lazy(() => import("./pages/ComparativaSupervisores"));
 const Seguimientoventas    = lazy(() => import("./pages/Seguimientoventas"));
@@ -179,6 +180,7 @@ export default function App() {
             <Route path="ventas"                    element={<Ventas />} />
             <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<AdministracionRoute><Horarios /></AdministracionRoute>} />
+            <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
             <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />

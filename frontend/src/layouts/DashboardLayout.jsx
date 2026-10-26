@@ -348,6 +348,8 @@ const ALL_MENU_ITEMS = [
   { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
   // Horarios semanales: solo administradores.
   { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p) => puedeAccederAdministracion(p) },
+  // Piloto de llamadas WhatsApp Desktop ocultas: solo administradores.
+  { name: "Piloto Llamadas", path: "/piloto-llamadas", icon: "📞", accessCheck: (p) => isAdmin(p) },
 
   // ── Indicadores ──────────────────────────────────────────────────────────
   { name: "Indicadores", path: null, icon: "📊", isGroup: true, groupId: "indicadores" },

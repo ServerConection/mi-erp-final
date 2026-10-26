@@ -536,7 +536,7 @@ exports.resumen = async (req, res) => {
   if (filtros.error) return res.status(400).json({ success: false, error: filtros.error });
 
   try {
-    const [totales, porTipo] = await Promise.all([
+    const [totales, porTipo, porEmpresa] = await Promise.all([
       pool.query(
         `SELECT
            COUNT(*)::INTEGER AS total,
@@ -560,8 +560,18 @@ exports.resumen = async (req, res) => {
          ORDER BY tipo_dispositivo`,
         filtros.valores
       ),
+      pool.query(
+        `SELECT empresa, COUNT(*)::INTEGER AS total
+         FROM public.inventario_activos ${filtros.where}
+         GROUP BY empresa
+         ORDER BY empresa`,
+        filtros.valores
+      ),
     ]);
-    return res.json({ success: true, data: { ...totales.rows[0], por_tipo: porTipo.rows } });
+    return res.json({
+      success: true,
+      data: { ...totales.rows[0], por_tipo: porTipo.rows, por_empresa: porEmpresa.rows },
+    });
   } catch (error) {
     return responderError(res, error, 'resumen');
   }

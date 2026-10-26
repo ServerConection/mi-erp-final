@@ -331,7 +331,11 @@ export default function ControlAsistencia() {
 
   const esComisionista = String(user?.perfil || "").trim().toUpperCase() === "USUARIO";
   const PASOS = esComisionista ? PASOS_COMISIONISTA : PASOS_NOMINA;
-  const TX = esComisionista ? TEXTOS_COMISIONISTA : TEXTOS_NOMINA;
+  const empresaAccess = String(user?.empresa || "").trim().toUpperCase() === "VELSA" ? "VELSA" : "NOVONET";
+  const TX = {
+    ...(esComisionista ? TEXTOS_COMISIONISTA : TEXTOS_NOMINA),
+    kioskoTitulo: `${empresaAccess} ACCESS`,
+  };
   // El resumen de todos los usuarios solo lo ven perfiles administrativos.
   const perfilActual = String(user?.perfil || "").trim().toUpperCase();
   const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "GERENTE"].includes(perfilActual)

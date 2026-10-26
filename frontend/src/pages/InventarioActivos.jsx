@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardEdit, Cpu, Download, HardDrive, Image as ImageIcon, Laptop, Loader2, MemoryStick, Plus, Save, Search, ShieldCheck, Wrench, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardEdit, Cpu, Download, Image as ImageIcon, Laptop, Loader2, Plus, Save, Search, ShieldCheck, X } from "lucide-react";
 import PlanoInventarioActivos from "../components/PlanoInventarioActivos";
 
 const API = `${(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")}/api/inventario-activos`;
@@ -118,14 +118,19 @@ function ModalDetalle({ activo, esAdmin, onCerrar, onEditar }) {
   </div>;
 }
 
-function Indicadores({ resumen }) {
+function Indicadores({ resumen, resumenGeneral, empresaActiva, onEmpresa }) {
+  const totalEmpresa = (empresa) => resumenGeneral.por_empresa?.find((item) => item.empresa === empresa)?.total || 0;
   const tarjetas = [
-    { titulo: "Total de activos", valor: resumen.total || 0, icono: <Laptop size={19} />, color: "text-blue-600 bg-blue-50" },
-    { titulo: "Disco mecanico", valor: resumen.computadores_disco_mecanico || 0, icono: <HardDrive size={19} />, color: "text-amber-600 bg-amber-50" },
-    { titulo: "RAM de 8 GB o menos", valor: resumen.computadores_ram_8_o_menos || 0, icono: <MemoryStick size={19} />, color: "text-violet-600 bg-violet-50" },
-    { titulo: "Por intervenir", valor: resumen.requieren_intervencion || 0, icono: <Wrench size={19} />, color: "text-rose-600 bg-rose-50" },
+    { titulo: "Total general", valor: resumenGeneral.total || 0, empresa: "", color: "text-blue-600 bg-blue-50" },
+    { titulo: "NOVONET", valor: totalEmpresa("NOVONET"), empresa: "NOVONET", color: "text-cyan-700 bg-cyan-50" },
+    { titulo: "VELSA", valor: totalEmpresa("VELSA"), empresa: "VELSA", color: "text-violet-700 bg-violet-50" },
+    { titulo: "Resultados filtrados", valor: resumen.total || 0, empresa: null, color: "text-emerald-700 bg-emerald-50" },
   ];
-  return <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{tarjetas.map(({ titulo, valor, icono, color }) => <div key={titulo} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${color}`}>{icono}</div><p className="text-2xl font-black text-slate-900">{valor}</p><p className="text-xs font-semibold text-slate-500">{titulo}</p></div>)}</div>
+  return <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{tarjetas.map(({ titulo, valor, empresa, color }) => {
+    const seleccionable = empresa !== null;
+    const activo = seleccionable && empresaActiva === empresa;
+    return <button type="button" key={titulo} disabled={!seleccionable} onClick={() => seleccionable && onEmpresa(empresa)} className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition ${activo ? "border-blue-500 ring-4 ring-blue-100" : "border-slate-200"} ${seleccionable ? "hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md" : "cursor-default"}`}><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${color}`}><Laptop size={19} /></div><p className="text-2xl font-black text-slate-900">{valor}</p><p className="text-xs font-semibold text-slate-500">{titulo}</p>{seleccionable && <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-blue-600">Ver equipos</p>}</button>;
+  })}</div>
     <div className="mt-3 flex flex-wrap gap-2">{(resumen.por_tipo || []).map((item) => <span key={item.tipo_dispositivo} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">{item.tipo_dispositivo}: {item.total}</span>)}</div></>;
 }
 
@@ -143,7 +148,7 @@ export default function InventarioActivos() {
   const [activos, setActivos] = useState([]);
   const [activosPlano, setActivosPlano] = useState([]);
   const [cargandoPlano, setCargandoPlano] = useState(true);
-  const [vistaPrincipal, setVistaPrincipal] = useState("plano");
+  const [vistaPrincipal, setVistaPrincipal] = useState("dashboard");
   const [idSolicitado, setIdSolicitado] = useState("");
   const [usuarioAsignadoId, setUsuarioAsignadoId] = useState(perfil.id ? String(perfil.id) : "");
   const [usuariosAsignables, setUsuariosAsignables] = useState([]);
@@ -159,6 +164,7 @@ export default function InventarioActivos() {
   const [pagina, setPagina] = useState(1);
   const [paginacion, setPaginacion] = useState({ page: 1, limit: 20, total: 0, total_pages: 0 });
   const [resumen, setResumen] = useState({ total: 0, por_tipo: [] });
+  const [resumenGeneral, setResumenGeneral] = useState({ total: 0, por_tipo: [], por_empresa: [] });
   const [responsable, setResponsable] = useState(usuarioSesion);
   const [fechaRevision, setFechaRevision] = useState("AUTOMATICA AL GUARDAR");
   const [cargando, setCargando] = useState(true);
@@ -217,15 +223,18 @@ export default function InventarioActivos() {
   };
 
   const cargarActivos = async () => {
-    const [respuestaListado, respuestaResumen] = await Promise.all([
+    const [respuestaListado, respuestaResumen, respuestaResumenGeneral] = await Promise.all([
       fetch(`${API}?${parametrosListado(true)}`, { headers: cabeceras() }),
       fetch(`${API}/resumen?${parametrosListado(false)}`, { headers: cabeceras() }),
+      fetch(`${API}/resumen`, { headers: cabeceras() }),
     ]);
     const listado = await leerRespuesta(respuestaListado);
     const indicadores = await leerRespuesta(respuestaResumen);
+    const indicadoresGenerales = await leerRespuesta(respuestaResumenGeneral);
     setActivos(listado.data || []);
     setPaginacion(listado.pagination || { page: 1, limit: 20, total: 0, total_pages: 0 });
     setResumen(indicadores.data || { total: 0, por_tipo: [] });
+    setResumenGeneral(indicadoresGenerales.data || { total: 0, por_tipo: [], por_empresa: [] });
   };
 
   const cargarPlano = async () => {
@@ -248,10 +257,11 @@ export default function InventarioActivos() {
     Promise.all([
       fetch(`${API}?${params}`, { headers: cabeceras() }).then(leerRespuesta),
       fetch(`${API}/resumen?${resumenParams}`, { headers: cabeceras() }).then(leerRespuesta),
+      fetch(`${API}/resumen`, { headers: cabeceras() }).then(leerRespuesta),
     ])
-      .then(([listado, indicadores]) => {
+      .then(([listado, indicadores, indicadoresGenerales]) => {
         if (!vigente) return;
-        setActivos(listado.data || []); setPaginacion(listado.pagination || {}); setResumen(indicadores.data || {});
+        setActivos(listado.data || []); setPaginacion(listado.pagination || {}); setResumen(indicadores.data || {}); setResumenGeneral(indicadoresGenerales.data || {});
       })
       .catch((error) => { if (vigente) setMensaje({ tipo: "error", texto: error.message }); })
       .finally(() => { if (vigente) setCargando(false); });
@@ -443,6 +453,11 @@ export default function InventarioActivos() {
     setFiltros(FILTROS_INICIAL); setFiltrosAplicados(FILTROS_INICIAL); setPagina(1); setCargando(true);
   };
 
+  const filtrarPorEmpresa = (empresa) => {
+    const siguientes = { ...FILTROS_INICIAL, empresa };
+    setFiltros(siguientes); setFiltrosAplicados(siguientes); setPagina(1); setCargando(true);
+  };
+
   const exportarExcel = async () => {
     setExportando(true); setMensaje(null);
     try {
@@ -478,7 +493,7 @@ export default function InventarioActivos() {
         </div>
       </header>
 
-      <main className={`mx-auto mt-5 px-1 sm:mt-7 sm:px-3 ${vistaPrincipal === "plano" ? "max-w-[1600px]" : "max-w-5xl"}`}>
+      <main className={`mx-auto mt-5 px-1 sm:mt-7 sm:px-3 ${vistaPrincipal === "plano" ? "max-w-[1600px]" : "max-w-6xl"}`}>
         {mensaje && <div role="alert" className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm font-semibold ${mensaje.tipo === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
           {mensaje.tipo === "error" ? <AlertCircle className="mt-0.5 shrink-0" size={19} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={19} />}<span>{mensaje.texto}</span>
         </div>}
@@ -573,11 +588,11 @@ export default function InventarioActivos() {
           </div>
         </form> : <>
           <div className="mb-5 flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-            <button type="button" onClick={() => setVistaPrincipal("plano")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "plano" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Plano</button>
-            <button type="button" onClick={() => setVistaPrincipal("listado")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "listado" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Listado</button>
+            <button type="button" onClick={() => setVistaPrincipal("dashboard")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "dashboard" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Dashboard</button>
+            <button type="button" onClick={() => setVistaPrincipal("plano")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "plano" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Plano de puestos</button>
           </div>
           {vistaPrincipal === "plano" ? <PlanoInventarioActivos activos={activosPlano} cargando={cargandoPlano} esAdmin={esAdmin} urlFoto={urlFoto} onRegistrar={nuevoActivo} onEditar={(activo) => seleccionarActivo(activo.id)} /> : <div className="space-y-5">
-          <Indicadores resumen={resumen} />
+          <Indicadores resumen={resumen} resumenGeneral={resumenGeneral} empresaActiva={filtrosAplicados.empresa} onEmpresa={filtrarPorEmpresa} />
 
           <form onSubmit={aplicarFiltros} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><Search size={18} className="text-blue-600" /><h2 className="font-black text-slate-800">Buscar y filtrar</h2></div><button type="button" onClick={exportarExcel} disabled={exportando} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-60">{exportando ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />} {exportando ? "Exportando..." : "Exportar a Excel"}</button></div>

@@ -2,25 +2,27 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * MIDDLEWARE: Control de acceso del módulo Evaluaciones
  * ═══════════════════════════════════════════════════════════════════════════════
- * Mismo criterio que Archivos Compartidos: PERFILES_CREADORES arma/gestiona
- * evaluaciones; cualquier usuario autenticado puede responder las que le
- * corresponden por empresa.
+ * Cualquier perfil autenticado puede entrar. USUARIO y ATC solo responden las
+ * que les corresponden por empresa; los demás perfiles también gestionan.
  */
 
 const pool = require('../config/db');
 
-const PERFILES_CREADORES = ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'];
+// Todo perfil autenticado puede gestionar, excepto USUARIO (asesores) y ATC,
+// que únicamente responden lo asignado desde "Mis evaluaciones".
+const puedeGestionarEvaluaciones = (perfil) =>
+  Boolean(perfil) && !['USUARIO', 'ATC'].includes(String(perfil).trim().toUpperCase());
 
 const accesoEvaluaciones = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, error: 'No autenticado' });
   }
-  req.puedeCrearEvaluaciones = PERFILES_CREADORES.includes(req.user.perfil);
+  req.puedeCrearEvaluaciones = puedeGestionarEvaluaciones(req.user.perfil);
   next();
 };
 
 const puedeCrearEvaluacion = (req, res, next) => {
-  if (!PERFILES_CREADORES.includes(req.user?.perfil)) {
+  if (!puedeGestionarEvaluaciones(req.user?.perfil)) {
     return res.status(403).json({
       success: false,
       error: 'Tu perfil no puede crear evaluaciones.',
@@ -59,8 +61,8 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
     const evaluacion = rows[0];
     const esCreador = evaluacion.creado_por === req.user.id || req.user.perfil === 'ADMINISTRADOR';
 
-    if (soloCreador && !esCreador) {
-      return res.status(403).json({ success: false, error: 'Solo quien creó la evaluación (o un administrador) puede hacer esto.' });
+    if (soloCreador && (!puedeGestionarEvaluaciones(req.user.perfil) || !esCreador)) {
+      return res.status(403).json({ success: false, error: 'Tu perfil no puede gestionar esta evaluación.' });
     }
 
     req.evaluacion = evaluacion;
@@ -72,4 +74,4 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
   }
 };
 
-module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion, PERFILES_CREADORES };
+module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion, puedeGestionarEvaluaciones };

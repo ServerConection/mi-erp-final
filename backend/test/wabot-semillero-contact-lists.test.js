@@ -20,8 +20,8 @@ test('las opciones de importación masiva consultan únicamente SEMILLERO', asyn
   const result = await bitrixLists.obtenerOpciones({ empresa: 'SEMILLERO' }, db)
 
   assert.equal(result.empresa, 'SEMILLERO')
-  assert.equal(calls.length, 2)
-  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero']])
+  assert.equal(calls.length, 3)
+  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero'], ['semillero']])
 })
 
 test('la previsualización masiva de SEMILLERO no mezcla registros de NOVONET', async () => {

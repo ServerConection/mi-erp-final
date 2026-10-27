@@ -15,6 +15,28 @@ function empresaUsuario(user) {
   return ['NOVONET', 'VELSA', 'SEMILLERO'].includes(empresa) ? empresa : 'NOVONET'
 }
 
+// Pipelines que se pueden elegir al crear una base. El valor coincide con
+// bitrix_webhook_leads.empresa (en minúsculas).
+const EMPRESAS_BASE = [
+  { id: 'NOVONET', name: 'NOVONET' },
+  { id: 'VELSA', name: 'VELSA' },
+  { id: 'SEMILLERO', name: 'SEMILLERO' },
+  { id: 'VENTAENLINEA', name: 'VENTA EN LÍNEA' },
+]
+
+// Empresa elegida en el filtro; si no viene o no es válida, la del usuario.
+function empresaElegida(user, input = {}) {
+  const pedida = String(input?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
+  return EMPRESAS_BASE.some(e => e.id === pedida) ? pedida : empresaUsuario(user)
+}
+
+// Solo administradores y usuarios autorizados pueden crear bases desde Bitrix.
+const USUARIOS_BASE_BITRIX = ['acloaiza']
+function puedeCrearBase(user) {
+  if (String(user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR') return true
+  return USUARIOS_BASE_BITRIX.includes(String(user?.usuario || '').trim().toLowerCase())
+}
+
 function configuracion(user) {
   const empresa = empresaUsuario(user)
   const webhook = empresa === 'VELSA'
@@ -96,27 +118,40 @@ function validarFiltros(input = {}) {
   return { stageIds, responsibleIds, sourceIds, from, to }
 }
 
-async function obtenerOpciones(user, db = require('../config/db')) {
-  const empresa = empresaUsuario(user)
+// input (opcional): { empresa, date_from, date_to }. Con fechas válidas, las
+// etapas, responsables y orígenes se limitan a los negocios creados en ese rango.
+// Compatibilidad: obtenerOpciones(user, db) sigue funcionando.
+async function obtenerOpciones(user, input = {}, db) {
+  if (input && typeof input.query === 'function') { db = input; input = {} }
+  db = db || require('../config/db')
+  const empresa = empresaElegida(user, input)
+  const params = [empresa.toLowerCase()]
+  let rango = ''
+  const from = String(input?.date_from || '').trim()
+  const to = String(input?.date_to || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) {
+    params.push(from, to)
+    rango = `\n          AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date`
+  }
   const [stageResult, responsibleResult, sourceResult] = await Promise.all([
     db.query(
       `SELECT etapa AS id,
               COALESCE(NULLIF(MAX(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(etapa), '') IS NOT NULL
-        GROUP BY etapa ORDER BY name`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(etapa), '') IS NOT NULL${rango}
+        GROUP BY etapa ORDER BY name`, params),
     db.query(
       `SELECT responsible AS id, responsible AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL
-        GROUP BY responsible ORDER BY responsible`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL${rango}
+        GROUP BY responsible ORDER BY responsible`, params),
     db.query(
       `SELECT BTRIM(source) AS id, BTRIM(source) AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL
-        GROUP BY BTRIM(source) ORDER BY 2`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL${rango}
+        GROUP BY BTRIM(source) ORDER BY 2`, params),
   ])
-  return { empresa, stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
+  return { empresa, empresas: EMPRESAS_BASE, stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
 }
 
 function extraerTelefonos(contact) {
@@ -138,7 +173,7 @@ async function cargarContactos(webhook, contactIds) {
 }
 
 async function consultar(user, input, db = require('../config/db')) {
-  const empresa = empresaUsuario(user)
+  const empresa = empresaElegida(user, input)
   const f = validarFiltros(input)
   const params = [empresa.toLowerCase(), f.from, f.to]
   let filtrosExtra = ''
@@ -189,4 +224,4 @@ async function consultar(user, input, db = require('../config/db')) {
     unique_contacts: items.length, truncated: deals.length >= MAX_DEALS, items }
 }
 
-module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario }
+module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeCrearBase, EMPRESAS_BASE }

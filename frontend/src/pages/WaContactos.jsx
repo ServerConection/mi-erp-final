@@ -8,16 +8,9 @@ import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 
-// Crear bases desde Bitrix: solo administradores y usuarios autorizados
-// (la regla real vive en el backend; esto solo oculta el botón).
-const USUARIOS_BASE_BITRIX = ["acloaiza"];
-const puedeCrearBaseBitrix = () => {
-  try {
-    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
-    return String(u.perfil || "").toUpperCase() === "ADMINISTRADOR"
-      || USUARIOS_BASE_BITRIX.includes(String(u.usuario || "").toLowerCase());
-  } catch { return false; }
-};
+// Crear bases desde Bitrix: habilitado para todos los usuarios
+// (antes solo ADMINISTRADOR y 'acloaiza'; la regla real vive en el backend).
+const puedeCrearBaseBitrix = () => true;
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";

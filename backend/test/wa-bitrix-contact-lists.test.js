@@ -73,9 +73,10 @@ test('crear base: elige pipeline por filtro y limita opciones al rango de fechas
   assert.equal(calls[0].params[0], 'velsa')
 })
 
-test('crear base: solo administradores o acloaiza', () => {
+test('crear base: habilitado para todos los usuarios autenticados', () => {
   const service = require('../src/services/waBitrixContactLists.service')
   assert.equal(service.puedeCrearBase({ perfil: 'ADMINISTRADOR', usuario: 'x' }), true)
   assert.equal(service.puedeCrearBase({ perfil: 'USUARIO', usuario: 'ACLOAIZA' }), true)
-  assert.equal(service.puedeCrearBase({ perfil: 'SUPERVISOR', usuario: 'kpucha' }), false)
+  assert.equal(service.puedeCrearBase({ perfil: 'SUPERVISOR', usuario: 'kpucha' }), true)
+  assert.equal(service.puedeCrearBase(null), false)
 })

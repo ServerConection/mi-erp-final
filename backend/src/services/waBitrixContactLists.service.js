@@ -30,11 +30,10 @@ function empresaElegida(user, input = {}) {
   return EMPRESAS_BASE.some(e => e.id === pedida) ? pedida : empresaUsuario(user)
 }
 
-// Solo administradores y usuarios autorizados pueden crear bases desde Bitrix.
-const USUARIOS_BASE_BITRIX = ['acloaiza']
+// Crear bases desde Bitrix: habilitado para todos los usuarios autenticados.
+// (Antes: solo ADMINISTRADOR y 'acloaiza'. Para volver a restringir, cambiar esta función.)
 function puedeCrearBase(user) {
-  if (String(user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR') return true
-  return USUARIOS_BASE_BITRIX.includes(String(user?.usuario || '').trim().toLowerCase())
+  return Boolean(user)
 }
 
 function configuracion(user) {

@@ -61,7 +61,7 @@ const EMPRESAS = {
     pipeline: env.VELSA_GESTIONABLES_PIPELINE || 'VELSA',
     etapa: env.VELSA_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874301,
-    plazoVentaHoras: 3,                          // Velsa: 3 horas para pasar a Venta Subida (igual que Novonet)
+    plazoVentaHoras: 5,                          // Velsa: 5 horas para pasar a Venta Subida
   },
 };
 

@@ -276,7 +276,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                           <span className="tabular-nums">{r.asignados} / {r.permitidos}</span>
                         </div>
                       </td>
-                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.total_asignados ?? r.asignados}</td>
+                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.total_asignados ?? r.asignados}{r.sin_conteo > 0 && <span className="ml-1 text-xs font-normal text-slate-500" title="Leads de FB Messenger - Novo: se entregan en orden pero no cuentan en leads, ATC ni gestionables">+{r.sin_conteo} Messenger</span>}</td>
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>

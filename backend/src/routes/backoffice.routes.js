@@ -288,7 +288,11 @@ router.get('/reporte-gestion', async (req, res) => {
   try {
     const desde = String(req.query.desde || '').trim();
     const hasta = String(req.query.hasta || '').trim();
-    const usuarioFiltro = String(req.query.usuario || '').trim().toUpperCase();
+    const puedeElegirUsuario = req.user.perfil === 'ADMINISTRADOR'
+      || String(req.user.usuario || '').trim().toLowerCase() === 'arengel';
+    const usuarioFiltro = puedeElegirUsuario
+      ? String(req.query.usuario || '').trim().toUpperCase()
+      : String(req.user.usuario || '').trim().toUpperCase();
     const empresaFiltro = String(req.query.empresa || '').trim().toUpperCase();
     const campoFiltro = String(req.query.campo || '').trim().toLowerCase();
     const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
@@ -331,8 +335,17 @@ router.get('/reporte-gestion', async (req, res) => {
         const login = String(evento?.usuario || evento?.username || evento?.login_usuario || evento?.modificado_por || '').trim();
         const nombre = String(evento?.nombre_usuario || evento?.usuario_nombre || evento?.nombreUsuario || login || (evento?.usuario_id ? `Usuario #${evento.usuario_id}` : 'Historial anterior')).trim();
         const claveUsuario = String(evento?.usuario_id || login || nombre).trim();
-        usuarios.set(claveUsuario, { id: claveUsuario, login, nombre });
-        const coincideUsuario = !usuarioFiltro || [claveUsuario, login, nombre].some(valor => normalizar(valor) === usuarioFiltro);
+        const identidadesEvento = [claveUsuario, login, nombre].map(normalizar).filter(Boolean);
+        const identidadesAutenticado = [req.user.id, req.user.usuario, req.user.nombreCompleto]
+          .map(normalizar).filter(Boolean);
+        const coincideUsuario = puedeElegirUsuario
+          ? (!usuarioFiltro || identidadesEvento.includes(usuarioFiltro))
+          : identidadesEvento.some(valor => identidadesAutenticado.includes(valor));
+        // Quien puede elegir necesita el catálogo completo aunque ya haya
+        // seleccionado un usuario. Los demás reciben únicamente su identidad.
+        if (puedeElegirUsuario || coincideUsuario) {
+          usuarios.set(claveUsuario, { id: claveUsuario, login, nombre });
+        }
         if (!coincideUsuario) continue;
         const cambios = Array.isArray(evento?.cambios)
           ? evento.cambios
@@ -358,6 +371,15 @@ router.get('/reporte-gestion', async (req, res) => {
     }
     detalle.sort((a, b) => String(b.fecha_hora).localeCompare(String(a.fecha_hora)) || Number(b.registro_id) - Number(a.registro_id));
 
+    if (!puedeElegirUsuario) {
+      usuarios.clear();
+      usuarios.set(String(req.user.id), {
+        id: String(req.user.id),
+        login: req.user.usuario || '',
+        nombre: req.user.nombreCompleto || req.user.usuario || `Usuario #${req.user.id}`,
+      });
+    }
+
     const acumular = (mapa, clave, base) => {
       if (!mapa.has(clave)) mapa.set(clave, { ...base, cantidad: 0 });
       mapa.get(clave).cantidad += 1;
@@ -365,11 +387,11 @@ router.get('/reporte-gestion', async (req, res) => {
     const diario = new Map();
     const estatus = new Map();
     for (const fila of detalle) {
-      acumular(diario, `${fila.fecha}|${fila.usuario_id || fila.usuario || fila.nombre_usuario}`, {
+      acumular(diario, `${fila.fecha}|${fila.usuario_id || fila.usuario || fila.nombre_usuario}|${fila.empresa}`, {
         fecha: fila.fecha, usuario: fila.usuario, nombre_usuario: fila.nombre_usuario, empresa: fila.empresa,
       });
       if (fila.campo === 'netlife_estatus_real' || fila.campo === 'estatus_regularizacion') {
-        acumular(estatus, `${fila.nombre_usuario}|${fila.campo}|${String(fila.nuevo)}`, {
+        acumular(estatus, `${fila.nombre_usuario}|${fila.empresa}|${fila.campo}|${String(fila.nuevo)}`, {
           usuario: fila.usuario, nombre_usuario: fila.nombre_usuario, campo: fila.campo, estatus: fila.nuevo, empresa: fila.empresa,
         });
       }
@@ -377,7 +399,16 @@ router.get('/reporte-gestion', async (req, res) => {
     const resumenDiario = [...diario.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.cantidad - a.cantidad);
     const resumenEstatus = [...estatus.values()].sort((a, b) => b.cantidad - a.cantidad);
     const campos = [...camposDisponibles].sort();
-    return res.json({ success: true, data: { detalle, resumenDiario, resumenEstatus, usuarios: [...usuarios.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)), campos } });
+    return res.json({
+      success: true,
+      data: {
+        detalle, resumenDiario, resumenEstatus,
+        usuarios: [...usuarios.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+        campos,
+        puedeElegirUsuario,
+        usuarioAutenticado: { id: req.user.id, login: req.user.usuario, nombre: req.user.nombreCompleto },
+      },
+    });
   } catch (error) {
     console.error('[BACKOFFICE] reporte gestión:', error);
     return res.status(500).json({ success: false, error: 'No se pudo generar el reporte de gestión.' });

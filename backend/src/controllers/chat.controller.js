@@ -11,6 +11,52 @@ const pool = require('../config/db');
 const { validarParticipantes } = require('../middleware/chatAcceso');
 const { nombreCompleto, emitirAUsuario, emitirAParticipantes } = require('../services/chat.service');
 
+const EXTENSIONES_BLOQUEADAS = new Set([
+  '.exe', '.msi', '.com', '.scr', '.bat', '.cmd', '.ps1', '.sh',
+  '.js', '.mjs', '.cjs', '.html', '.htm', '.svg', '.php', '.jar', '.apk',
+]);
+
+let tablaArchivosLista;
+function asegurarTablaArchivos() {
+  if (!tablaArchivosLista) {
+    tablaArchivosLista = pool.query(`
+      CREATE TABLE IF NOT EXISTS public.chat_archivos (
+        id              BIGSERIAL PRIMARY KEY,
+        mensaje_id      INTEGER NOT NULL UNIQUE REFERENCES public.chat_mensajes(id) ON DELETE CASCADE,
+        nombre_original VARCHAR(255) NOT NULL,
+        mime_type       VARCHAR(150) NOT NULL DEFAULT 'application/octet-stream',
+        tamano_bytes    INTEGER NOT NULL CHECK (tamano_bytes > 0 AND tamano_bytes <= 26214400),
+        datos           BYTEA NOT NULL,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_archivos_mensaje ON public.chat_archivos (mensaje_id);
+    `).catch(error => {
+      tablaArchivosLista = null;
+      throw error;
+    });
+  }
+  return tablaArchivosLista;
+}
+
+const extensionArchivo = nombre => {
+  const limpio = String(nombre || '').toLowerCase();
+  const punto = limpio.lastIndexOf('.');
+  return punto >= 0 ? limpio.slice(punto) : '';
+};
+
+const nombreArchivoSeguro = nombre => String(nombre || 'archivo')
+  .replace(/[\u0000-\u001f\u007f]/g, '')
+  .replace(/[\\/]/g, '_')
+  .trim()
+  .slice(0, 255) || 'archivo';
+
+const archivoDeFila = fila => fila.archivo_id ? {
+  id: Number(fila.archivo_id),
+  nombre: fila.archivo_nombre,
+  tipo: fila.archivo_tipo,
+  tamano: Number(fila.archivo_tamano),
+} : null;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // CATÁLOGO DE USUARIOS (para armar chats nuevos)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -215,6 +261,7 @@ exports.crearConversacion = async (req, res) => {
  */
 exports.listarMensajes = async (req, res) => {
   try {
+    await asegurarTablaArchivos();
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const antes = parseInt(req.query.antes, 10);
 
@@ -228,9 +275,12 @@ exports.listarMensajes = async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT m.id, m.usuario_id, m.contenido, m.created_at,
+              a.id AS archivo_id, a.nombre_original AS archivo_nombre,
+              a.mime_type AS archivo_tipo, a.tamano_bytes AS archivo_tamano,
               u.usuario, u.nombres, u.apellidos
          FROM chat_mensajes m
          JOIN usuarios u ON u.id = m.usuario_id
+         LEFT JOIN chat_archivos a ON a.mensaje_id = m.id
         WHERE m.conversacion_id = $1 AND NOT m.eliminado ${condicionAntes}
         ORDER BY m.id DESC
         LIMIT $${params.length}`,
@@ -243,6 +293,7 @@ exports.listarMensajes = async (req, res) => {
       usuarioId: r.usuario_id,
       autor: nombreCompleto(r),
       contenido: r.contenido,
+      archivo: archivoDeFila(r),
       createdAt: r.created_at,
       esMio: r.usuario_id === req.user.id,
     }));
@@ -251,6 +302,101 @@ exports.listarMensajes = async (req, res) => {
   } catch (error) {
     console.error('[chat.listarMensajes]', error);
     res.status(500).json({ success: false, error: 'No se pudieron cargar los mensajes' });
+  }
+};
+
+/** POST /api/chat/conversaciones/:conversacionId/archivos (multipart) */
+exports.enviarArchivo = async (req, res) => {
+  if (!req.file?.buffer?.length) {
+    return res.status(400).json({ success: false, error: 'Selecciona un archivo para enviar.' });
+  }
+
+  const nombre = nombreArchivoSeguro(req.file.originalname);
+  if (EXTENSIONES_BLOQUEADAS.has(extensionArchivo(nombre))) {
+    return res.status(400).json({ success: false, error: 'Ese tipo de archivo no está permitido por seguridad.' });
+  }
+  const comentario = String(req.body.contenido || '').trim();
+  if (comentario.length > 20000) {
+    return res.status(400).json({ success: false, error: 'El mensaje admite máximo 20000 caracteres.' });
+  }
+
+  const db = await pool.connect();
+  try {
+    await asegurarTablaArchivos();
+    await db.query('BEGIN');
+    const { rows: mensajes } = await db.query(
+      `INSERT INTO chat_mensajes (conversacion_id, usuario_id, contenido)
+       VALUES ($1, $2, $3)
+       RETURNING id, usuario_id, contenido, created_at`,
+      [req.conversacion.id, req.user.id, comentario || `📎 ${nombre}`]
+    );
+    const m = mensajes[0];
+    const { rows: archivos } = await db.query(
+      `INSERT INTO chat_archivos (mensaje_id, nombre_original, mime_type, tamano_bytes, datos)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nombre_original, mime_type, tamano_bytes`,
+      [m.id, nombre, req.file.mimetype || 'application/octet-stream', req.file.size, req.file.buffer]
+    );
+    await db.query(
+      `UPDATE chat_participantes SET ultimo_leido_id = $3
+        WHERE conversacion_id = $1 AND usuario_id = $2`,
+      [req.conversacion.id, req.user.id, m.id]
+    );
+    const { rows: participantes } = await db.query(
+      `SELECT usuario_id FROM chat_participantes WHERE conversacion_id = $1 AND activo`,
+      [req.conversacion.id]
+    );
+    await db.query('COMMIT');
+
+    const a = archivos[0];
+    const mensaje = {
+      id: m.id, conversacionId: req.conversacion.id, usuarioId: m.usuario_id,
+      autor: nombreCompleto(req.user), contenido: m.contenido, createdAt: m.created_at,
+      archivo: { id: Number(a.id), nombre: a.nombre_original, tipo: a.mime_type, tamano: Number(a.tamano_bytes) },
+    };
+    emitirAParticipantes(
+      participantes.map(p => p.usuario_id).filter(id => id !== req.user.id),
+      'chat:mensaje', mensaje
+    );
+    return res.status(201).json({ success: true, data: { ...mensaje, esMio: true } });
+  } catch (error) {
+    try { await db.query('ROLLBACK'); } catch (_) {}
+    console.error('[chat.enviarArchivo]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo enviar el archivo.' });
+  } finally {
+    db.release();
+  }
+};
+
+/** GET /api/chat/archivos/:archivoId/descargar - solo participantes activos */
+exports.descargarArchivo = async (req, res) => {
+  const archivoId = Number(req.params.archivoId);
+  if (!Number.isInteger(archivoId) || archivoId <= 0) {
+    return res.status(404).json({ success: false, error: 'Archivo no encontrado.' });
+  }
+  try {
+    await asegurarTablaArchivos();
+    const { rows } = await pool.query(
+      `SELECT a.nombre_original, a.mime_type, a.tamano_bytes, a.datos
+         FROM chat_archivos a
+         JOIN chat_mensajes m ON m.id = a.mensaje_id AND NOT m.eliminado
+         JOIN chat_participantes p ON p.conversacion_id = m.conversacion_id
+              AND p.usuario_id = $2 AND p.activo
+        WHERE a.id = $1`,
+      [archivoId, req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Archivo no encontrado.' });
+    const archivo = rows[0];
+    const nombre = nombreArchivoSeguro(archivo.nombre_original);
+    res.setHeader('Content-Type', archivo.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Length', archivo.tamano_bytes);
+    res.setHeader('Content-Disposition', `attachment; filename="archivo"; filename*=UTF-8''${encodeURIComponent(nombre)}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    return res.send(archivo.datos);
+  } catch (error) {
+    console.error('[chat.descargarArchivo]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo descargar el archivo.' });
   }
 };
 
@@ -307,7 +453,7 @@ exports.enviarMensaje = async (req, res) => {
   }
 };
 
-/** DELETE /api/chat/mensajes/:mensajeId - borrado logico por autor o administrador */
+/** DELETE /api/chat/mensajes/:mensajeId - exclusivo para ADMINISTRADOR */
 exports.eliminarMensaje = async (req, res) => {
   const mensajeId = Number(req.params.mensajeId);
   if (!Number.isInteger(mensajeId) || mensajeId <= 0) {
@@ -315,6 +461,7 @@ exports.eliminarMensaje = async (req, res) => {
   }
 
   try {
+    await asegurarTablaArchivos();
     const { rows } = await pool.query(
       `SELECT id, conversacion_id, usuario_id, eliminado
          FROM chat_mensajes
@@ -326,22 +473,25 @@ exports.eliminarMensaje = async (req, res) => {
     }
 
     const mensaje = rows[0];
-    const esAutor = Number(mensaje.usuario_id) === Number(req.user.id);
-    const esAdmin = req.user.perfil === 'ADMINISTRADOR';
-    if (!esAutor && !esAdmin) {
+    if (req.user.perfil !== 'ADMINISTRADOR') {
       return res.status(403).json({
         success: false,
-        error: 'No tienes permiso para eliminar mensajes enviados por otra persona.',
+        error: 'Solo un administrador puede eliminar mensajes y archivos.',
       });
     }
 
-    const eliminado = await pool.query(
-      `UPDATE chat_mensajes
-          SET eliminado = TRUE
-        WHERE id = $1 AND NOT eliminado
-        RETURNING id, conversacion_id`,
-      [mensajeId]
-    );
+    const eliminado = await pool.transaction(async db => {
+      const actualizado = await db.query(
+        `UPDATE chat_mensajes SET eliminado = TRUE
+          WHERE id = $1 AND NOT eliminado
+          RETURNING id, conversacion_id`,
+        [mensajeId]
+      );
+      if (actualizado.rows.length) {
+        await db.query(`DELETE FROM chat_archivos WHERE mensaje_id = $1`, [mensajeId]);
+      }
+      return actualizado;
+    });
     if (!eliminado.rows.length) {
       return res.status(404).json({ success: false, error: 'Mensaje no encontrado' });
     }

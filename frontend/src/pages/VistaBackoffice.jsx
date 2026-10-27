@@ -8397,7 +8397,14 @@ function ModuloRegistros({ onVolver, idInicial, nav, navegar, empresa, onCambiar
 
 function ReporteGestionAtc({ onVolver, empresa, onCambiarEmpresa }) {
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const [filtros, setFiltros] = useState({ desde: `${hoy.slice(0, 7)}-01`, hasta: hoy, usuario: "", campo: "" });
+  const usuarioSesion = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); }
+    catch { return {}; }
+  }, []);
+  const puedeElegirUsuario = String(usuarioSesion.perfil || "").trim().toUpperCase() === "ADMINISTRADOR"
+    || String(usuarioSesion.usuario || "").trim().toLowerCase() === "arengel";
+  const usuarioInicial = puedeElegirUsuario ? "" : String(usuarioSesion.id || usuarioSesion.usuario || "");
+  const [filtros, setFiltros] = useState({ desde: `${hoy.slice(0, 7)}-01`, hasta: hoy, usuario: usuarioInicial, campo: "" });
   const [data, setData] = useState({ detalle: [], resumenDiario: [], resumenEstatus: [], usuarios: [], campos: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -8410,10 +8417,20 @@ function ReporteGestionAtc({ onVolver, empresa, onCambiarEmpresa }) {
       const respuesta = await fetch(`${API}/api/backoffice/reporte-gestion?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const json = await respuesta.json().catch(() => ({}));
       if (!respuesta.ok || !json.success) throw new Error(json.error || "No se pudo cargar el reporte");
-      setData(json.data || { detalle: [], resumenDiario: [], resumenEstatus: [], usuarios: [], campos: [] });
+      const siguiente = json.data || { detalle: [], resumenDiario: [], resumenEstatus: [], usuarios: [], campos: [] };
+      setData(siguiente);
+      if (!puedeElegirUsuario) {
+        const propio = (siguiente.usuarios || []).find(u =>
+          String(u.id) === String(usuarioSesion.id)
+          || String(u.login || "").trim().toLowerCase() === String(usuarioSesion.usuario || "").trim().toLowerCase()
+        );
+        if (propio && String(filtros.usuario) !== String(propio.id)) {
+          setFiltros(actual => ({ ...actual, usuario: String(propio.id) }));
+        }
+      }
     } catch (e) { setError(e.message || "No se pudo cargar el reporte"); }
     finally { setLoading(false); }
-  }, [filtros, empresa]);
+  }, [filtros, empresa, puedeElegirUsuario, usuarioSesion.id, usuarioSesion.usuario]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -8444,7 +8461,7 @@ function ReporteGestionAtc({ onVolver, empresa, onCambiarEmpresa }) {
           <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>EMPRESA<select value={empresa} onChange={e => onCambiarEmpresa(e.target.value)} style={inputStyle}><option value="TODOS">TODAS</option><option value="NOVONET">NOVONET</option><option value="VELSA">VELSA</option><option value="SEMILLERO">SEMILLERO</option></select></label>
           <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>DESDE<input type="date" value={filtros.desde} max={filtros.hasta} onChange={e => setFiltros(f => ({ ...f, desde: e.target.value }))} style={inputStyle} /></label>
           <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900 }}>HASTA<input type="date" value={filtros.hasta} min={filtros.desde} onChange={e => setFiltros(f => ({ ...f, hasta: e.target.value }))} style={inputStyle} /></label>
-          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900, minWidth: 250 }}>USUARIO<select value={filtros.usuario} onChange={e => setFiltros(f => ({ ...f, usuario: e.target.value }))} style={inputStyle}><option value="">TODOS</option>{data.usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.login ? ` (@${u.login})` : ""}</option>)}</select></label>
+          <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900, minWidth: 250 }}>USUARIO<select value={filtros.usuario} disabled={!puedeElegirUsuario} onChange={e => setFiltros(f => ({ ...f, usuario: e.target.value }))} style={{ ...inputStyle, cursor: puedeElegirUsuario ? "pointer" : "not-allowed", background: puedeElegirUsuario ? "#fff" : "#f1f5f9", opacity: puedeElegirUsuario ? 1 : .85 }}>{puedeElegirUsuario && <option value="">TODOS</option>}{data.usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.login ? ` (@${u.login})` : ""}</option>)}</select></label>
           <label style={{ display: "grid", gap: 5, fontSize: 10, fontWeight: 900, minWidth: 220 }}>CAMPO<select value={filtros.campo} onChange={e => setFiltros(f => ({ ...f, campo: e.target.value }))} style={inputStyle}><option value="">TODOS LOS CAMBIOS</option>{data.campos.map(c => <option key={c} value={c}>{FIELD_LABELS[c] || c.replaceAll("_", " ").toUpperCase()}</option>)}</select></label>
         </div>
         {error && <div style={{ padding: 12, borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", marginBottom: 14 }}>{error}</div>}

@@ -257,7 +257,9 @@ exports.detalleParaTomar = async (req, res) => {
       `SELECT nota, aprobado, created_at FROM eva_intentos WHERE evaluacion_id = $1 AND usuario_id = $2`,
       [req.evaluacion.id, req.user.id]
     );
-    if (intento.length > 0) {
+    // Un aprobado es definitivo. Un resultado reprobado se puede volver a
+    // intentar y se reemplaza únicamente para este mismo usuario.
+    if (intento.length > 0 && intento[0].aprobado) {
       return res.status(409).json({
         success: false,
         error: 'Ya respondiste esta evaluación',
@@ -308,9 +310,21 @@ exports.responder = async (req, res) => {
       const { rows } = await pool.query(
         `INSERT INTO eva_intentos (evaluacion_id, usuario_id, respuestas, total_preguntas, correctas, nota, aprobado)
          VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)
+         ON CONFLICT (evaluacion_id, usuario_id) DO UPDATE
+             SET respuestas      = EXCLUDED.respuestas,
+                 total_preguntas = EXCLUDED.total_preguntas,
+                 correctas       = EXCLUDED.correctas,
+                 nota            = EXCLUDED.nota,
+                 aprobado        = EXCLUDED.aprobado,
+                 correo_enviado  = false,
+                 created_at      = now()
+           WHERE eva_intentos.aprobado = false
          RETURNING id, nota, aprobado, created_at`,
         [req.evaluacion.id, req.user.id, JSON.stringify(respuestas), total, correctas, nota, aprobado]
       );
+      if (rows.length === 0) {
+        return res.status(409).json({ success: false, error: 'Ya aprobaste esta evaluación' });
+      }
       intento = rows[0];
     } catch (e) {
       if (e.code === '23505') { // unique_violation → ya la había respondido

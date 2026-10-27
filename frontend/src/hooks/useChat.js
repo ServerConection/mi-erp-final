@@ -35,6 +35,38 @@ async function pedir(ruta, { method = 'GET', body } = {}) {
   return data;
 }
 
+async function enviarFormulario(ruta, formulario) {
+  const res = await fetch(`${BASE}${ruta}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: formulario,
+  });
+  let data = {};
+  try { data = await res.json(); } catch { /* respuesta sin cuerpo */ }
+  if (!res.ok || data.success === false) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
+
+async function descargarAdjunto(id, nombre) {
+  const res = await fetch(`${BASE}/archivos/${id}/descargar`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+  });
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.json(); } catch { /* respuesta sin cuerpo */ }
+    throw new Error(data.error || 'No se pudo descargar el archivo');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombre || 'archivo';
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const chatApi = {
   usuarios: (q = '') => pedir(`/usuarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
 
@@ -45,6 +77,13 @@ export const chatApi = {
     pedir(`/conversaciones/${conversacionId}/mensajes${antes ? `?antes=${antes}` : ''}`),
   enviarMensaje: (conversacionId, contenido) =>
     pedir(`/conversaciones/${conversacionId}/mensajes`, { method: 'POST', body: { contenido } }),
+  enviarArchivo: (conversacionId, archivo, contenido = '') => {
+    const formulario = new FormData();
+    formulario.append('archivo', archivo);
+    if (contenido) formulario.append('contenido', contenido);
+    return enviarFormulario(`/conversaciones/${conversacionId}/archivos`, formulario);
+  },
+  descargarArchivo: (archivoId, nombre) => descargarAdjunto(archivoId, nombre),
   eliminarMensaje: (mensajeId) => pedir(`/mensajes/${mensajeId}`, { method: 'DELETE' }),
   marcarLeido: (conversacionId) =>
     pedir(`/conversaciones/${conversacionId}/leido`, { method: 'PATCH' }),

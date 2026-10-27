@@ -291,7 +291,7 @@ export default function TomarEvaluacion({ evaluacionId, onVolver }) {
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">Revisa antes de enviar</h2>
                 <p className="text-xs text-slate-500">
-                  Toca cualquier pregunta para volver a ella. Solo tienes 1 intento.
+                  Toca cualquier pregunta para volver a ella. Si repruebas, podrás volver a intentarlo.
                 </p>
               </div>
             </div>
@@ -553,7 +553,7 @@ function ModalConfirmar({ abierto, onCerrar, onConfirmar, enviando, sinResponder
   return (
     <Modal abierto={abierto} onCerrar={onCerrar} titulo="¿Enviar la evaluación?" ancho="max-w-md">
       <p className="text-sm text-slate-600">
-        Solo tienes <strong>1 intento</strong>. Una vez enviada no podrás cambiar tus respuestas.
+        Una vez enviada no podrás cambiar estas respuestas. Si repruebas, podrás volver a intentarlo.
       </p>
       {sinResponder > 0 && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">

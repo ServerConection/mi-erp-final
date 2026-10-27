@@ -48,8 +48,9 @@ router.get('/', async (req, res) => {
            FROM public.bitrix_webhook_leads
           WHERE empresa = $2
             AND LEFT(created_at_ecuador, 10) = $1
+            AND UPPER(BTRIM(COALESCE(source, ''))) <> ALL($3::text[])   -- FB Messenger - Novo no cuenta
           GROUP BY 1`,
-        [req.query.fecha, E.clave]
+        [req.query.fecha, E.clave, (E.origenesSinConteo || []).map((o) => o.toUpperCase())]
       );
       counts = new Map(actual.rows.map(r => [r.asesor, r.total]));
     } catch (e) {
@@ -152,6 +153,12 @@ router.get('/reparto/estado', async (req, res) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
       const esEstacion = normalizarNombre(r.nombre) === normalizarNombre(cfg.estacion_nombre);
       const atcHoy = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.atc || 0) : null;
+      // FB Messenger - Novo: se entrega en orden pero no suma a ninguna cantidad
+      const sinC = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.sin_conteo || 0) : 0;
+      const sinCH = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.sin_conteo_humano || 0) : 0;
+      r.asignados = Math.max(0, r.asignados - sinC);
+      r.asignados_humano = Math.max(0, (r.asignados_humano || 0) - sinCH);
+      r.asignados_bot = Math.max(0, (r.asignados_bot || 0) - (sinC - sinCH));
       const tope = topeAtc({ permitidos: r.permitidos });
       return {
         ...r,
@@ -176,6 +183,7 @@ router.get('/reparto/estado', async (req, res) => {
         venta_subida: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.venta || 0) : null,
         vencidos: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0) : null,
         // Meta de Ventas Subidas = 30% de sus gestionables, redondeado hacia arriba
+        sin_conteo: sinC,                     // entregados de FB Messenger - Novo (no cuentan)
         meta_venta: gestMap ? metaVentaSubida(gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
         bloqueado_efectividad: gestMap ? bloqueadoPorEfectividad({
           gestionables: gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0,

@@ -75,8 +75,15 @@ function categoriaDesdeTexto(texto) {
   if (t.includes('COMISION')) return 'COMISION';
   return null;
 }
-const REGLAS = { asegurado: 550, meta: 35, desdeTramo2: 41 };
+const REGLAS = {
+  asegurado: 550, meta: 35, desdeTramo2: 41,
+  // Bono al volumen: ventas que cuentan → USD (se toma el escalón más alto alcanzado)
+  bonoVolumen: [[60, 80], [50, 60], [40, 40]],
+  // Tercera edad: máximo 15% de las ventas del asesor; las que pasan ese % no se pagan
+  topeTerceraEdad: 0.15,
+};
 const cuentaParaAsegurado = (cat) => !cat || cat === 'TABLA' || cat === 'PYME';
+const esTerceraEdad = (v) => String(v.tipo || '').toUpperCase() === 'TERCERA EDAD';
 
 /**
  * Valor de un conjunto de ventas de UN asesor.
@@ -87,18 +94,42 @@ const cuentaParaAsegurado = (cat) => !cat || cat === 'TABLA' || cat === 'PYME';
  *  - las de comisión se suman aparte con el mismo tramo
  */
 function calcularValor(ventas, reglas = REGLAS) {
-  const tabla = ventas.filter((v) => cuentaParaAsegurado(v.categoria));
-  const directas = ventas.filter((v) => !cuentaParaAsegurado(v.categoria));
+  // "No vender": se pagan por comisión, pero NO cuentan como venta (ni tabla, ni 15%, ni bono volumen)
+  const noVender = ventas.filter((v) => v.categoria === 'NO_VENDER');
+  const cuentan = ventas.filter((v) => v.categoria !== 'NO_VENDER');
+
+  // Tope tercera edad por asesor: solo se paga hasta el 15% de sus ventas; las más recientes quedan fuera
+  const permitidasTE = Math.floor((reglas.topeTerceraEdad ?? 1) * cuentan.length + 1e-9);
+  const te = cuentan.filter(esTerceraEdad)
+    .sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+  const excedentes = new Set(te.slice(permitidasTE));
+  const pagables = cuentan.filter((v) => !excedentes.has(v));
+
+  // PYME: si llega a la meta (35) SIN las PYME, las PYME se pagan aparte como bono; si no, suman a tabla
+  const base = pagables.filter((v) => cuentaParaAsegurado(v.categoria) && v.categoria !== 'PYME');
+  const pymes = pagables.filter((v) => v.categoria === 'PYME');
+  const pymeComoBono = base.length >= reglas.meta;
+  const tabla = pymeComoBono ? base : [...base, ...pymes];
+  const directas = pagables.filter((v) => !cuentaParaAsegurado(v.categoria));
+
   const n = tabla.length;
   const tramo = n >= reglas.desdeTramo2 ? 2 : 1;
   const valorDe = (v) => Number((tramo === 2 ? (v.t2 ?? v.t1) : v.t1) ?? 0);
   const sumaTabla = tabla.reduce((a, v) => a + valorDe(v), 0);
   const aseguradoAplica = n >= reglas.meta;
   const valorTabla = aseguradoAplica ? Math.max(reglas.asegurado, sumaTabla) : sumaTabla;
-  const valorDirecto = directas.reduce((a, v) => a + valorDe(v), 0);
+  const valorDirecto = [...directas, ...noVender].reduce((a, v) => a + valorDe(v), 0);
+  const valorPymeBono = pymeComoBono ? pymes.reduce((a, v) => a + valorDe(v), 0) : 0;
+
+  // Bono al volumen: cuentan todas las ventas pagables (sin "No vender" ni excedentes de 3ra edad)
+  const escalon = (reglas.bonoVolumen || []).find(([desde]) => pagables.length >= desde);
   return {
     n_tabla: n, tramo, asegurado_aplica: aseguradoAplica,
-    valor_tabla: valorTabla, valor_directo: valorDirecto, valor: valorTabla + valorDirecto,
+    valor_tabla: valorTabla, valor_directo: valorDirecto, valor_pyme_bono: valorPymeBono,
+    pyme_como_bono: pymeComoBono && pymes.length > 0,
+    ventas_volumen: pagables.length, bono_volumen: escalon ? escalon[1] : 0,
+    te_ventas: te.length, te_permitidas: Math.min(te.length, permitidasTE), te_excedentes: excedentes.size,
+    valor: valorTabla + valorDirecto + valorPymeBono,
   };
 }
 
@@ -132,6 +163,12 @@ function calcularAsesores(ventas, reglas = REGLAS) {
       tramo: TRAMO_TXT[disp.tramo],
       asegurado_aplicado: disp.asegurado_aplica,
       valor_comision_directa: r2(disp.valor_directo),
+      valor_pyme_bono: r2(disp.valor_pyme_bono),
+      pyme_como_bono: disp.pyme_como_bono,
+      bono_volumen: sinAsesor ? 0 : disp.bono_volumen,
+      ventas_volumen: disp.ventas_volumen,
+      te_ventas: disp.te_ventas,
+      te_excedentes: disp.te_excedentes,
       valor_total: r2(total.valor),
       valor_disponible: r2(disp.valor),
       sin_valor: vs.filter((v) => v.t1 === null || v.t1 === undefined).length,
@@ -255,7 +292,7 @@ async function calcularComisiones(query) {
           AND ${filtrosFecha.join('\n          AND ')}
           ${filtroGlobal}
       ), cat AS (${catalogo})
-      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
+      SELECT v.codigo, v.usuario, v.nombre_asesor, v.tipo, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
              to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.reg,
              c.t1::float AS t1, c.t2::float AS t2, c.categoria
       FROM ventas v
@@ -274,7 +311,14 @@ async function calcularComisiones(query) {
       sin_valor: suma('sin_valor'),
       no_vender: suma('no_vender'),
       con_asegurado: rows.filter((r) => r.asegurado_aplicado).length,
+      bono_volumen: suma('bono_volumen'),
+      te_excedentes: suma('te_excedentes'),
     };
+    // Alerta global: % de tercera edad sobre las ventas regularizadas que cuentan (sin "No vender")
+    const regCuentan = ventas.filter((v) => v.reg === 'REGULARIZADO' && v.categoria !== 'NO_VENDER');
+    const regTE = regCuentan.filter(esTerceraEdad).length;
+    totales.te_pct = regCuentan.length ? r2((regTE / regCuentan.length) * 100) : 0;
+    totales.te_alerta = totales.te_pct > REGLAS.topeTerceraEdad * 100;
     return { empresa, filas: rows, totales, mes_catalogo: mes, reglas: REGLAS, filtros: query };
 }
 
@@ -348,7 +392,7 @@ const ROL_CONCEPTOS = [
   { clave: 'asegurado',          lado: 'ingreso',   etiqueta: 'Asegurado',                              auto: true },
   { clave: 'comision_total',     lado: 'ingreso',   etiqueta: 'Comisión total (solo regularizadas)',    auto: true },
   { clave: 'bono_tc',            lado: 'ingreso',   etiqueta: 'Pago de tarjetas de crédito recaudadas' },
-  { clave: 'incentivos',         lado: 'ingreso',   etiqueta: 'Incentivos' },
+  { clave: 'incentivos',         lado: 'ingreso',   etiqueta: 'Incentivos (bono al volumen)',           auto: true },
   { clave: 'asegurado_pagado',   lado: 'descuento', etiqueta: 'Asegurado pagado',                       auto: true },
   { clave: 'chargeback',         lado: 'descuento', etiqueta: 'Chargeback' },
   { clave: 'calidad_venta',      lado: 'descuento', etiqueta: 'Descuentos por calidad de venta' },
@@ -370,6 +414,7 @@ function armarRol(fila, ajustes = {}, reglas = REGLAS) {
     comision_total: comision,
     asegurado_pagado: asegurado,
     anticipo_40: r2(comision * ROL_REGLAS.anticipo),
+    incentivos: Number(fila.bono_volumen || 0),
     plan_celular: ROL_REGLAS.plan_celular,
   };
   const conceptos = ROL_CONCEPTOS.map((c) => {

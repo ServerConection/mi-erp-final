@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, CalendarDays, Check, CheckCircle2, Clock3, CreditCard, LockKeyhole, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, CalendarDays, Check, CheckCircle2, Clock3, CreditCard, FileSpreadsheet, LockKeyhole, ShoppingBag } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const API = import.meta.env.VITE_API_URL;
@@ -68,6 +68,7 @@ function CelularBilletera({ a, mes, empresa }) {
         <div className="relative mt-5 flex items-end justify-between gap-3"><span className="min-w-0 truncate text-[13px] font-normal text-white/85">Cód. asesor: {a.codigo_asesor || 'Sin código'}</span><span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-white/70">Comisiones</span></div>
       </div>
       <div className="mt-4 grid grid-cols-[3fr_2fr] gap-2"><button type="button" onClick={() => setMostrarRetiro(true)} className={`flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 py-3 text-xs font-black transition ${puedeRetirar ? 'bg-slate-950 text-white shadow-lg hover:-translate-y-0.5 hover:bg-blue-700' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>{puedeRetirar ? <ArrowDownToLine className="h-4 w-4 shrink-0" /> : <CalendarDays className="h-4 w-4 shrink-0" />} {puedeRetirar ? 'Retirar' : 'Ver fechas de retiro'}</button><div className="flex items-center justify-center gap-2 rounded-2xl bg-white px-3 py-3 text-xs font-black text-slate-700 shadow-sm"><ShoppingBag className="h-4 w-4 text-blue-600" /> {cantidadTexto(a.activas_totales, 'venta')}</div></div>
+      <Link to={`/rol-pagos?${new URLSearchParams({ empresa, mes, usuario: a.usuario })}`} className="mt-2 flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:text-blue-700"><FileSpreadsheet className="h-4 w-4 shrink-0" /> Rol de pago</Link>
       <div className="mt-5 flex items-center justify-between"><p className="text-xs font-black text-slate-800">Resumen del mes</p><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{NOMBRE_MES(mes)}</span></div>
       <div className="mt-2 space-y-2 text-xs">
         <div className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><span className="flex items-center gap-2 font-semibold text-slate-600"><span className="rounded-full bg-emerald-100 p-1.5 text-emerald-600"><Check className="h-3.5 w-3.5" /></span>{cantidadTexto(a.activas_regularizadas, 'regularizada')}</span><b className="text-emerald-600">+{dinero(a.valor_disponible)}</b></div>
@@ -85,7 +86,10 @@ function CelularBilletera({ a, mes, empresa }) {
 
 export default function BilleteraDigital() {
   const [empresa, setEmpresa] = useState('NOVONET'); const [mes, setMes] = useState(mesActual()); const [data, setData] = useState({ filas: [], totales: {} }); const [loading, setLoading] = useState(true), [error, setError] = useState(''); const [buscar, setBuscar] = useState(''); const [soloSinValor, setSoloSinValor] = useState(false);
-  useEffect(() => { const ctrl = new AbortController(); const r = rangoMes(mes); const qs = new URLSearchParams({ empresa, activacionDesde: r.desde, activacionHasta: r.hasta }); fetch(`${API}/api/comisiones?${qs}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, signal: ctrl.signal }).then(async (res) => { const b = await res.json().catch(() => ({})); if (!res.ok) throw new Error(b.error || `HTTP ${res.status}`); return b; }).then((b) => setData(b.data || { filas: [], totales: {} })).catch((e) => { if (e.name !== 'AbortError') setError(e.message); }).finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); return () => ctrl.abort(); }, [empresa, mes]);
+  const [recarga, setRecarga] = useState(0);
+  // Actualización automática cada 10 minutos (igual que Comisiones)
+  useEffect(() => { const id = setInterval(() => setRecarga((x) => x + 1), 10 * 60 * 1000); return () => clearInterval(id); }, []);
+  useEffect(() => { const ctrl = new AbortController(); const r = rangoMes(mes); const qs = new URLSearchParams({ empresa, activacionDesde: r.desde, activacionHasta: r.hasta }); fetch(`${API}/api/comisiones?${qs}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, signal: ctrl.signal }).then(async (res) => { const b = await res.json().catch(() => ({})); if (!res.ok) throw new Error(b.error || `HTTP ${res.status}`); return b; }).then((b) => setData(b.data || { filas: [], totales: {} })).catch((e) => { if (e.name !== 'AbortError') setError(e.message); }).finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); return () => ctrl.abort(); }, [empresa, mes, recarga]);
   const cambiarEmpresa = (valor) => { setLoading(true); setError(''); setEmpresa(valor); };
   const cambiarMes = (valor) => { if (!valor) return; setLoading(true); setError(''); setMes(valor); };
   const filasAsignadas = useMemo(() => (data.filas || []).filter((a) => !esSinAsignar(a)), [data]);

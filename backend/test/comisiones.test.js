@@ -65,3 +65,19 @@ assert.deepEqual([mix.activas_regularizadas, mix.activas_por_regularizar, mix.va
 // sin tarifa suma 0 y se cuenta en sin_valor
 assert.equal(uno(venta(1, null, null, null)).sin_valor, 1);
 console.log('OK comisiones: tramos, asegurado, comision directa y solo regularizado');
+
+// ── Rol de pagos ──
+const filaRol = { usuario: 'lcarlosama', nombre_asesor: 'L', codigo_asesor: '4481', activas_regularizadas: 26, activas_totales: 36, tramo: 'HASTA 40', asegurado_aplicado: false, valor_disponible: 365.47 };
+const rol1 = _test.armarRol(filaRol, {});
+const c1 = (k) => rol1.conceptos.find((c) => c.clave === k).valor;
+assert.deepEqual([c1('asegurado'), c1('comision_total'), c1('asegurado_pagado'), c1('anticipo_40'), c1('plan_celular')], [0, 365.47, 0, 146.19, 8.4]);
+assert.equal(rol1.total_ingresos, 365.47);
+assert.equal(rol1.total_descuentos, 154.59);
+assert.equal(rol1.valor_a_pagar, 210.88);
+const rol2 = _test.armarRol({ ...filaRol, asegurado_aplicado: true, valor_disponible: 550 }, { bono_tc: 56.58, plan_celular: 0, atrasos: 1 });
+const c2 = (k) => rol2.conceptos.find((c) => c.clave === k);
+assert.equal(c2('asegurado').valor, 550);
+assert.equal(c2('asegurado_pagado').valor, 550);
+assert.equal(c2('plan_celular').ajustado, true);
+assert.equal(rol2.valor_a_pagar, 385.58);
+console.log('OK comisiones: rol de pagos');

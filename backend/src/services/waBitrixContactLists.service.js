@@ -32,6 +32,25 @@ function puedeElegirEmpresa(user) {
   return USUARIOS_ELIGEN_EMPRESA.includes(String(user?.usuario || '').trim().toLowerCase())
 }
 
+// Perfiles que ven a todos los responsables de su empresa. El resto (asesores)
+// solo ve sus propios negocios.
+const PERFILES_VEN_TODOS = ['ADMINISTRADOR', 'SUPERVISOR', 'GERENCIA', 'ANALISTA']
+function soloSusNegocios(user) {
+  if (puedeElegirEmpresa(user)) return false
+  return !PERFILES_VEN_TODOS.includes(String(user?.perfil || '').trim().toUpperCase())
+}
+
+// Patrones para reconocer al asesor en el campo "responsible" de Bitrix:
+// cada palabra de su nombre debe aparecer (p. ej. "KATHERINE PUCHA" ->
+// "KATHERINE PAOLA PUCHA BRAVO"). Sin nombre no coincide con nadie.
+const SIN_TILDES = (txt) => String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+function patronesAsesor(user) {
+  const palabras = [...new Set(SIN_TILDES(user?.nombreCompleto).toUpperCase()
+    .split(/[^A-Z]+/).filter(p => p.length >= 3))]
+  return palabras.length ? palabras.map(p => `%${p}%`) : ['%__SIN_NOMBRE_ASESOR__%']
+}
+const RESPONSABLE_NORM_SQL = `UPPER(TRANSLATE(COALESCE(responsible, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'))`
+
 // Empresa registrada del usuario (incluye VENTA EN LÍNEA).
 function empresaFija(user) {
   const propia = String(user?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
@@ -148,6 +167,11 @@ async function obtenerOpciones(user, input = {}, db) {
     params.push(from, to)
     rango = `\n          AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date`
   }
+  // Asesor: solo sus propios negocios (etapas, responsables y orígenes).
+  if (soloSusNegocios(user)) {
+    params.push(patronesAsesor(user))
+    rango += `\n          AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
+  }
   const [stageResult, responsibleResult, sourceResult] = await Promise.all([
     db.query(
       `SELECT etapa AS id,
@@ -167,7 +191,7 @@ async function obtenerOpciones(user, input = {}, db) {
         GROUP BY BTRIM(source) ORDER BY 2`, params),
   ])
   const elegir = puedeElegirEmpresa(user)
-  return { empresa, puede_elegir_empresa: elegir,
+  return { empresa, puede_elegir_empresa: elegir, solo_sus_negocios: soloSusNegocios(user),
     empresas: elegir ? EMPRESAS_BASE : EMPRESAS_BASE.filter(e => e.id === empresa), stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
 }
 
@@ -201,6 +225,11 @@ async function consultar(user, input, db = require('../config/db')) {
   if (f.responsibleIds.length) {
     params.push(f.responsibleIds.map(r => r.toUpperCase()))
     filtrosExtra += `\n        AND UPPER(BTRIM(responsible)) = ANY($${params.length}::text[])`
+  }
+  // Asesor: forzado a sus propios negocios aunque el navegador pida otros.
+  if (soloSusNegocios(user)) {
+    params.push(patronesAsesor(user))
+    filtrosExtra += `\n        AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
   }
   if (f.sourceIds.length) {
     params.push(f.sourceIds.map(o => o.toUpperCase()))
@@ -241,4 +270,18 @@ async function consultar(user, input, db = require('../config/db')) {
     unique_contacts: items.length, truncated: deals.length >= MAX_DEALS, items }
 }
 
-module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeElegirEmpresa, puedeCrearBase, EMPRESAS_BASE }
+// Vista previa: nunca expone el número completo; solo ID de Bitrix y los
+// dos últimos dígitos.
+function enmascararTelefono(numero) {
+  const d = String(numero || '').replace(/\D/g, '')
+  return d.length >= 2 ? `${'•'.repeat(Math.max(d.length - 2, 4))}${d.slice(-2)}` : '••'
+}
+function itemsVistaPrevia(items = [], max = 100) {
+  return items.slice(0, max).map(item => ({
+    bitrix_id: item.variables?.bitrix_id || null,
+    name: item.name || null,
+    telefono: enmascararTelefono(item.wa_number),
+  }))
+}
+
+module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeElegirEmpresa, soloSusNegocios, patronesAsesor, enmascararTelefono, itemsVistaPrevia, puedeCrearBase, EMPRESAS_BASE }

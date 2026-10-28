@@ -50,7 +50,7 @@ async function usuarioFresco(id) {
   let user = cacheGet(id);
   if (!user) {
     const result = await pool.query(
-      `SELECT id, usuario, empresa, perfil, cargo, activo, nombres, apellidos, codigo_vendedor
+      `SELECT id, usuario, empresa, perfil, cargo, activo, nombres, apellidos, codigo_vendedor, modalidad_asistencia
        FROM usuarios
        WHERE id = $1`,
       [id]
@@ -101,6 +101,7 @@ const verificarToken = async (req, res, next) => {
       cargo: user.cargo || '',
       activo: user.activo,
       codigo_vendedor: user.codigo_vendedor,
+      modalidad_asistencia: user.modalidad_asistencia || '',
       // Nombre completo del usuario logueado (mismo formato que login: "nombres apellidos").
       // Se usa para forzar el filtro de "asesor" a su propio nombre en los
       // dashboards de vista asesor (ver indicadores.controller.js / indicadoresVelsaMaterialized.controller.js),

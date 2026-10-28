@@ -59,6 +59,7 @@ const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales")
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
+const ConfiguracionAsistencia = lazy(() => import("./pages/ConfiguracionAsistencia"));
 const ConfiguracionAtc     = lazy(() => import("./pages/ConfiguracionAtc"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
@@ -233,6 +234,7 @@ export default function App() {
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="conexiones"              element={<ControlAsistencia />} />
+            <Route path="configuracion-asistencia" element={<AdminOnlyRoute><ConfiguracionAsistencia /></AdminOnlyRoute>} />
             {/* Rutas anteriores de NOVONET ACCESS: redirigen a /conexiones */}
             <Route path="control-asistencia"      element={<Navigate to="/conexiones" replace />} />
             <Route path="control-conexion"        element={<Navigate to="/conexiones" replace />} />

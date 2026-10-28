@@ -329,7 +329,13 @@ export default function ControlAsistencia() {
       try { return JSON.parse(localStorage.getItem("userProfile") || "null"); } catch { return null; }
     });
 
-  const esComisionista = String(user?.perfil || "").trim().toUpperCase() === "USUARIO";
+  const modalidadAsistencia = String(user?.modalidad_asistencia || "").trim().toUpperCase();
+  // Compatibilidad para sesiones/BD anteriores a la migración. Cuando el
+  // campo explícito existe, siempre tiene prioridad sobre el perfil ERP.
+  const perfilParaRespaldo = String(user?.perfil || "").trim().toUpperCase();
+  const esComisionista = modalidadAsistencia
+    ? modalidadAsistencia === "CONEXION"
+    : ["USUARIO", "ASESOR"].includes(perfilParaRespaldo);
   const PASOS = esComisionista ? PASOS_COMISIONISTA : PASOS_NOMINA;
   const empresaAccess = String(user?.empresa || "").trim().toUpperCase() === "VELSA" ? "VELSA" : "NOVONET";
   const TX = {

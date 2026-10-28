@@ -81,3 +81,28 @@ assert.equal(c2('asegurado_pagado').valor, 550);
 assert.equal(c2('plan_celular').ajustado, true);
 assert.equal(rol2.valor_a_pagar, 385.58);
 console.log('OK comisiones: rol de pagos');
+
+// ── Fase 2: No vender, tope 3ra edad, PYME como bono, bono volumen ──
+const vt = (n, t1, categoria = 'TABLA', tipo = 'HOME', fecha = '2026-10-01') => Array.from({ length: n }, (_, i) => ({ usuario: 'b', reg: 'REGULARIZADO', t1, t2: t1, categoria, tipo, fecha_activacion: `${fecha.slice(0, 8)}${String(i + 1).padStart(2, '0')}` }));
+const f2 = (vs) => _test.calcularAsesores(vs)[0];
+// No vender: se paga por comisión pero no cuenta como venta
+const nv = f2([...vt(10, 10), ...vt(2, 6.45, 'NO_VENDER', 'TERCERA EDAD')]);
+assert.deepEqual([nv.ventas_tabla, nv.ventas_volumen, nv.valor_disponible], [10, 10, 112.9]);
+// Tope 15% tercera edad: 20 ventas → solo 3 de 3ra edad se pagan; las 2 más recientes no
+const te = f2([...vt(15, 10), ...vt(5, 10, 'TABLA', 'TERCERA EDAD')]);
+assert.deepEqual([te.te_ventas, te.te_excedentes, te.ventas_tabla, te.valor_disponible], [5, 2, 18, 180]);
+// PYME: 35 sin PYME → las PYME se pagan aparte como bono
+const py = f2([...vt(35, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
+assert.deepEqual([py.ventas_tabla, py.asegurado_aplicado, py.pyme_como_bono, py.valor_pyme_bono, py.valor_disponible], [35, true, true, 36.7, 586.7]);
+// PYME: 34 sin PYME → las PYME suman a tabla (36) y aplica asegurado
+const py2 = f2([...vt(34, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
+assert.deepEqual([py2.ventas_tabla, py2.pyme_como_bono, py2.valor_disponible], [36, false, 550]);
+// Bono al volumen
+assert.equal(f2(vt(39, 10)).bono_volumen, 0);
+assert.equal(f2(vt(40, 10)).bono_volumen, 40);
+assert.equal(f2(vt(55, 10)).bono_volumen, 60);
+assert.equal(f2(vt(60, 10)).bono_volumen, 80);
+// El rol toma el bono como Incentivos automático
+const rolB = _test.armarRol({ ...filaRol, bono_volumen: 60 }, {});
+assert.equal(rolB.conceptos.find((c) => c.clave === 'incentivos').valor, 60);
+console.log('OK comisiones: fase 2 (no vender, tope 3ra edad, PYME bono, bono volumen)');

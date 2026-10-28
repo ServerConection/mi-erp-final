@@ -23,7 +23,13 @@
 const pool = require('../config/db');
 const { bitrixCallNovonet } = require('./bitrix.service');
 
-const EMPRESA = 'novonet';
+// NOVONET y VELSA comparten portal, pero viven en pipelines distintos.
+// Nunca se debe decidir la empresa por el handler que recibió el evento:
+// CATEGORY_ID del propio deal es la fuente de verdad.
+const CATEGORIAS_EMPRESA = {
+  [String(process.env.RECONCILIACION_BITRIX_CATEGORIA || '19')]: 'novonet',
+  [String(process.env.RECONCILIACION_BITRIX_CATEGORIA_VELSA || '51')]: 'velsa',
+};
 
 const slugify = (valor = '') =>
   String(valor)
@@ -88,6 +94,10 @@ const procesarEventoDeal = async (bitrixId, evento = 'ONCRMDEALUPDATE') => {
   const d = r.result;
   if (!d || !d.ID) return { ok: false, motivo: 'deal inexistente en Bitrix' };
 
+  const categoriaId = String(d.CATEGORY_ID ?? '');
+  const empresa = CATEGORIAS_EMPRESA[categoriaId];
+  if (!empresa) return { ok: false, motivo: `pipeline no monitoreado (${categoriaId || 'sin categoria'})` };
+
   const [mapaEtapas, mapaUsuarios] = await Promise.all([etapas(), usuarios()]);
   const nombreEtapa = mapaEtapas[d.STAGE_ID] || d.STAGE_ID || '';
   const etapa       = slugify(nombreEtapa);
@@ -97,7 +107,7 @@ const procesarEventoDeal = async (bitrixId, evento = 'ONCRMDEALUPDATE') => {
   // teléfono cuando ya lo tenemos)
   const previo = await pool.query(
     'SELECT etapa, phone FROM bitrix_webhook_leads WHERE empresa = $1 AND bitrix_id = $2',
-    [EMPRESA, id]
+    [empresa, id]
   );
   const fila = previo.rows[0];
 
@@ -111,18 +121,18 @@ const procesarEventoDeal = async (bitrixId, evento = 'ONCRMDEALUPDATE') => {
   });
 
   const params = [
-    id, EMPRESA, etapa, 'evento_bitrix', String(nombreEtapa).toUpperCase(),
+    id, empresa, etapa, 'evento_bitrix', String(nombreEtapa).toUpperCase(),
     phone || null, d.SOURCE_ID || null,
     d.IS_REPEATED_APPROACH === 'Y' ? 'Y' : 'N',
-    responsable || null, raw,
+    responsable || null, raw, d.DATE_CREATE || null, categoriaId,
   ];
 
   // A diferencia del webhook de etapas, acá la etapa viene de crm.deal.get:
   // es el estado REAL de Bitrix en este instante, no un valor fijo de una URL.
   await pool.query(
     `INSERT INTO bitrix_webhook_leads
-       (bitrix_id, empresa, etapa, event, etapa_bitrix, phone, source, repeated, responsible, raw_query)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (bitrix_id, empresa, etapa, event, etapa_bitrix, phone, source, repeated, responsible, raw_query, created_at, categoria_id, pipeline)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11::timestamptz,NOW()),$12,UPPER($2))
      ON CONFLICT (empresa, bitrix_id) DO UPDATE
        SET etapa        = EXCLUDED.etapa,
            etapa_bitrix = EXCLUDED.etapa_bitrix,
@@ -131,6 +141,8 @@ const procesarEventoDeal = async (bitrixId, evento = 'ONCRMDEALUPDATE') => {
            repeated     = EXCLUDED.repeated,
            responsible  = COALESCE(EXCLUDED.responsible, bitrix_webhook_leads.responsible),
            phone        = COALESCE(bitrix_webhook_leads.phone, EXCLUDED.phone),
+           categoria_id = EXCLUDED.categoria_id,
+           pipeline     = EXCLUDED.pipeline,
            raw_query    = EXCLUDED.raw_query,
            updated_at   = NOW()`,
     params
@@ -145,11 +157,11 @@ const procesarEventoDeal = async (bitrixId, evento = 'ONCRMDEALUPDATE') => {
       `INSERT INTO bitrix_webhook_leads_historial
          (bitrix_id, empresa, etapa, event, etapa_bitrix, phone, source, repeated, responsible, raw_query)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      params
+      params.slice(0, 10)
     );
   }
 
-  return { ok: true, id, etapa, etapaAnterior: fila ? fila.etapa : null, cambioEtapa, nuevo: !fila };
+  return { ok: true, id, empresa, categoriaId, etapa, etapaAnterior: fila ? fila.etapa : null, cambioEtapa, nuevo: !fila };
 };
 
 module.exports = { procesarEventoDeal, slugify };

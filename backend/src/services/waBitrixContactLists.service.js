@@ -24,10 +24,26 @@ const EMPRESAS_BASE = [
   { id: 'VENTAENLINEA', name: 'VENTA EN LÍNEA' },
 ]
 
-// Empresa elegida en el filtro; si no viene o no es válida, la del usuario.
+// Solo ADMINISTRADOR y usuarios autorizados pueden elegir la empresa/pipeline.
+// El resto queda fijo en la empresa registrada en su usuario.
+const USUARIOS_ELIGEN_EMPRESA = ['acloaiza']
+function puedeElegirEmpresa(user) {
+  if (String(user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR') return true
+  return USUARIOS_ELIGEN_EMPRESA.includes(String(user?.usuario || '').trim().toLowerCase())
+}
+
+// Empresa registrada del usuario (incluye VENTA EN LÍNEA).
+function empresaFija(user) {
+  const propia = String(user?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
+  return EMPRESAS_BASE.some(e => e.id === propia) ? propia : empresaUsuario(user)
+}
+
+// Empresa del filtro: solo se respeta si el usuario puede elegirla; si no,
+// SIEMPRE la registrada (aunque el frontend mande otra).
 function empresaElegida(user, input = {}) {
+  if (!puedeElegirEmpresa(user)) return empresaFija(user)
   const pedida = String(input?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
-  return EMPRESAS_BASE.some(e => e.id === pedida) ? pedida : empresaUsuario(user)
+  return EMPRESAS_BASE.some(e => e.id === pedida) ? pedida : empresaFija(user)
 }
 
 // Crear bases desde Bitrix: habilitado para todos los usuarios autenticados.
@@ -150,7 +166,9 @@ async function obtenerOpciones(user, input = {}, db) {
         WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL${rango}
         GROUP BY BTRIM(source) ORDER BY 2`, params),
   ])
-  return { empresa, empresas: EMPRESAS_BASE, stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
+  const elegir = puedeElegirEmpresa(user)
+  return { empresa, puede_elegir_empresa: elegir,
+    empresas: elegir ? EMPRESAS_BASE : EMPRESAS_BASE.filter(e => e.id === empresa), stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
 }
 
 function extraerTelefonos(contact) {
@@ -223,4 +241,4 @@ async function consultar(user, input, db = require('../config/db')) {
     unique_contacts: items.length, truncated: deals.length >= MAX_DEALS, items }
 }
 
-module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeCrearBase, EMPRESAS_BASE }
+module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeElegirEmpresa, puedeCrearBase, EMPRESAS_BASE }

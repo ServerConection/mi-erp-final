@@ -61,7 +61,7 @@ test('crear base: elige pipeline por filtro y limita opciones al rango de fechas
   const service = require('../src/services/waBitrixContactLists.service')
   const calls = []
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
-  const r = await service.obtenerOpciones({ empresa: 'NOVONET' }, { empresa: 'Venta en linea', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+  const r = await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'ADMINISTRADOR' }, { empresa: 'Venta en linea', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.equal(r.empresa, 'VENTAENLINEA')
   assert.equal(calls.length, 3)
   for (const c of calls) {
@@ -69,7 +69,7 @@ test('crear base: elige pipeline por filtro y limita opciones al rango de fechas
     assert.match(c.sql, /BETWEEN \$2::date AND \$3::date/)
   }
   calls.length = 0
-  await service.consultar({ empresa: 'NOVONET' }, { empresa: 'VELSA', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+  await service.consultar({ empresa: 'NOVONET', perfil: 'ADMINISTRADOR' }, { empresa: 'VELSA', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.equal(calls[0].params[0], 'velsa')
 })
 
@@ -79,4 +79,23 @@ test('crear base: habilitado para todos los usuarios autenticados', () => {
   assert.equal(service.puedeCrearBase({ perfil: 'USUARIO', usuario: 'ACLOAIZA' }), true)
   assert.equal(service.puedeCrearBase({ perfil: 'SUPERVISOR', usuario: 'kpucha' }), true)
   assert.equal(service.puedeCrearBase(null), false)
+})
+
+test('crear base: usuario normal queda fijo en su empresa aunque pida otra', async () => {
+  const service = require('../src/services/waBitrixContactLists.service')
+  const calls = []
+  const db = { query: async (sql, params) => { calls.push(params); return { rows: [] } } }
+  const asesor = { empresa: 'VELSA', perfil: 'USUARIO', usuario: 'kpucha' }
+  const r = await service.obtenerOpciones(asesor, { empresa: 'NOVONET', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+  assert.equal(r.empresa, 'VELSA')
+  assert.equal(r.puede_elegir_empresa, false)
+  assert.deepEqual(r.empresas.map(e => e.id), ['VELSA'])
+  calls.length = 0
+  await service.consultar(asesor, { empresa: 'NOVONET', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+  assert.equal(calls[0][0], 'velsa')
+  const vel = await service.obtenerOpciones({ empresa: 'VENTAENLINEA', perfil: 'SUPERVISOR' }, { empresa: 'NOVONET' }, db)
+  assert.equal(vel.empresa, 'VENTAENLINEA')
+  const ac = await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'USUARIO', usuario: 'acloaiza' }, { empresa: 'SEMILLERO' }, db)
+  assert.equal(ac.empresa, 'SEMILLERO')
+  assert.equal(ac.puede_elegir_empresa, true)
 })

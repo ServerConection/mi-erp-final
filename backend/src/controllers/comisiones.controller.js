@@ -115,12 +115,16 @@ function calcularAsesores(ventas, reglas = REGLAS) {
   const filas = [];
   for (const [usuario, vs] of grupos) {
     const regularizadas = vs.filter((v) => v.reg === 'REGULARIZADO');
-    const total = calcularValor(vs, reglas);
-    const disp = calcularValor(regularizadas, reglas);
+    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 41".
+    const sinAsesor = usuario === 'SIN ASIGNAR';
+    const reglasGrupo = sinAsesor ? { ...reglas, meta: Infinity, desdeTramo2: Infinity } : reglas;
+    const total = calcularValor(vs, reglasGrupo);
+    const disp = calcularValor(regularizadas, reglasGrupo);
     const maxTxt = (k) => vs.reduce((m, v) => (v[k] && String(v[k]) > String(m || '') ? v[k] : m), null);
     filas.push({
-      codigo_asesor: maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
+      codigo_asesor: sinAsesor ? [...new Set(vs.map((v) => v.codigo).filter(Boolean))].join(', ') : maxTxt('codigo'), usuario, nombre_asesor: maxTxt('nombre_asesor'),
       ultima_fecha_ingreso_telcos: maxTxt('fecha_telcos'),
+      ultima_fecha_activacion: maxTxt('fecha_activacion'),
       activas_por_regularizar: vs.length - regularizadas.length,
       activas_regularizadas: regularizadas.length,
       activas_totales: vs.length,
@@ -189,16 +193,18 @@ const VELOCIDAD_VENTA = `COALESCE(
 const SERVICIOS_VENTA = `CASE WHEN NULLIF(BTRIM(e.servicios_digitales), '') IS NULL THEN 0
       ELSE LENGTH(e.servicios_digitales) - LENGTH(REPLACE(e.servicios_digitales, '+', '')) + 1 END`;
 
-async function listar(req, res) {
-  try {
-    const empresa = String(req.query.empresa || '').trim().toUpperCase();
-    if (!['NOVONET', 'VELSA'].includes(empresa)) return res.status(400).json({ success: false, error: 'Empresa no valida.' });
+const error400 = (mensaje) => { const e = new Error(mensaje); e.status = 400; return e; };
+
+/** Cálculo de comisiones por asesor (lo usan Comisiones, Billetera y Rol de Pagos). */
+async function calcularComisiones(query) {
+    const empresa = String(query.empresa || '').trim().toUpperCase();
+    if (!['NOVONET', 'VELSA'].includes(empresa)) throw error400('Empresa no valida.');
 
     const values = [empresa, `JOTFORM_${empresa}`];
-    const filtrosFecha = construirFiltrosFechas(req.query, values);
-    if (!filtrosFecha.length) return res.status(400).json({ success: false, error: 'Selecciona al menos un rango de fechas.' });
+    const filtrosFecha = construirFiltrosFechas(query, values);
+    if (!filtrosFecha.length) throw error400('Selecciona al menos un rango de fechas.');
 
-    const buscar = String(req.query.buscar || '').trim();
+    const buscar = String(query.buscar || '').trim();
     let filtroGlobal = '';
     if (buscar) {
       values.push(`%${buscar}%`);
@@ -206,7 +212,7 @@ async function listar(req, res) {
     }
 
     // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 40", com_t2 = "desde 41".
-    const mes = await mesCatalogo(req.query);
+    const mes = await mesCatalogo(query);
     let catalogo = `SELECT NULL::text AS tipo, NULL::int AS velocidad, NULL::numeric AS t1, NULL::numeric AS t2, NULL::text AS categoria WHERE false`;
     if (mes) {
       values.push(mes);
@@ -217,17 +223,31 @@ async function listar(req, res) {
     }
 
     const codigo = `COALESCE(NULLIF(BTRIM(u.codigo_vendedor), ''), NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN CODIGO')`;
-    const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), 'SIN ASIGNAR')`;
+    // Ventas del histórico JotForm no traen usuario_id: se resuelve el asesor por su código de vendedor (uc).
+    const usuario = `COALESCE(NULLIF(BTRIM(e.usuario), ''), NULLIF(BTRIM(u.usuario), ''), NULLIF(BTRIM(uc.usuario), ''),
+      NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''),
+      'COD ' || NULLIF(BTRIM(e.codigo_asesor), ''), 'SIN ASIGNAR')`;
     const { rows: ventas } = await pool.query(`
       WITH ventas AS (
         SELECT ${codigo} AS codigo, ${usuario} AS usuario,
-          COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), ${usuario}) AS nombre_asesor,
+          COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
+          public.parse_fecha_flex(e.fecha_activacion_netlife::text)::date AS fecha_activacion,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
           ${VELOCIDAD_VENTA} AS velocidad
         FROM public.envios_ventas e
         LEFT JOIN public.usuarios u ON u.id = e.usuario_id
+        LEFT JOIN LATERAL (
+          SELECT u2.usuario, u2.nombres, u2.apellidos
+            FROM public.usuarios u2
+           WHERE u.id IS NULL
+             AND NULLIF(BTRIM(e.codigo_asesor), '') IS NOT NULL
+             AND UPPER(BTRIM(COALESCE(u2.codigo_vendedor, ''))) = UPPER(BTRIM(e.codigo_asesor))
+             AND UPPER(COALESCE(u2.empresa, '')) LIKE '%' || $1 || '%'
+           ORDER BY u2.activo DESC NULLS LAST, u2.id DESC
+           LIMIT 1
+        ) uc ON true
         WHERE UPPER(BTRIM(COALESCE(e.distribuidor_autorizado, ''))) = $1
           AND e.origen_dato IN ($2, 'ERP')
           AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'
@@ -235,7 +255,8 @@ async function listar(req, res) {
           AND ${filtrosFecha.join('\n          AND ')}
           ${filtroGlobal}
       ), cat AS (${catalogo})
-      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos, v.reg,
+      SELECT v.codigo, v.usuario, v.nombre_asesor, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
+             to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.reg,
              c.t1::float AS t1, c.t2::float AS t2, c.categoria
       FROM ventas v
       LEFT JOIN cat c ON c.tipo = v.tipo AND c.velocidad = v.velocidad
@@ -254,7 +275,12 @@ async function listar(req, res) {
       no_vender: suma('no_vender'),
       con_asegurado: rows.filter((r) => r.asegurado_aplicado).length,
     };
-    return res.json({ success: true, data: { empresa, filas: rows, totales, mes_catalogo: mes, reglas: REGLAS, filtros: req.query } });
+    return { empresa, filas: rows, totales, mes_catalogo: mes, reglas: REGLAS, filtros: query };
+}
+
+async function listar(req, res) {
+  try {
+    return res.json({ success: true, data: await calcularComisiones(req.query) });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
     console.error('[comisiones.listar]', error);
@@ -313,8 +339,132 @@ async function catalogoCargar(req, res) {
   }
 }
 
+
+// ── Rol de pagos (formato "FORMATO DE ROL DE COMISIONES" del Excel) ─────────
+// Conceptos AUTO se calculan; el resto se ingresa en el módulo y se guarda en
+// public.rol_pagos_ajustes (ROL_PAGOS_AJUSTES.sql). Un ajuste guardado sobre un
+// concepto AUTO lo reemplaza; borrar el valor vuelve al cálculo automático.
+const ROL_CONCEPTOS = [
+  { clave: 'asegurado',          lado: 'ingreso',   etiqueta: 'Asegurado',                              auto: true },
+  { clave: 'comision_total',     lado: 'ingreso',   etiqueta: 'Comisión total (solo regularizadas)',    auto: true },
+  { clave: 'bono_tc',            lado: 'ingreso',   etiqueta: 'Pago de tarjetas de crédito recaudadas' },
+  { clave: 'incentivos',         lado: 'ingreso',   etiqueta: 'Incentivos' },
+  { clave: 'asegurado_pagado',   lado: 'descuento', etiqueta: 'Asegurado pagado',                       auto: true },
+  { clave: 'chargeback',         lado: 'descuento', etiqueta: 'Chargeback' },
+  { clave: 'calidad_venta',      lado: 'descuento', etiqueta: 'Descuentos por calidad de venta' },
+  { clave: 'adelantos',          lado: 'descuento', etiqueta: 'Adelantos' },
+  { clave: 'retencion',          lado: 'descuento', etiqueta: 'Retención 8%' },
+  { clave: 'atrasos',            lado: 'descuento', etiqueta: 'Atrasos' },
+  { clave: 'anticipo_40',        lado: 'descuento', etiqueta: 'Anticipo pago 40%',                      auto: true },
+  { clave: 'plan_celular',       lado: 'descuento', etiqueta: 'Plan celular',                           auto: true },
+];
+const ROL_CLAVES = new Set(ROL_CONCEPTOS.map((c) => c.clave));
+const ROL_REGLAS = { anticipo: 0.4, plan_celular: 8.4 };
+
+/** Arma el rol de un asesor a partir de su fila de comisiones y sus ajustes { clave: monto }. */
+function armarRol(fila, ajustes = {}, reglas = REGLAS) {
+  const comision = Number(fila.valor_disponible || 0);
+  const asegurado = fila.asegurado_aplicado ? reglas.asegurado : 0;
+  const auto = {
+    asegurado,
+    comision_total: comision,
+    asegurado_pagado: asegurado,
+    anticipo_40: r2(comision * ROL_REGLAS.anticipo),
+    plan_celular: ROL_REGLAS.plan_celular,
+  };
+  const conceptos = ROL_CONCEPTOS.map((c) => {
+    const manual = ajustes[c.clave];
+    const tieneManual = manual !== undefined && manual !== null;
+    const valor = tieneManual ? Number(manual) : (c.auto ? auto[c.clave] : 0);
+    return { ...c, valor: r2(valor), automatico: c.auto && !tieneManual, ajustado: tieneManual };
+  });
+  const total = (lado) => r2(conceptos.filter((c) => c.lado === lado).reduce((a, c) => a + c.valor, 0));
+  const ingresos = total('ingreso'), descuentos = total('descuento');
+  return {
+    usuario: fila.usuario, nombre_asesor: fila.nombre_asesor, codigo_asesor: fila.codigo_asesor,
+    ventas_activas: fila.activas_regularizadas, activas_totales: fila.activas_totales,
+    tramo: fila.tramo, asegurado_aplicado: fila.asegurado_aplicado,
+    conceptos, total_ingresos: ingresos, total_descuentos: descuentos, valor_a_pagar: r2(ingresos - descuentos),
+  };
+}
+
+const tablaRolExiste = async () => {
+  const { rows } = await pool.query(`SELECT to_regclass('public.rol_pagos_ajustes') IS NOT NULL AS ok`);
+  return rows[0].ok;
+};
+const rangoDeMes = (mes) => {
+  const [y, m] = mes.split('-').map(Number);
+  const hoy = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
+  const fin = (hoy.getFullYear() === y && hoy.getMonth() + 1 === m) ? hoy.getDate() : new Date(y, m, 0).getDate();
+  return { desde: `${mes}-01`, hasta: `${mes}-${String(fin).padStart(2, '0')}` };
+};
+
+// GET /api/comisiones/rol?empresa=NOVONET&mes=2026-10
+async function rolListar(req, res) {
+  try {
+    const mes = String(req.query.mes || '');
+    if (!mesValido(mes)) return res.status(400).json({ success: false, error: 'Mes no valido (formato AAAA-MM).' });
+    const r = rangoDeMes(mes);
+    const data = await calcularComisiones({ empresa: req.query.empresa, activacionDesde: r.desde, activacionHasta: r.hasta });
+    const tabla = await tablaRolExiste().catch(() => false);
+    const ajustes = new Map();
+    if (tabla) {
+      const { rows } = await pool.query(
+        `SELECT usuario, concepto, monto::float AS monto FROM public.rol_pagos_ajustes WHERE empresa = $1 AND mes = $2`,
+        [data.empresa, mes]);
+      for (const a of rows) {
+        if (!ajustes.has(a.usuario)) ajustes.set(a.usuario, {});
+        ajustes.get(a.usuario)[a.concepto] = a.monto;
+      }
+    }
+    const roles = data.filas
+      .filter((f) => f.usuario !== 'SIN ASIGNAR')
+      .map((f) => armarRol(f, ajustes.get(f.usuario), data.reglas));
+    const suma = (k) => r2(roles.reduce((a, x) => a + x[k], 0));
+    return res.json({ success: true, data: {
+      empresa: data.empresa, mes, tabla_ajustes: tabla, mes_catalogo: data.mes_catalogo,
+      roles, totales: { total_ingresos: suma('total_ingresos'), total_descuentos: suma('total_descuentos'), valor_a_pagar: suma('valor_a_pagar') },
+    } });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+    console.error('[comisiones.rolListar]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo armar el rol de pagos.' });
+  }
+}
+
+// PUT /api/comisiones/rol/ajuste { empresa, mes, usuario, concepto, monto }  (monto null = volver a automático)
+async function rolAjuste(req, res) {
+  try {
+    const empresa = String(req.body?.empresa || '').trim().toUpperCase();
+    const mes = String(req.body?.mes || '');
+    const usuario = String(req.body?.usuario || '').trim();
+    const concepto = String(req.body?.concepto || '');
+    if (!['NOVONET', 'VELSA'].includes(empresa) || !mesValido(mes) || !usuario || !ROL_CLAVES.has(concepto)) {
+      return res.status(400).json({ success: false, error: 'Datos del ajuste no validos.' });
+    }
+    const crudo = req.body?.monto;
+    const monto = crudo === null || crudo === undefined || crudo === '' ? null : numero(crudo);
+    if (crudo !== null && crudo !== undefined && crudo !== '' && monto === null) {
+      return res.status(400).json({ success: false, error: 'El monto no es un número.' });
+    }
+    if (!(await tablaRolExiste().catch(() => false))) {
+      return res.status(409).json({ success: false, error: 'Falta crear la tabla rol_pagos_ajustes (ejecutar ROL_PAGOS_AJUSTES.sql).' });
+    }
+    await pool.query(`
+      INSERT INTO public.rol_pagos_ajustes (empresa, mes, usuario, concepto, monto, actualizado_por, actualizado_en)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (empresa, mes, usuario, concepto)
+      DO UPDATE SET monto = EXCLUDED.monto, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
+      [empresa, mes, usuario, concepto, monto, req.user?.usuario || null]);
+    return res.json({ success: true, data: { empresa, mes, usuario, concepto, monto } });
+  } catch (error) {
+    console.error('[comisiones.rolAjuste]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo guardar el ajuste.' });
+  }
+}
+
 module.exports = {
-  listar, catalogoResumen, catalogoCargar,
+  listar, catalogoResumen, catalogoCargar, rolListar, rolAjuste,
   _test: { fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido,
-    categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS },
+    categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS, armarRol, ROL_CONCEPTOS },
 };

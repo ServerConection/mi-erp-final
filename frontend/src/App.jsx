@@ -79,6 +79,7 @@ const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 const Comisiones           = lazy(() => import("./pages/Comisiones"));
+const RolPagos             = lazy(() => import("./pages/RolPagos"));
 const BilleteraDigital     = lazy(() => import("./pages/BilleteraDigital"));
 const ForecastFinanciero   = lazy(() => import("./pages/ForecastFinanciero"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
@@ -184,6 +185,7 @@ export default function App() {
             <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
             <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
+            <Route path="rol-pagos"                 element={<AdministracionRoute><RolPagos /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />
             <Route path="forecast-velsa"            element={<AdministracionRoute><ForecastFinanciero empresa="velsa" /></AdministracionRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />

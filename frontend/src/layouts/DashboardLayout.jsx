@@ -431,6 +431,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Rol de Pagos", path: "/rol-pagos", icon: "🧾",
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Forecast NOVONET", path: "/forecast-novonet", icon: "📈",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Forecast VELSA", path: "/forecast-velsa", icon: "📊",

@@ -22,7 +22,14 @@ export default function ConfiguracionAsistencia() {
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return usuarios.filter((u) => (empresa === 'TODAS' || String(u.empresa).toUpperCase() === empresa) && (!q || `${u.nombres} ${u.apellidos} ${u.usuario} ${u.cargo} ${u.perfil}`.toLowerCase().includes(q))).sort((a, b) => `${a.nombres} ${a.apellidos}`.localeCompare(`${b.nombres} ${b.apellidos}`, 'es'));
+    return usuarios
+      .filter((u) => (empresa === 'TODAS' || String(u.empresa).toUpperCase() === empresa) && (!q || `${u.nombres} ${u.apellidos} ${u.usuario} ${u.cargo} ${u.perfil}`.toLowerCase().includes(q)))
+      .sort((a, b) => {
+        const aActivo = String(a.activo).toUpperCase() === 'SI';
+        const bActivo = String(b.activo).toUpperCase() === 'SI';
+        if (aActivo !== bActivo) return aActivo ? -1 : 1;
+        return `${a.nombres || ''} ${a.apellidos || ''}`.localeCompare(`${b.nombres || ''} ${b.apellidos || ''}`, 'es', { sensitivity: 'base' });
+      });
   }, [usuarios, busqueda, empresa]);
   const activos = visibles.filter((u) => u.activo === 'SI');
 

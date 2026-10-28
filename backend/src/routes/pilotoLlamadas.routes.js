@@ -156,5 +156,36 @@ router.post('/admin/desactivar', soloAdmin, async (req, res) => {
   } catch (e) { error500(res, e); }
 });
 
+// ── Reporte del piloto (solo ADMINISTRADOR) ────────────────────────────────
+router.get('/admin/reporte', soloAdmin, async (req, res) => {
+  try {
+    await asegurarTablas();
+    const resumen = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM piloto_llamadas_pc WHERE activo)::int            AS asesores_activos,
+        (SELECT COUNT(*) FROM piloto_llamadas_log)::int                        AS llamadas_total,
+        (SELECT COUNT(*) FROM piloto_llamadas_log
+          WHERE creado_en >= date_trunc('day', now()))::int                    AS llamadas_hoy,
+        (SELECT COUNT(*) FROM piloto_llamadas_log
+          WHERE creado_en >= now() - interval '7 days')::int                   AS llamadas_semana`);
+    const porAsesor = await pool.query(`
+      SELECT g.usuario_id,
+             TRIM(COALESCE(u.nombres,'') || ' ' || COALESCE(u.apellidos,'')) AS nombre,
+             u.usuario, u.empresa,
+             COUNT(*)::int AS llamadas,
+             MAX(g.creado_en) AS ultima
+        FROM piloto_llamadas_log g
+        LEFT JOIN usuarios u ON u.id::text = g.usuario_id
+       GROUP BY g.usuario_id, nombre, u.usuario, u.empresa
+       ORDER BY llamadas DESC`);
+    const porDia = await pool.query(`
+      SELECT to_char(date_trunc('day', creado_en), 'YYYY-MM-DD') AS dia, COUNT(*)::int AS llamadas
+        FROM piloto_llamadas_log
+       WHERE creado_en >= now() - interval '14 days'
+       GROUP BY dia ORDER BY dia`);
+    res.json({ success: true, resumen: resumen.rows[0], porAsesor: porAsesor.rows, porDia: porDia.rows });
+  } catch (e) { error500(res, e); }
+});
+
 module.exports = router;
 module.exports.enPiloto = enPiloto;

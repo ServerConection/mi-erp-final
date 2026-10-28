@@ -516,7 +516,7 @@ export default function WaContactos() {
               <div className="grid md:grid-cols-2 gap-4">
                 <label className="text-xs font-semibold text-slate-500 md:col-span-2">EMPRESA / PIPELINE
                   <select value={bitrixForm.empresa} onChange={e => updateBitrixForm("empresa", e.target.value)}
-                    disabled={bitrixBusy || !bitrixOptions}
+                    disabled={bitrixBusy || !bitrixOptions || !bitrixOptions.puede_elegir_empresa}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
                     {(bitrixOptions?.empresas || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>

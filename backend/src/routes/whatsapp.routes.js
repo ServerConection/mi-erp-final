@@ -56,6 +56,7 @@ router.put   ('/bots/:id',   botsCtrl.update);
 router.delete('/bots/:id',   botsCtrl.remove);
 
 // ── CAMPAÑAS ──────────────────────────────────────────────────
+router.get   ('/campaigns/report/usage',      campaignsCtrl.usageReport); // antes de /:id
 router.get   ('/campaigns',                   campaignsCtrl.getAll);
 router.get   ('/campaigns/:id',               campaignsCtrl.getOne);
 router.post  ('/campaigns',                   campaignsCtrl.create);

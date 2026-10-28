@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
+import HalloweenGhost from "./components/HalloweenGhost";
 import { puedeAccederGestionables } from './utils/accesoGestionables';
 import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
@@ -274,6 +275,7 @@ export default function App() {
       </Suspense>
 
       <FloatingWidgets />
+      <HalloweenGhost />
     </BrowserRouter>
   );
 }

@@ -1,5 +1,6 @@
 const { query, transaction } = require('../config/db')
 const { normalizeNumber } = require('./wa_contacts.controller')
+const campaignsReport = require('../services/waCampaignsReport.service')
 
 const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
 
@@ -386,7 +387,21 @@ async function retryFailed(req, res) {
   }
 }
 
-module.exports = {
+// ── Reporte de uso por empresa / supervisor / asesor (admin + autorizados) ──
+async function usageReport(req, res) {
+  if (!campaignsReport.puedeVerReporte(req.user)) {
+    return res.status(403).json({ success: false, error: 'Solo administradores pueden ver el reporte de uso' })
+  }
+  try {
+    res.json({ success: true, data: await campaignsReport.reporteUso(req.query || {}) })
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ success: false, error: err.message })
+    console.error('[campaigns.usageReport]', err)
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+module.exports = { usageReport,
   getAll, getOne, create, update, remove,
   start, pause, resume, cancel, retryFailed,
 }

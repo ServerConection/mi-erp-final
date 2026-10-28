@@ -6,6 +6,7 @@ import { getSocketCompartido } from "../utils/socketCompartido";
 import WaCreationDateFilter from "../components/WaCreationDateFilter";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 import { lineaEstaConectada } from "../utils/waLineStatus";
+import ReporteUsoCampanas, { puedeVerReporteCampanas } from "../components/ReporteUsoCampanas";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -75,6 +76,8 @@ const emptyForm = {
 
 export default function WaCampanas() {
   const [campaigns, setCampaigns]   = useState([]);
+  const [verReporte, setVerReporte] = useState(false);
+  const PUEDE_VER_REPORTE = puedeVerReporteCampanas();
   const [lines, setLines]           = useState([]);
   const [lists, setLists]           = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -328,11 +331,20 @@ export default function WaCampanas() {
           <h1 className="text-xl font-bold text-slate-800">📣 Campañas Masivas</h1>
           <p className="text-sm text-slate-500 mt-0.5">Envíos masivos con variantes de mensaje y throttling</p>
         </div>
-        <button onClick={openNew}
-          className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          + Nueva campaña
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {PUEDE_VER_REPORTE && (
+            <button onClick={() => setVerReporte(true)}
+              className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              📊 Reporte de uso
+            </button>
+          )}
+          <button onClick={openNew}
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            + Nueva campaña
+          </button>
+        </div>
       </div>
+      {verReporte && <ReporteUsoCampanas onClose={() => setVerReporte(false)} />}
 
       {/* Buscador */}
       <input

@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 import HalloweenGhost from "./components/HalloweenGhost";
+import LogoLoader from "./components/LogoLoader";
+import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables } from './utils/accesoGestionables';
 import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
@@ -86,15 +88,8 @@ const ForecastFinanciero   = lazy(() => import("./pages/ForecastFinanciero"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
 const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
-// Spinner mínimo mientras se descarga el chunk
-const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-slate-100">
-    <div className="flex flex-col items-center gap-3">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cargando módulo…</span>
-    </div>
-  </div>
-);
+// Cargador global mientras se descarga el chunk de cualquier módulo.
+const PageLoader = () => <LogoLoader fullScreen text="Cargando módulo…" />;
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -169,6 +164,7 @@ const FloatingWidgets = () => {
 export default function App() {
   return (
     <BrowserRouter>
+      <GlobalModuleLoader />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={<Login />} />

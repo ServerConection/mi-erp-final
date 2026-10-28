@@ -51,15 +51,14 @@ export default function HalloweenGhost() {
 
       hideTimer = window.setTimeout(() => {
         setFlight(null);
-        // En local: 7 s de recorrido + 3 s de pausa = una aparición cada 10 s.
-        schedule(localPreview ? 3000 : randomBetween(MIN_INTERVAL, MAX_INTERVAL + 1));
+        schedule(randomBetween(MIN_INTERVAL, MAX_INTERVAL + 1));
       }, FLIGHT_DURATION);
     };
 
     const savedNext = Number(localStorage.getItem(storageKey));
     const initialDelay = Number.isFinite(savedNext) && savedNext > Date.now()
       ? savedNext - Date.now()
-      : localPreview ? 1200 : randomBetween(MIN_INTERVAL, MAX_INTERVAL + 1);
+      : randomBetween(MIN_INTERVAL, MAX_INTERVAL + 1);
     schedule(initialDelay);
 
     return () => {

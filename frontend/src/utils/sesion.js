@@ -109,6 +109,14 @@ function inyectarAuth(args) {
 
 let interceptorInstalado = false;
 
+function notificarActividadFetch(delta) {
+  const actual = Number(window.__erpPeticionesPendientes || 0);
+  window.__erpPeticionesPendientes = Math.max(0, actual + delta);
+  window.dispatchEvent(new CustomEvent('erp-peticiones-cambio', {
+    detail: { pendientes: window.__erpPeticionesPendientes },
+  }));
+}
+
 export function instalarInterceptorSesion() {
   if (interceptorInstalado) return;
   interceptorInstalado = true;
@@ -116,25 +124,36 @@ export function instalarInterceptorSesion() {
   const fetchOriginal = window.fetch.bind(window);
 
   window.fetch = async (...args) => {
-    const respuesta = await fetchOriginal(...inyectarAuth(args));
+    const entradaInicial = args[0];
+    const urlInicial = typeof entradaInicial === 'string' ? entradaInicial : (entradaInicial?.url || '');
+    const rastrear = esNuestroBackend(urlInicial) && !RUTAS_LOGIN_EXCLUIDAS.some(r => urlInicial.includes(r));
 
+    if (rastrear) notificarActividadFetch(1);
+
+    let respuesta;
     try {
-      const entrada = args[0];
-      const url = typeof entrada === 'string' ? entrada : (entrada?.url || '');
-      const esRutaExcluida = RUTAS_LOGIN_EXCLUIDAS.some(r => url.includes(r));
-      const habiaSesion = !!localStorage.getItem('token');
+      respuesta = await fetchOriginal(...inyectarAuth(args));
 
-      if (
-        respuesta.status === 401 &&
-        !esRutaExcluida &&
-        habiaSesion &&
-        esNuestroBackend(url)
-      ) {
-        cerrarSesionPorTokenExpirado('Tu sesión expiró. Inicia sesión de nuevo.');
-      }
-    } catch (_) { /* nunca romper el fetch original por esto */ }
+      try {
+        const entrada = args[0];
+        const url = typeof entrada === 'string' ? entrada : (entrada?.url || '');
+        const esRutaExcluida = RUTAS_LOGIN_EXCLUIDAS.some(r => url.includes(r));
+        const habiaSesion = !!localStorage.getItem('token');
 
-    return respuesta;
+        if (
+          respuesta.status === 401 &&
+          !esRutaExcluida &&
+          habiaSesion &&
+          esNuestroBackend(url)
+        ) {
+          cerrarSesionPorTokenExpirado('Tu sesión expiró. Inicia sesión de nuevo.');
+        }
+      } catch (_) { /* nunca romper el fetch original por esto */ }
+
+      return respuesta;
+    } finally {
+      if (rastrear) notificarActividadFetch(-1);
+    }
   };
 }
 

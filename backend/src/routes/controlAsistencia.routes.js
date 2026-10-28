@@ -96,6 +96,7 @@ router.get("/mi-perfil", verificarToken, async (req, res) => {
       cargo: usuario.cargo || "",
       perfil: usuario.perfil || "",
       empresa: usuario.empresa || "",
+      modalidad_asistencia: usuario.modalidad_asistencia || "",
     },
   });
 });
@@ -321,7 +322,8 @@ router.post("/", verificarToken, async (req, res) => {
       data: registro,
 
       mensaje:
-        (perfilUsuario === PERFIL_COMISIONISTA
+        (normalizarTexto(usuario.modalidad_asistencia) === "CONEXION" ||
+        (!usuario.modalidad_asistencia && [PERFIL_COMISIONISTA, "ASESOR"].includes(perfilUsuario))
           ? MENSAJES_CONEXION[actividad]
           : MENSAJES_ACTIVIDAD[actividad]) ||
         "Marcación registrada correctamente",

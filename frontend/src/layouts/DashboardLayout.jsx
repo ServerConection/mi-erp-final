@@ -427,6 +427,8 @@ const ALL_MENU_ITEMS = [
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
   { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
+  { name: "Modalidad de asistencia", path: "/configuracion-asistencia", icon: "🕘",
+    accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Forecast NOVONET", path: "/forecast-novonet", icon: "📈",

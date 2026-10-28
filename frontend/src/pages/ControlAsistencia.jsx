@@ -858,7 +858,8 @@ export default function ControlAsistencia() {
 
   let avisoSeleccion = "";
   if (pasoSeleccionado && seleccionYaRegistrada) {
-    avisoSeleccion = `Ya registraste ${pasoSeleccionado.titulo} hoy a las ${seleccionYaRegistrada.hora}. Si continúas se guardará una nueva marcación.`;
+    const ocultarHoraSalida = !esComisionista && pasoSeleccionado.value === "SALIDA";
+    avisoSeleccion = `Ya registraste ${pasoSeleccionado.titulo} hoy${ocultarHoraSalida ? "" : ` a las ${seleccionYaRegistrada.hora}`}. Si continúas se guardará una nueva marcación.`;
   } else if (pasoSeleccionado && pasoSeleccionado.value !== "INGRESO" && !jornadaHoy.INGRESO) {
     avisoSeleccion = `Aún no registras tu ${PASOS[0].titulo} de hoy. Verifica que sea la actividad correcta.`;
   } else if (pasoSeleccionado?.value === "INGRESO ALMUERZO" && !jornadaHoy["SALIDA ALMUERZO"]) {
@@ -888,6 +889,9 @@ export default function ControlAsistencia() {
       trabajadoMs += Math.max(0, fin - msIngreso);
     }
   }
+  const trabajadoVisibleMs = esComisionista
+    ? trabajadoMs
+    : Math.min(trabajadoMs, JORNADA_HORAS * 3600000);
   const progresoJornada = Math.min(1, trabajadoMs / (JORNADA_HORAS * 3600000));
   const CIRCUNFERENCIA = 2 * Math.PI * 50;
 
@@ -1190,7 +1194,9 @@ export default function ControlAsistencia() {
                       <Icono size={22} />
                     </span>
                     <span className="ca-accion-txt">{paso.titulo}</span>
-                    <span className="ca-accion-hora">{hecho ? hecho.hora.slice(0, 5) : "Pendiente"}</span>
+                    <span className="ca-accion-hora">
+                      {hecho ? (!esComisionista && paso.value === "SALIDA" ? "Registrado" : hecho.hora.slice(0, 5)) : "Pendiente"}
+                    </span>
                   </button>
                 );
               })}
@@ -1283,7 +1289,7 @@ export default function ControlAsistencia() {
                   <div>
                     <strong>{paso.titulo}</strong>
                     <span className="ca-t">
-                      {hecho ? hecho.hora : actual ? "Siguiente marcación" : "--:--:--"}
+                      {hecho ? (!esComisionista && paso.value === "SALIDA" ? "Registrado" : hecho.hora) : actual ? "Siguiente marcación" : "--:--:--"}
                     </span>
                   </div>
                 </li>
@@ -1297,7 +1303,7 @@ export default function ControlAsistencia() {
                 viewBox="0 0 120 120"
                 className="ca-donut"
                 role="img"
-                aria-label={`Tiempo acumulado ${duracionTexto(trabajadoMs)} de ${JORNADA_HORAS} horas`}
+                aria-label={`Tiempo acumulado ${duracionTexto(trabajadoVisibleMs)} de ${JORNADA_HORAS} horas`}
               >
                 <circle cx="60" cy="60" r="50" className="ca-donut-bg" />
                 {progresoJornada > 0 && (
@@ -1312,7 +1318,7 @@ export default function ControlAsistencia() {
                 )}
               </svg>
               <div className="ca-donut-centro">
-                <strong>{duracionTexto(trabajadoMs)}</strong>
+                <strong>{duracionTexto(trabajadoVisibleMs)}</strong>
                 <span>de {JORNADA_HORAS}h</span>
               </div>
             </div>

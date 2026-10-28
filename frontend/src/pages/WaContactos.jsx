@@ -553,8 +553,8 @@ export default function WaContactos() {
                 </div>
                 {bitrixPreview.truncated && <p className="text-xs text-amber-700 mb-2">La consulta alcanzó el límite de seguridad de 10.000 negocios. Reduce el rango de fechas.</p>}
                 <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 bg-white border border-slate-200 rounded-lg">
-                  {(bitrixPreview.items || []).map(item => <div key={item.wa_number} className="px-3 py-2 flex justify-between gap-3 text-sm">
-                    <span className="truncate">{item.name || "Sin nombre"}</span><span className="text-slate-500 whitespace-nowrap">+{item.wa_number}</span>
+                  {(bitrixPreview.items || []).map((item, i) => <div key={`${item.bitrix_id || "x"}-${i}`} className="px-3 py-2 flex justify-between gap-3 text-sm">
+                    <span className="truncate">{item.bitrix_id ? `#${item.bitrix_id} · ` : ""}{item.name || "Sin nombre"}</span><span className="text-slate-500 whitespace-nowrap font-mono">{item.telefono}</span>
                   </div>)}
                   {!bitrixPreview.items?.length && <div className="p-4 text-center text-sm text-slate-500">No se encontraron teléfonos válidos.</div>}
                 </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
-import { puedeAccederGestionables } from '../utils/accesoGestionables';
+import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
 import { puedeAccederAdministracion } from '../utils/accesoAdministracion';
 
@@ -420,6 +420,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
     accessCheck: () => puedeAccederGestionables('VELSA') },
+  { name: "Bolsa Leads", path: "/bolsa-leads", icon: "🔀",
+    accessCheck: () => puedeAccederBolsaLeads() },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",

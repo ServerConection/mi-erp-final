@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
-import { puedeAccederGestionables } from './utils/accesoGestionables';
+import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
 import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
@@ -36,6 +36,7 @@ const CoverageChecker      = lazy(() => import("./pages/CoverageChecker"));
 const Llamadas = lazy(() => import("./pages/Llamadas"));
 const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
+const BolsaLeads = lazy(() => import("./pages/BolsaLeads"));
 const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemilleroNovo'));
 const IndicadoresVentaenlinea = lazy(() => import('./pages/IndicadoresVentaenlinea'));
 const VistaAsesorSemillero = lazy(() => import('./pages/VistaAsesorSemillero'));
@@ -208,6 +209,7 @@ export default function App() {
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
+            <Route path="bolsa-leads" element={puedeAccederBolsaLeads() ? <BolsaLeads /> : <Navigate to="/" replace />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
             <Route path="indicadores-ventaenlinea" element={<IndicadoresVentaenlinea />} />
             <Route path="vista-asesor-semillero" element={<VistaAsesorSemillero />} />

@@ -48,12 +48,14 @@ const venta = (n, t1, t2, categoria = 'TABLA', reg = 'REGULARIZADO') => Array.fr
 const uno = (vs) => _test.calcularAsesores(vs)[0];
 // menos de 35: tabla "hasta 40" por venta
 assert.equal(uno(venta(10, 14.899, 16.461)).valor_disponible, 148.99);
-// 36 ventas a tabla nunca cobran menos que el asegurado de $550
-assert.equal(uno(venta(36, 14.899, 16.461)).valor_disponible, 550);
+// 36 ventas: $550 del asegurado + la venta 36 a tabla "hasta 41"
+assert.equal(uno(venta(36, 14.899, 16.461)).valor_disponible, 564.9);
 assert.equal(uno(venta(36, 14.899, 16.461)).asegurado_aplicado, true);
-// 41 o más: tabla "desde 41"
-assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 674.9);
-assert.equal(uno(venta(41, 14.899, 16.461)).tramo, 'DESDE 41');
+// $550 + ventas 36-41 a "hasta 41" + desde la 42 a "42 en adelante"
+assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 639.39);
+assert.equal(uno(venta(45, 14.899, 16.461)).valor_disponible, 705.24);
+assert.equal(uno(venta(42, 14.899, 16.461)).tramo, 'DESDE 42');
+assert.equal(uno(venta(41, 14.899, 16.461)).tramo, 'HASTA 41');
 // los planes de comisión no cuentan para llegar a 35
 const r34 = uno([...venta(34, 14.899, 16.461), ...venta(1, 10.091, 10.291, 'COMISION')]);
 assert.equal(r34.ventas_tabla, 34);
@@ -96,7 +98,7 @@ const py = f2([...vt(35, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
 assert.deepEqual([py.ventas_tabla, py.asegurado_aplicado, py.pyme_como_bono, py.valor_pyme_bono, py.valor_disponible], [35, true, true, 36.7, 586.7]);
 // PYME: 34 sin PYME → las PYME suman a tabla (36) y aplica asegurado
 const py2 = f2([...vt(34, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
-assert.deepEqual([py2.ventas_tabla, py2.pyme_como_bono, py2.valor_disponible], [36, false, 550]);
+assert.deepEqual([py2.ventas_tabla, py2.pyme_como_bono, py2.valor_disponible], [36, false, 564.9]);
 // Bono al volumen
 assert.equal(f2(vt(39, 10)).bono_volumen, 0);
 assert.equal(f2(vt(40, 10)).bono_volumen, 40);

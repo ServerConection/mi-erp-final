@@ -2,7 +2,7 @@
 // POST /api/comisiones/catalogo. Acepta dos formatos:
 //  1) Pestaña "CATALOGOS DE PLANES" (formato oficial NOVONET): bloques por tipo
 //     con CONDICIÓN 35 / <=40 / >=41, valor, Bono TC y Consideración.
-//     Se agrupa por TIPO + VELOCIDAD: com_t1 = "hasta 40", com_t2 = "desde 41",
+//     Se agrupa por TIPO + VELOCIDAD: com_t1 = "hasta 41" (columna "hasta las 40" del Excel), com_t2 = "42 en adelante",
 //     com_t3 = valor por venta del asegurado (35), categoria = Consideración.
 //  2) Formato anterior (hoja con columnas TIPO ... COM MENOR A 35).
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')

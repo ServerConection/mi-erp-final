@@ -325,6 +325,12 @@ const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 const esEmpresaVentaenlinea = (empresa = '') => empresa.replace(/[^A-Z0-9]/g, '') === 'VENTAENLINEA';
 const accesoVentaenlinea = (perfil, empresa) => isAdmin(perfil) || esEmpresaVentaenlinea(empresa);
+const rutaRepartoTV = (usuario = '') => {
+  const login = String(usuario).trim().toLowerCase();
+  if (login === 'tvnovo') return '/gestionables-asesores';
+  if (login === 'tvvelsa') return '/gestionables-velsa';
+  return null;
+};
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
   if (ruta === RUTA_NOVONET_ACCESS) return true;
@@ -543,7 +549,10 @@ export default function DashboardLayout() {
           ? '/seguimiento-ventas'
           : empresa === 'VELSA' ? '/seguimiento-velsa'
           : empresa === 'SEMILLERO' ? '/seguimiento-semillero' : '/';
-        if (location.pathname !== rutaTV && location.pathname !== '/llamadas') navigate(rutaTV, { replace: true });
+        const repartoTV = rutaRepartoTV(parsedUser.usuario);
+        if (location.pathname !== rutaTV && location.pathname !== '/llamadas' && location.pathname !== repartoTV) {
+          navigate(rutaTV, { replace: true });
+        }
       }
 
       if (Array.isArray(parsedUser.permisos) && parsedUser.permisos.length > 0) {
@@ -620,13 +629,18 @@ export default function DashboardLayout() {
       return;
     }
 
-    // Las cuentas TV solo pueden abrir el seguimiento de su empresa.
+    // Las cuentas TV conservan seguimiento y llamadas. tvnovo/tvvelsa además
+    // pueden abrir exclusivamente el reparto dedicado de su empresa.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV' && location.pathname !== RUTA_NOVONET_ACCESS) {
       const allowedName = empresaUpper === 'NOVONET' ? 'Seguimiento NOVONET' : (empresaUpper === 'VELSA' ? 'Seguimiento VELSA' : (empresaUpper === 'SEMILLERO' ? 'Seguimiento SEMILLERO' : null));
       const rutaTV = empresaUpper === 'NOVONET' ? '/seguimiento-ventas' : (empresaUpper === 'VELSA' ? '/seguimiento-velsa' : (empresaUpper === 'SEMILLERO' ? '/seguimiento-semillero' : '/'));
-      if (itemActual.path !== '/llamadas' && (itemActual.group !== 'seguimiento' || itemActual.name !== allowedName)) {
+      const repartoTV = rutaRepartoTV(user?.usuario);
+      const esRutaPermitida = itemActual.path === '/llamadas'
+        || itemActual.path === repartoTV
+        || (itemActual.group === 'seguimiento' && itemActual.name === allowedName);
+      if (!esRutaPermitida) {
         navigate(rutaTV, { replace: true });
       }
       return;
@@ -665,11 +679,12 @@ export default function DashboardLayout() {
       return perfil === 'ATC' && item.path === '/vista-backoffice';
     }
 
-    // El perfil TV solo ve el grupo Seguimiento y la vista de su empresa.
+    // El perfil TV ve seguimiento/llamadas y, para las cuentas dedicadas, su reparto.
     const perfilUpper = (user?.perfil || '').toUpperCase();
     const empresaUpper = (user?.empresa || '').toUpperCase();
     if (perfilUpper === 'TV') {
       if (item.path === '/llamadas') return true;
+      if (item.path === rutaRepartoTV(user?.usuario)) return true;
       if (item.group !== 'seguimiento') return false;
       if (empresaUpper === 'NOVONET') return item.name === 'Seguimiento NOVONET';
       if (empresaUpper === 'VELSA') return item.name === 'Seguimiento VELSA';

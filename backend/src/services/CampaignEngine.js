@@ -15,6 +15,7 @@ const fs = require('fs')
 const { asegurarLocal } = require('./waMediaFallback')
 const path = require('path')
 const { query } = require('../config/db')
+const { elegirLinea, normalizarModo } = require('./campaignLineas')
 
 // ── Protección anti-bloqueo adicional (2026-08-27) ─────────────────────────
 // Además del throttling propio de cada campaña (min/max delay, batch), se
@@ -240,7 +241,11 @@ class CampaignEngine {
   async _run(campaignId) {
     let camp     = await this._loadCampaign(campaignId)
     let variants = await this._loadVariants(campaignId)
-    const linea  = await this._cargarLinea(camp.line_id)
+    // Líneas de la campaña en orden de ronda (multi-línea). Compatibilidad:
+    // las campañas antiguas solo tienen line_id.
+    const lineas = await this._cargarLineasCampania(camp)
+    const modo   = normalizarModo(camp.modo_responsable)
+    let indiceRonda = 0
     let processedInBatch = 0
     let enviosDesdeControl = 0
     const rotState = {}  // estado de rotación de variantes (cola barajada)
@@ -274,25 +279,33 @@ class CampaignEngine {
         return
       }
 
-      // 🛡️ Guarda de calentamiento: una línea nueva no sale a campaña sin
-      // límite solo porque la campaña lo permita. Se revisa en cada vuelta
-      // porque el conteo de "enviados hoy" sube con cada mensaje.
-      if (lineaEnCalentamiento(linea?.created_at)) {
-        const enviadosHoy = await this._contarEnviadosHoyPorLinea(camp.line_id)
-        if (enviadosHoy >= TOPE_CALENTAMIENTO_DIARIO) {
-          console.warn(
-            `[CampaignEngine] 🛡️ Línea "${linea?.name || camp.line_id}" en calentamiento ` +
-            `(creada hace menos de ${CALENTAMIENTO_DIAS} días): alcanzó su tope diario de ` +
-            `${TOPE_CALENTAMIENTO_DIARIO} mensajes de campaña. Se pausa "${camp.name}" para ` +
-            `proteger el número — se puede reanudar cuando el operador lo decida.`
-          )
-          await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [campaignId])
-          this._emit(campaignId, 'campaign:paused', {
-            campaignId, motivo: 'calentamiento_linea_nueva', tope: TOPE_CALENTAMIENTO_DIARIO,
-          })
-          delete this.running[campaignId]
-          return
+      // 🛡️ Disponibilidad de líneas: conectada y, si está en calentamiento
+      // (creada hace menos de CALENTAMIENTO_DIAS), sin pasar su tope diario.
+      // Se revisa en cada vuelta porque el conteo de "enviados hoy" sube.
+      const disponibles = new Set()
+      let enTope = 0
+      for (const l of lineas) {
+        if (lineas.length > 1 && this.baileysManager?.getStatus && this.baileysManager.getStatus(l.id) !== 'connected') continue
+        if (lineaEnCalentamiento(l.created_at)) {
+          const enviadosHoy = await this._contarEnviadosHoyPorLinea(l.id)
+          if (enviadosHoy >= TOPE_CALENTAMIENTO_DIARIO) { enTope++; continue }
         }
+        disponibles.add(l.id)
+      }
+      if (!disponibles.size) {
+        const motivo = enTope === lineas.length && lineas.length ? 'calentamiento_linea_nueva' : 'sin_lineas_disponibles'
+        console.warn(
+          `[CampaignEngine] 🛡️ "${camp.name}": ninguna de sus ${lineas.length} línea(s) está disponible ` +
+          `(${motivo === 'calentamiento_linea_nueva'
+            ? `tope diario de calentamiento de ${TOPE_CALENTAMIENTO_DIARIO} mensajes`
+            : 'desconectadas o en tope de calentamiento'}). Se pausa para proteger los números.`
+        )
+        await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [campaignId])
+        this._emit(campaignId, 'campaign:paused', {
+          campaignId, motivo, tope: TOPE_CALENTAMIENTO_DIARIO,
+        })
+        delete this.running[campaignId]
+        return
       }
 
       if (burstInicialPendiente && NUMEROS_CONTROL.length) {
@@ -321,9 +334,26 @@ class CampaignEngine {
       }
 
       const recipient = pending.rows[0]
+
+      // Línea para este destinatario: ronda entre las líneas de la campaña
+      // respetando la regla de responsable (libre / evitar / mismo).
+      const eleccion = elegirLinea({
+        lineas, indice: indiceRonda, recipient, modo,
+        disponible: l => disponibles.has(l.id),
+      })
+      indiceRonda = eleccion.siguiente
+      if (!eleccion.linea) {
+        await query(
+          `UPDATE campaign_recipients SET status='skipped', error=$2 WHERE id=$1`,
+          [recipient.id, eleccion.saltar]
+        )
+        console.log(`[CampaignEngine] ⏭ ${recipient.wa_number} saltado: ${eleccion.saltar}`)
+        continue   // sin envío → sin pausa anti-bloqueo
+      }
+
       // Rotación: usa TODAS las variantes en orden aleatorio antes de repetir
       const variant = this._nextVariant(rotState, variants)
-      const enviado = await this._sendOne(camp, recipient, variant)
+      const enviado = await this._sendOne(camp, recipient, variant, eleccion.linea.id)
       processedInBatch++
       enviosDesdeControl++
 
@@ -381,8 +411,8 @@ class CampaignEngine {
 
   // ── Enviar a un destinatario ──────────────────────────────
   // variant: objeto de campaign_messages (o null → usa campos de la campaña)
-  async _sendOne(camp, recipient, variant = null) {
-    const lineId   = camp.line_id
+  async _sendOne(camp, recipient, variant = null, lineIdElegida = null) {
+    const lineId   = lineIdElegida || camp.line_id
     const waNumber = recipient.wa_number
     const vars = {
       ...(recipient.variables || {}),
@@ -399,9 +429,9 @@ class CampaignEngine {
 
     await query(
       `UPDATE campaign_recipients
-       SET status='sending', attempts = attempts + 1, message_id = $2
+       SET status='sending', attempts = attempts + 1, message_id = $2, line_id = $3
        WHERE id=$1`,
-      [recipient.id, variantId]
+      [recipient.id, variantId, lineId]
     )
 
     if (variant) {
@@ -558,6 +588,33 @@ class CampaignEngine {
   async _loadCampaign(id) {
     const r = await query('SELECT * FROM campaigns WHERE id=$1', [id])
     return r.rows[0]
+  }
+
+  // Líneas de la campaña (line_ids o, en campañas antiguas, line_id) con el
+  // nombre del dueño, en el orden en que se eligieron. Ignora líneas borradas.
+  async _cargarLineasCampania(camp) {
+    // Campaña de una sola línea (todas las anteriores): mismo camino de siempre.
+    if (!(Array.isArray(camp.line_ids) && camp.line_ids.length > 1)) {
+      const unica = await this._cargarLinea(camp.line_ids?.[0] || camp.line_id)
+      if (!unica) return []
+      if (normalizarModo(camp.modo_responsable) !== 'libre') {
+        const o = await query(
+          `SELECT NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS owner_nombre
+             FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by WHERE l.id=$1`, [unica.id])
+        unica.owner_nombre = o.rows[0]?.owner_nombre || null
+      }
+      return [unica]
+    }
+    const ids = camp.line_ids
+    const r = await query(
+      `SELECT l.id, l.name, l.created_at,
+              NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS owner_nombre
+         FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by
+        WHERE l.id = ANY($1::uuid[]) AND l.deleted_at IS NULL`,
+      [ids.filter(Boolean)]
+    )
+    const porId = new Map(r.rows.map(x => [String(x.id), x]))
+    return ids.map(id => porId.get(String(id))).filter(Boolean)
   }
 
   async _cargarLinea(lineId) {

@@ -201,15 +201,33 @@ class BaileysManager {
       for (const row of res.rows) {
         this.lidMap[row.lid_number] = row.real_number
       }
-      // Reconcile duplicates left by earlier deployments even if WhatsApp does
-      // not emit the mapping again during this connection.
-      for (const row of res.rows) {
-        await this._mergeLidConversations(row.lid_number, row.real_number)
-      }
       console.log(`[BaileysManager] LidMap cargado: ${res.rows.length} entradas`)
+      // Unificar chats duplicados que dejaron despliegues anteriores. Antes se
+      // revisaban TODAS las filas (≈10.000 → ~30.000 consultas) y ninguna línea
+      // conectaba hasta terminar (~8 min por reinicio). Ahora: una sola consulta
+      // trae solo los LID que todavía tienen chat propio y la fusión corre en
+      // segundo plano, sin bloquear la conexión de las líneas.
+      this._reconciliarLidsPendientes().catch(e =>
+        console.warn('[BaileysManager] Reconciliación LID falló:', e.message))
     } catch (e) {
       console.warn('[BaileysManager] No se pudo cargar lidMap desde DB:', e.message)
     }
+  }
+
+  async _reconciliarLidsPendientes() {
+    const inicio = Date.now()
+    const { rows } = await query(
+      `SELECT DISTINCT m.lid_number, m.real_number
+         FROM lid_mappings m
+         JOIN conversations c ON c.wa_number = m.lid_number
+        WHERE m.real_number IS NOT NULL AND m.real_number <> m.lid_number`
+    )
+    for (const row of rows) {
+      if (this.stopping) return
+      try { await this._mergeLidConversations(row.lid_number, row.real_number) }
+      catch (e) { console.warn(`[BaileysManager] Fusión LID ${row.lid_number}:`, e.message) }
+    }
+    console.log(`[BaileysManager] Reconciliación LID: ${rows.length} pendiente(s) en ${Date.now() - inicio}ms`)
   }
 
   async _saveLidMapping(lidNum, realNum) {

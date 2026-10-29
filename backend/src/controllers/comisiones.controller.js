@@ -76,7 +76,7 @@ function categoriaDesdeTexto(texto) {
   return null;
 }
 const REGLAS = {
-  asegurado: 550, meta: 35, desdeTramo2: 41,
+  asegurado: 550, meta: 35, desdeTramo2: 42,
   // Bono al volumen: ventas que cuentan → USD (se toma el escalón más alto alcanzado)
   bonoVolumen: [[60, 80], [50, 60], [40, 40]],
   // Tercera edad: máximo 15% de las ventas del asesor; las que pasan ese % no se pagan
@@ -87,9 +87,9 @@ const esTerceraEdad = (v) => String(v.tipo || '').toUpperCase() === 'TERCERA EDA
 
 /**
  * Valor de un conjunto de ventas de UN asesor.
- * ventas: [{ t1, t2, categoria }] (t1 = tabla "hasta 40", t2 = "desde 41"; null = sin tarifa)
+ * ventas: [{ t1, t2, categoria }] (t1 = tabla "hasta 41", t2 = "42 en adelante"; null = sin tarifa)
  *  - N = ventas que suman a tabla (las de categoría COMISION / NO_VENDER no cuentan)
- *  - tramo: N >= 41 → tabla "desde 41"; si no → "hasta 40"
+ *  - tramo del asesor: N >= 42 → "DESDE 42"; si no → "HASTA 41" (para planes de comisión y PYME bono)
  *  - N >= 35 → la parte de tabla nunca baja de $550 (asegurado garantizado)
  *  - las de comisión se suman aparte con el mismo tramo
  */
@@ -115,9 +115,20 @@ function calcularValor(ventas, reglas = REGLAS) {
   const n = tabla.length;
   const tramo = n >= reglas.desdeTramo2 ? 2 : 1;
   const valorDe = (v) => Number((tramo === 2 ? (v.t2 ?? v.t1) : v.t1) ?? 0);
-  const sumaTabla = tabla.reduce((a, v) => a + valorDe(v), 0);
+  const t1De = (v) => Number(v.t1 ?? 0);
+  const t2De = (v) => Number((v.t2 ?? v.t1) ?? 0);
   const aseguradoAplica = n >= reglas.meta;
-  const valorTabla = aseguradoAplica ? Math.max(reglas.asegurado, sumaTabla) : sumaTabla;
+  // Menos de 35: cada venta a la tabla "hasta 41".
+  // Desde 35: $550 cubre las primeras 35 (por fecha de activación) y se SUMA cada venta extra:
+  //   venta 36 a 41 → tabla "hasta 41" (com_t1); venta 42 en adelante → tabla "42 en adelante" (com_t2).
+  let valorTabla;
+  if (!aseguradoAplica) {
+    valorTabla = tabla.reduce((a, v) => a + t1De(v), 0);
+  } else {
+    const ordenadas = [...tabla].sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    valorTabla = reglas.asegurado + ordenadas.slice(reglas.meta)
+      .reduce((a, v, i) => a + (reglas.meta + i + 1 >= reglas.desdeTramo2 ? t2De(v) : t1De(v)), 0);
+  }
   const valorDirecto = [...directas, ...noVender].reduce((a, v) => a + valorDe(v), 0);
   const valorPymeBono = pymeComoBono ? pymes.reduce((a, v) => a + valorDe(v), 0) : 0;
 
@@ -134,7 +145,7 @@ function calcularValor(ventas, reglas = REGLAS) {
 }
 
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
-const TRAMO_TXT = { 1: 'HASTA 40', 2: 'DESDE 41' };
+const TRAMO_TXT = { 1: 'HASTA 41', 2: 'DESDE 42' };
 
 /** Agrupa las ventas por asesor y calcula total (todas las activas) y disponible (solo REGULARIZADO). */
 function calcularAsesores(ventas, reglas = REGLAS) {
@@ -146,7 +157,7 @@ function calcularAsesores(ventas, reglas = REGLAS) {
   const filas = [];
   for (const [usuario, vs] of grupos) {
     const regularizadas = vs.filter((v) => v.reg === 'REGULARIZADO');
-    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 41".
+    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 42".
     const sinAsesor = usuario === 'SIN ASIGNAR';
     const reglasGrupo = sinAsesor ? { ...reglas, meta: Infinity, desdeTramo2: Infinity } : reglas;
     const total = calcularValor(vs, reglasGrupo);
@@ -248,7 +259,7 @@ async function calcularComisiones(query) {
       filtroGlobal = `AND (to_jsonb(e)::text || ' ' || COALESCE(u.usuario, '') || ' ' || COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellidos, '') || ' ' || COALESCE(u.codigo_vendedor, '')) ILIKE $${values.length}`;
     }
 
-    // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 40", com_t2 = "desde 41".
+    // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 41", com_t2 = "42 en adelante".
     const mes = await mesCatalogo(query);
     let catalogo = `SELECT NULL::text AS tipo, NULL::int AS velocidad, NULL::numeric AS t1, NULL::numeric AS t2, NULL::text AS categoria WHERE false`;
     if (mes) {

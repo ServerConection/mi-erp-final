@@ -81,7 +81,14 @@ const c2 = (k) => rol2.conceptos.find((c) => c.clave === k);
 assert.equal(c2('asegurado').valor, 550);
 assert.equal(c2('asegurado_pagado').valor, 550);
 assert.equal(c2('plan_celular').ajustado, true);
-assert.equal(rol2.valor_a_pagar, 385.58);
+assert.equal(c2('comision_total').valor, 0);
+assert.equal(rol2.valor_a_pagar, 55.58);
+// Caso Leonardo oct-2026: 41 regularizadas, $623,80 (550 + extras), bono volumen $40
+const rolL = _test.armarRol({ ...filaRol, asegurado_aplicado: true, valor_disponible: 623.8, bono_volumen: 40 }, {});
+const cL = (k) => rolL.conceptos.find((c) => c.clave === k).valor;
+assert.deepEqual([cL('asegurado'), cL('comision_total'), cL('incentivos'), cL('anticipo_40')], [550, 73.8, 40, 29.52]);
+assert.equal(rolL.total_ingresos, 663.8);
+assert.equal(rolL.valor_a_pagar, 75.88);
 console.log('OK comisiones: rol de pagos');
 
 // ── Fase 2: No vender, tope 3ra edad, PYME como bono, bono volumen ──

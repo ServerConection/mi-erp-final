@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Utensils,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -323,6 +324,95 @@ function formatearHora(fecha) {
   }
 }
 
+const ESTADO_CONTROL = {
+  BITRIX_SIN_ACCESS: { texto: "Conectado en Bitrix sin Access", color: "#b91c1c", fondo: "#fef2f2" },
+  SIN_ACCESS_Y_DESCONECTADO: { texto: "Sin Access y desconectado", color: "#9a3412", fondo: "#fff7ed" },
+  BITRIX_NO_VERIFICABLE: { texto: "Bitrix no verificable", color: "#92400e", fondo: "#fffbeb" },
+  USUARIO_ERP_NO_VINCULADO: { texto: "Horario sin usuario ERP", color: "#7c3aed", fondo: "#f5f3ff" },
+  INGRESO_ATRASADO: { texto: "Ingreso atrasado", color: "#a16207", fondo: "#fefce8" },
+  INGRESO_A_TIEMPO: { texto: "Ingreso a tiempo", color: "#047857", fondo: "#ecfdf5" },
+  INGRESO_REGISTRADO_SIN_HORARIO: { texto: "Ingreso registrado · sin horario", color: "#0369a1", fondo: "#f0f9ff" },
+  TURNO_PENDIENTE: { texto: "Turno aún no iniciado", color: "#475569", fondo: "#f8fafc" },
+};
+
+function PanelControlIngresos({ filas, meta, cargando, onActualizar, empresa, onEmpresa, fecha, onFecha }) {
+  const [estado, setEstado] = useState("TODOS");
+  const [supervisor, setSupervisor] = useState("TODOS");
+  const [buscar, setBuscar] = useState("");
+  const supervisores = useMemo(() => [...new Set(filas.map((f) => f.supervisor).filter(Boolean))].sort(), [filas]);
+  const visibles = useMemo(() => filas.filter((f) =>
+    (estado === "TODOS" || f.estado === estado)
+    && (supervisor === "TODOS" || f.supervisor === supervisor)
+    && (!buscar || String(f.nombre_completo || "").toLowerCase().includes(buscar.toLowerCase()))
+  ), [filas, estado, supervisor, buscar]);
+  const c = meta?.conteos || {};
+  const entrada = { padding: 9, border: "1px solid #cbd5e1", borderRadius: 9, background: "#fff" };
+  useEffect(() => setSupervisor("TODOS"), [empresa]);
+  const exportarExcel = () => {
+    const datos = visibles.map((f) => ({
+      Empresa: empresa,
+      Fecha: fecha,
+      Asesor: f.nombre_completo,
+      Supervisor: f.supervisor || "SIN SUPERVISOR",
+      Turno: f.hora_programada ? `${f.hora_programada}-${f.hora_fin || ""}` : "SIN HORARIO",
+      "Ingreso Access": f.ingreso_access || "SIN MARCAR",
+      "Bitrix ahora": f.bitrix_conectado === true ? "EN LINEA" : f.bitrix_conectado === false ? "DESCONECTADO" : "NO VERIFICABLE",
+      "Jornada Bitrix": f.bitrix_jornada || "SIN DATO",
+      Validacion: f.bitrix_vinculo || "",
+      Estado: ESTADO_CONTROL[f.estado]?.texto || f.estado,
+    }));
+    const libro = XLSX.utils.book_new();
+    const hoja = XLSX.utils.json_to_sheet(datos);
+    hoja["!cols"] = [12, 12, 36, 28, 20, 18, 18, 18, 22, 32].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(libro, hoja, "Control de ingresos");
+    XLSX.writeFile(libro, `control_ingresos_${empresa.toLowerCase()}_${fecha}.xlsx`);
+  };
+
+  return (
+    <section style={{ width: "100%", maxWidth: 1600, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, boxShadow: "0 10px 30px rgba(15,23,42,.07)", overflow: "hidden" }}>
+      <div style={{ padding: "22px 24px", borderBottom: "1px solid #e8eef5", display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", background: "linear-gradient(135deg,#eff6ff,#fff 65%)" }}>
+        <div><h2 style={{ margin: 0, fontSize: 19, fontWeight: 900, color: "#0f172a" }}>Control de ingresos · {empresa}</h2><p style={{ margin: "5px 0 0", fontSize: 12, color: "#64748b" }}>Horario PostgreSQL + marcación real de Access + estado en línea consultado en Bitrix.</p></div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={exportarExcel} disabled={cargando || !visibles.length} style={{ padding: "10px 14px", border: "1px solid #16a34a", borderRadius: 10, background: "#fff", color: "#15803d", fontWeight: 900, cursor: cargando || !visibles.length ? "not-allowed" : "pointer" }}>Exportar Excel</button>
+          <button type="button" onClick={onActualizar} disabled={cargando} style={{ padding: "10px 14px", border: 0, borderRadius: 10, background: "#2563eb", color: "#fff", fontWeight: 900, cursor: cargando ? "wait" : "pointer" }}><RefreshCw size={14} style={{ display: "inline", marginRight: 7 }} className={cargando ? "ca-spin" : ""} />{cargando ? "Consultando…" : "Actualizar Bitrix"}</button>
+        </div>
+      </div>
+      <div style={{ padding: "16px 18px 0", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 7, padding: 4, border: "1px solid #dbeafe", borderRadius: 12, background: "#eff6ff" }}>
+          {["NOVONET", "VELSA", "SEMILLERO"].map((e) => <button key={e} type="button" onClick={() => onEmpresa(e)} style={{ padding: "9px 16px", border: 0, borderRadius: 9, background: empresa === e ? "#2563eb" : "transparent", color: empresa === e ? "#fff" : "#475569", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>{e}</button>)}
+        </div>
+        <label style={{ display: "grid", gap: 4, fontSize: 9, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Fecha<input type="date" value={fecha} max={fechaHoyEcuador()} onChange={(e) => onFecha(e.target.value)} style={entrada} /></label>
+        {meta && !meta.bitrix_es_en_vivo && <span style={{ padding: "9px 11px", borderRadius: 9, background: "#f8fafc", color: "#64748b", fontSize: 11 }}>Bitrix en línea solo está disponible para hoy.</span>}
+      </div>
+      {!meta?.bitrix_disponible && meta && <div style={{ margin: "16px 20px 0", padding: 12, borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 12, fontWeight: 700 }}>{meta.bitrix_es_en_vivo === false ? "La fecha seleccionada es histórica: Access y horarios sí son reales para ese día, pero Bitrix no conserva el estado en línea histórico." : "Bitrix no respondió en este corte. Las marcaciones de Access son reales, pero la conexión Bitrix queda como “No verificable”."}{meta.bitrix_es_en_vivo !== false && meta.bitrix_error ? ` Detalle: ${meta.bitrix_error}` : ""}</div>}
+      <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 10 }}>
+        {[["Monitoreados", c.programados || 0, "#0f172a"], ["Con ingreso", c.con_ingreso || 0, "#047857"], ["Sin ingreso", c.sin_ingreso || 0, "#b91c1c"], ["Bitrix sin Access", c.bitrix_sin_access || 0, "#dc2626"], ["Atrasados", c.atrasados || 0, "#a16207"], ["No verificables", c.no_verificables || 0, "#92400e"]].map(([titulo, valor, color]) => <div key={titulo} style={{ padding: 15, border: "1px solid #e2e8f0", borderRadius: 12 }}><div style={{ fontSize: 10, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>{titulo}</div><div style={{ marginTop: 5, fontSize: 25, fontWeight: 900, color }}>{valor}</div></div>)}
+      </div>
+      <div style={{ padding: "0 18px 14px", display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <select value={estado} onChange={(e) => setEstado(e.target.value)} style={entrada}><option value="TODOS">Todos los estados</option>{Object.entries(ESTADO_CONTROL).map(([k, v]) => <option key={k} value={k}>{v.texto}</option>)}</select>
+        <select value={supervisor} onChange={(e) => setSupervisor(e.target.value)} style={entrada}><option value="TODOS">Todos los supervisores</option>{supervisores.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar asesor…" style={{ ...entrada, minWidth: 210 }} />
+      </div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
+        <thead><tr style={{ background: "#f8fafc" }}>{["Asesor", "Supervisor", "Turno", "Access", "Bitrix ahora", "Jornada Bitrix", "Validación", "Estado"].map((h) => <th key={h} style={{ padding: 11, textAlign: "left", fontSize: 9, color: "#64748b", textTransform: "uppercase", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0" }}>{h}</th>)}</tr></thead>
+        <tbody>
+          {visibles.map((f) => { const e = ESTADO_CONTROL[f.estado] || ESTADO_CONTROL.BITRIX_NO_VERIFICABLE; return <tr key={`${f.usuario_id}-${f.nombre_completo}`}>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><b style={{ fontSize: 11 }}>{f.nombre_completo}</b><div style={{ fontSize: 9, color: "#64748b" }}>{f.modalidad_asistencia} · {f.modalidad || "Sin modalidad de turno"}</div></td>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontSize: 11 }}>{f.supervisor || "—"}</td><td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 800, fontSize: 11 }}>{f.hora_programada ? `${f.hora_programada}–${f.hora_fin || "—"}` : "Sin horario cargado"}</td>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900, color: f.ingreso_access ? "#047857" : "#b91c1c" }}>{f.ingreso_access || "Sin marcar"}</td>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontSize: 11 }}>{f.bitrix_conectado === true ? "🟢 En línea" : f.bitrix_conectado === false ? "⚪ Desconectado" : "— No verificable"}</td>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontSize: 11 }}>{f.bitrix_jornada || "—"}</td><td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontSize: 10 }}>{f.bitrix_vinculo === "EXACTO" ? "Nombre exacto" : f.bitrix_vinculo === "NOMBRE_UNICO" ? "Nombre único compatible" : f.bitrix_vinculo.replaceAll("_", " ")}</td>
+            <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><span style={{ display: "inline-block", padding: "5px 8px", borderRadius: 999, fontSize: 10, fontWeight: 900, color: e.color, background: e.fondo }}>{e.texto}</span></td>
+          </tr>; })}
+          {!cargando && visibles.length === 0 && <tr><td colSpan={8} style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>No hay registros que coincidan con los filtros.</td></tr>}
+          {cargando && <tr><td colSpan={8} style={{ padding: 30, textAlign: "center", color: "#64748b" }}>Consultando horarios, Access y Bitrix…</td></tr>}
+        </tbody>
+      </table></div>
+      <div style={{ padding: 14, background: "#f8fafc", color: "#64748b", fontSize: 10 }}>Corte: {meta?.generado_en ? new Date(meta.generado_en).toLocaleString("es-EC") : "—"} · Tolerancia: {meta?.tolerancia_minutos ?? 5} minutos · Bitrix: {meta?.bitrix_disponible ? "respuesta válida" : "no disponible"}</div>
+    </section>
+  );
+}
+
 export default function ControlAsistencia() {
   const [user, setUser] =
     useState(() => {
@@ -346,6 +436,7 @@ export default function ControlAsistencia() {
   const perfilActual = String(user?.perfil || "").trim().toUpperCase();
   const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "GERENTE"].includes(perfilActual)
     || /^GEREN(?:CIA|TE)[ _-]/.test(perfilActual);
+  const puedeVerControlIngresos = /^ADMINISTRADOR(?:A)?(?:[ _-]|$)/.test(perfilActual);
 
   const [
     actividad,
@@ -369,6 +460,14 @@ export default function ControlAsistencia() {
   const [filtroEmpresa, setFiltroEmpresa] = useState("TODAS");
   const [resumenDia, setResumenDia] = useState([]);
   const [cargandoResumen, setCargandoResumen] = useState(false);
+  const [controlIngresos, setControlIngresos] = useState([]);
+  const [metaControlIngresos, setMetaControlIngresos] = useState(null);
+  const [cargandoControlIngresos, setCargandoControlIngresos] = useState(false);
+  const [empresaControl, setEmpresaControl] = useState(() => {
+    const e = String(user?.empresa || "").trim().toUpperCase();
+    return ["NOVONET", "VELSA", "SEMILLERO"].includes(e) ? e : "NOVONET";
+  });
+  const [fechaControl, setFechaControl] = useState(fechaHoyEcuador);
 
   const [
     estadoUbicacion,
@@ -427,8 +526,9 @@ export default function ControlAsistencia() {
   }, []);
 
   useEffect(() => {
-    if (!puedeVerResumen && vistaActiva === "MARCACIONES") setVistaActiva("REGISTRO");
-  }, [puedeVerResumen, vistaActiva]);
+    if ((!puedeVerResumen && vistaActiva === "MARCACIONES")
+        || (!puedeVerControlIngresos && vistaActiva === "CONTROL_INGRESOS")) setVistaActiva("REGISTRO");
+  }, [puedeVerResumen, puedeVerControlIngresos, vistaActiva]);
 
   // ─────────────────────────────────────────────
   // RELOJ EN TIEMPO REAL
@@ -512,6 +612,22 @@ export default function ControlAsistencia() {
     }
   };
 
+  const cargarControlIngresos = async (forzar = false, empresa = empresaControl, fecha = fechaControl) => {
+    try {
+      setCargandoControlIngresos(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API}/api/control-asistencia/control-ingresos?empresa=${encodeURIComponent(empresa)}&fecha=${encodeURIComponent(fecha)}${forzar ? "&forzar=1" : ""}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.success) throw new Error(json.error || "No se pudo cargar el control de ingresos");
+      setControlIngresos(Array.isArray(json.data) ? json.data : []);
+      setMetaControlIngresos(json.meta || null);
+    } catch (error) {
+      mostrarMensaje("error", error.message || "No se pudo cargar el control de ingresos");
+    } finally {
+      setCargandoControlIngresos(false);
+    }
+  };
+
   const cargarMisRegistros = async () => {
     try {
       setCargandoJornada(true);
@@ -566,8 +682,9 @@ export default function ControlAsistencia() {
     if (vistaActiva === "MARCACIONES") {
       cargarResumenDia(fechaDesde, fechaHasta);
     }
+    if (vistaActiva === "CONTROL_INGRESOS") cargarControlIngresos(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fechaDesde, fechaHasta, vistaActiva]);
+  }, [fechaDesde, fechaHasta, vistaActiva, empresaControl, fechaControl]);
 
   // ─────────────────────────────────────────────
   // OBTENER GEOLOCALIZACIÓN
@@ -1063,7 +1180,7 @@ export default function ControlAsistencia() {
         aria-label="Vistas de control de asistencia"
         style={{
           width: "100%",
-          maxWidth: vistaActiva === "MARCACIONES" ? 1600 : 1180,
+          maxWidth: vistaActiva === "REGISTRO" ? 1180 : 1600,
           padding: 5,
           display: "flex",
           gap: 6,
@@ -1076,6 +1193,7 @@ export default function ControlAsistencia() {
         {[
           { id: "REGISTRO", icono: "⏱️", texto: "REGISTRAR MARCACIÓN" },
           ...(!puedeVerResumen ? [] : [{ id: "MARCACIONES", icono: "📋", texto: "MARCACIONES DEL DÍA" }]),
+          ...(!puedeVerControlIngresos ? [] : [{ id: "CONTROL_INGRESOS", icono: "🔎", texto: "CONTROL DE INGRESOS" }]),
         ].map((opcion) => {
           const activa = vistaActiva === opcion.id;
           return (
@@ -1327,6 +1445,17 @@ export default function ControlAsistencia() {
           </div>
         </aside>
       </div>
+      ) : vistaActiva === "CONTROL_INGRESOS" ? (
+      <PanelControlIngresos
+        filas={controlIngresos}
+        meta={metaControlIngresos}
+        cargando={cargandoControlIngresos}
+        onActualizar={() => cargarControlIngresos(true)}
+        empresa={empresaControl}
+        onEmpresa={setEmpresaControl}
+        fecha={fechaControl}
+        onFecha={setFechaControl}
+      />
       ) : (
       <section style={{ width: "100%", maxWidth: 1600, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, boxShadow: "0 10px 30px rgba(15,23,42,.07)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px", borderBottom: "1px solid #e8eef5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", background: "linear-gradient(135deg,#f0fdfa 0%,#ffffff 65%)" }}>

@@ -15,6 +15,45 @@ const ETAPAS_VISIBLES = (process.env.BOT_AUDITOR_ETAPAS ||
 
 const FILTRO_ETAPA = `(stage_id IS NULL OR stage_id = ANY($__I__))`;
 
+// BotAuditor se alimenta mediante un servicio externo y algunas auditorias de
+// WhatsApp llegan con asesor="Desconocido". WABOT sí conoce al responsable:
+// la conversación pertenece a una línea y esa línea tiene un usuario dueño.
+//
+// Este enriquecimiento es deliberadamente conservador:
+// - no modifica la tabla auditorias;
+// - conserva cualquier asesor válido que ya haya guardado el auditor;
+// - solo consulta WABOT para WhatsApp/WABA y valores vacíos/desconocidos;
+// - exige que empresa y deal coincidan para no cruzar IDs de dos portales.
+const ASESOR_DESCONOCIDO_SQL = `(a.asesor IS NULL OR BTRIM(a.asesor) = '' OR LOWER(BTRIM(a.asesor)) = 'desconocido')`;
+const ASESOR_WABOT_LATERAL_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(
+             NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(u.nombres), ''), NULLIF(BTRIM(u.apellidos), ''))), ''),
+             NULLIF(BTRIM(u.usuario), '')
+           ) AS asesor_wabot
+    FROM conversations c
+    JOIN lines l ON l.id = c.line_id
+    JOIN usuarios u ON u.id = l.created_by
+    WHERE c.bitrix_deal_id = a.id_bitrix
+      AND CASE UPPER(BTRIM(COALESCE(u.empresa, '')))
+            WHEN 'SEMILLERO' THEN 'NOVONET'
+            ELSE UPPER(BTRIM(COALESCE(u.empresa, '')))
+          END = UPPER(BTRIM(COALESCE(a.empresa, '')))
+    ORDER BY c.started_at DESC NULLS LAST, c.id DESC
+    LIMIT 1
+  ) wabot ON UPPER(BTRIM(COALESCE(a.tipo_canal, ''))) IN ('WHATSAPP', 'WABA')
+             AND ${ASESOR_DESCONOCIDO_SQL}`;
+const AUDITORIAS_ENRIQUECIDAS_SQL = `
+  WITH auditorias_enriquecidas AS (
+    SELECT a.*,
+           CASE WHEN ${ASESOR_DESCONOCIDO_SQL}
+                THEN COALESCE(wabot.asesor_wabot, NULLIF(BTRIM(a.asesor), ''), 'Desconocido')
+                ELSE a.asesor
+           END AS asesor_resuelto
+    FROM auditorias a
+    ${ASESOR_WABOT_LATERAL_SQL}
+  )`;
+
 // Nombre legible de cada stage_id. Solo existen 4 valores posibles porque
 // ETAPAS_VISIBLES ya filtra la consulta a estos mismos — por eso se resuelve
 // en JS con un mapa fijo en vez de un JOIN contra bitrix_etapas/bitrix_etapas_novonet:
@@ -46,8 +85,10 @@ function necesitaIntervencion(calificacion, puntuacionVenta) {
   );
 }
 function enriquecerFila(row) {
+  const { asesor_resuelto, ...datos } = row;
   return {
-    ...row,
+    ...datos,
+    asesor: asesor_resuelto || row.asesor,
     etapa: nombreEtapa(row.stage_id),
     necesita_intervencion: necesitaIntervencion(row.calificacion, row.puntuacion_venta),
   };
@@ -97,7 +138,7 @@ async function listarAuditorias(req, res) {
       params.push(canal);
     }
     if (asesor) {
-      where.push(`asesor ILIKE $${i++}`);
+      where.push(`asesor_resuelto ILIKE $${i++}`);
       params.push(`%${asesor}%`);
     }
     // Rango por FECHA DE CREACIÓN DEL LEAD. `hasta` es inclusivo del día
@@ -112,7 +153,7 @@ async function listarAuditorias(req, res) {
       params.push(hasta);
     }
     if (q) {
-      where.push(`(id_bitrix ILIKE $${i} OR asesor ILIKE $${i} OR observacion ILIKE $${i})`);
+      where.push(`(id_bitrix ILIKE $${i} OR asesor_resuelto ILIKE $${i} OR observacion ILIKE $${i})`);
       params.push(`%${q}%`);
       i++;
     }
@@ -123,7 +164,8 @@ async function listarAuditorias(req, res) {
     const offset = (pageNum - 1) * limitNum;
 
     const totalResult = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM auditorias ${whereSql}`,
+      `${AUDITORIAS_ENRIQUECIDAS_SQL}
+       SELECT COUNT(*)::int AS total FROM auditorias_enriquecidas ${whereSql}`,
       params
     );
     const total = totalResult.rows[0]?.total || 0;
@@ -136,10 +178,11 @@ async function listarAuditorias(req, res) {
     // (ver nombreEtapa/necesitaIntervencion) — sin JOIN, no hay forma de que
     // esta consulta tumbe la vista principal.
     const dataResult = await pool.query(
-      `SELECT id, id_bitrix, asesor, empresa, tipo_canal, calificacion,
+      `${AUDITORIAS_ENRIQUECIDAS_SQL}
+       SELECT id, id_bitrix, asesor_resuelto AS asesor, empresa, tipo_canal, calificacion,
               puntuacion_venta, puntuacion_atc, observacion, stage_id,
               fecha_creacion_lead, fecha_hora_auditada, ultimo_mensaje_at
-       FROM auditorias
+       FROM auditorias_enriquecidas
        ${whereSql}
        ORDER BY fecha_creacion_lead DESC NULLS LAST, id DESC
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -312,7 +355,14 @@ async function obtenerDetalle(req, res) {
     }
 
     const result = await pool.query(
-      `SELECT a.* FROM auditorias a WHERE a.id = $1${scope}`,
+      `SELECT a.*,
+              CASE WHEN ${ASESOR_DESCONOCIDO_SQL}
+                   THEN COALESCE(wabot.asesor_wabot, NULLIF(BTRIM(a.asesor), ''), 'Desconocido')
+                   ELSE a.asesor
+              END AS asesor_resuelto
+       FROM auditorias a
+       ${ASESOR_WABOT_LATERAL_SQL}
+       WHERE a.id = $1${scope}`,
       params
     );
     if (result.rows.length === 0) {

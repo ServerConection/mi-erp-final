@@ -124,6 +124,11 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_days SMALLINT[];
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_hour_from SMALLINT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS send_hour_to SMALLINT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS paused_for_schedule BOOLEAN DEFAULT false;
+-- Campañas multi-línea (2026-10-29): varias líneas en ronda y regla de responsable.
+-- modo_responsable: 'libre' | 'evitar' (no desde el responsable del lead) | 'mismo' (solo desde él)
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS line_ids UUID[];
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS modo_responsable VARCHAR(10) DEFAULT 'libre';
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS line_id UUID;
 
 CREATE TABLE IF NOT EXISTS campaign_messages (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

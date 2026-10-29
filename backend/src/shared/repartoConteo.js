@@ -34,6 +34,10 @@ const PCT_SIN_VENTA_MAX = Number(process.env.GESTIONABLES_PCT_SIN_VENTA) || 30;
 const normEtapa = (etapa) => String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/_/g, ' ').trim().replace(/\s+/g, ' ').toUpperCase();
 const esVentaSubida = (etapa) => normEtapa(etapa) === 'VENTA SUBIDA';
+// Etapas que NO cuentan en el total de leads del asesor (se muestran aparte
+// para detectar si alguien mueve leads ahí para seguir recibiendo).
+const ETAPAS_FUERA_DEL_TOTAL = new Set(['DUPLICADO', 'DUPLLICADO', 'REGULARIZACION', 'REMARKETING']);
+const esEtapaFueraDelTotal = (etapa) => ETAPAS_FUERA_DEL_TOTAL.has(normEtapa(etapa));
 const metaVentaSubida = (gestionables, pct = PCT_SIN_VENTA_MAX) =>
   Math.ceil(Math.round((Number(gestionables) || 0) * pct) / 100);
 const bloqueadoPorEfectividad = ({ gestionables, vencidos, venta = 0, pct = PCT_SIN_VENTA_MAX }) => {
@@ -96,7 +100,7 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   }
   for (const a of asig.rows) {
     const k = normalizarNombre(a.asesor_asignado);
-    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: 0, vencidos: 0, sin_conteo: 0, sin_conteo_humano: 0 };
+    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: 0, vencidos: 0, sin_conteo: 0, sin_conteo_humano: 0, dup_reg_rmk: 0, dup_reg_rmk_humano: 0 };
     // Origen "FB Messenger - Novo" (y otros configurados): se entregó en orden,
     // pero no suma al total de leads, ni ATC, ni gestionables, ni efectividad.
     if (sinConteo.has(String(a.bitrix_deal_id))) {
@@ -106,6 +110,13 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
       continue;
     }
     const etapa = etapas.get(String(a.bitrix_deal_id));
+    // Duplicado / Regularización / Remarketing: no suman al total de leads (cupo)
+    if (etapa && esEtapaFueraDelTotal(etapa)) {
+      x.dup_reg_rmk += 1;
+      if (a.origen === 'humano') x.dup_reg_rmk_humano += 1;
+      m.set(k, x);
+      continue;
+    }
     x.total += 1;
     const gestionable = !etapa || esEtapaGestionable(etapa);
     if (gestionable) x.gestionables += 1;
@@ -118,4 +129,4 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, esEtapaFueraDelTotal, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };

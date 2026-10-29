@@ -173,6 +173,7 @@ function calcularAsesores(ventas, reglas = REGLAS) {
       ventas_tabla: disp.n_tabla,
       tramo: TRAMO_TXT[disp.tramo],
       asegurado_aplicado: disp.asegurado_aplica,
+      asegurado_total_aplicado: total.asegurado_aplica,
       valor_comision_directa: r2(disp.valor_directo),
       valor_pyme_bono: r2(disp.valor_pyme_bono),
       pyme_como_bono: disp.pyme_como_bono,
@@ -401,7 +402,7 @@ async function catalogoCargar(req, res) {
 // concepto AUTO lo reemplaza; borrar el valor vuelve al cálculo automático.
 const ROL_CONCEPTOS = [
   { clave: 'asegurado',          lado: 'ingreso',   etiqueta: 'Asegurado',                              auto: true },
-  { clave: 'comision_total',     lado: 'ingreso',   etiqueta: 'Comisión total (solo regularizadas)',    auto: true },
+  { clave: 'comision_total',     lado: 'ingreso',   etiqueta: 'Comisión (con asegurado: desde la venta 36)', auto: true },
   { clave: 'bono_tc',            lado: 'ingreso',   etiqueta: 'Pago de tarjetas de crédito recaudadas' },
   { clave: 'incentivos',         lado: 'ingreso',   etiqueta: 'Incentivos (bono al volumen)',           auto: true },
   { clave: 'asegurado_pagado',   lado: 'descuento', etiqueta: 'Asegurado pagado',                       auto: true },
@@ -418,8 +419,10 @@ const ROL_REGLAS = { anticipo: 0.4, plan_celular: 8.4 };
 
 /** Arma el rol de un asesor a partir de su fila de comisiones y sus ajustes { clave: monto }. */
 function armarRol(fila, ajustes = {}, reglas = REGLAS) {
-  const comision = Number(fila.valor_disponible || 0);
+  // Con asegurado, los $550 cubren las primeras 35 ventas: la comisión del rol es solo
+  // lo que va encima (venta 36 en adelante + planes de comisión + PYME bono).
   const asegurado = fila.asegurado_aplicado ? reglas.asegurado : 0;
+  const comision = r2(Math.max(0, Number(fila.valor_disponible || 0) - asegurado));
   const auto = {
     asegurado,
     comision_total: comision,

@@ -52,7 +52,9 @@ function CelularBilletera({ a, mes, empresa }) {
   const puedeRetirar = Number(a.valor_disponible || 0) > 0 && new Date() >= pagos.fechaRetiro;
   const tieneSoloPendientes = Number(a.valor_disponible || 0) === 0 && enCamino > 0;
   const todoLiberado = pct === 100 && enCamino === 0;
-  const totalComision = Number(a.valor_total || 0);
+  // El asegurado ($550) se paga aparte; el 40% / 60% es solo sobre la comisión que va encima.
+  const montoAsegurado = a.asegurado_total_aplicado ? 550 : 0;
+  const totalComision = Math.max(0, Number(a.valor_total || 0) - montoAsegurado);
   const pagosComision = totalComision > 0 ? { anticipo: totalComision * 0.4, restante: totalComision * 0.6 } : null;
   return <div className="relative mx-auto w-full max-w-[360px] overflow-hidden rounded-[2.5rem] border-[9px] border-slate-950 bg-[#f4f7fb] shadow-[0_24px_60px_-24px_rgba(15,23,42,.5)]">
     <div className="mx-auto mt-2 h-5 w-24 rounded-full bg-slate-950" />
@@ -78,7 +80,7 @@ function CelularBilletera({ a, mes, empresa }) {
     {mostrarRetiro && <div className="absolute inset-0 z-20 flex items-end bg-slate-950/55 p-3 backdrop-blur-sm"><div className="w-full rounded-[1.75rem] bg-white p-5 shadow-2xl">
       <span className="inline-flex rounded-2xl bg-blue-100 p-3 text-blue-700"><CalendarDays className="h-5 w-5" /></span>
       <h3 className="mt-4 text-lg font-black text-slate-900">Fechas de retiro de {pagos.mesPago}</h3><p className="mt-1 text-xs leading-5 text-slate-500">Los pagos de {pagos.mesPeriodo} estarán disponibles en estas fechas.</p>
-      <div className="relative mt-5 space-y-5 pl-8 text-xs before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-0.5 before:bg-blue-200">{[[pagos.asegurado, 'Pago del asegurado', null], [pagos.anticipo, 'Pago del 40% de la comisión', pagosComision?.anticipo], [pagos.restante, 'Pago del 60% restante', pagosComision?.restante]].map(([fecha, descripcion, monto]) => <div key={fecha} className="relative"><span className="absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-[3px] border-blue-600 bg-white" /><div className="flex items-start justify-between gap-3"><div><b className="text-sm text-slate-900">{fecha}</b><p className="mt-0.5 text-slate-500">{descripcion}</p></div>{monto != null && <b className="shrink-0 text-sm text-slate-900">{dinero(monto)}</b>}</div></div>)}</div>
+      <div className="relative mt-5 space-y-5 pl-8 text-xs before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-0.5 before:bg-blue-200">{[[pagos.asegurado, 'Pago del asegurado', montoAsegurado || null], [pagos.anticipo, 'Pago del 40% de la comisión', pagosComision?.anticipo], [pagos.restante, 'Pago del 60% restante', pagosComision?.restante]].map(([fecha, descripcion, monto]) => <div key={fecha} className="relative"><span className="absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-[3px] border-blue-600 bg-white" /><div className="flex items-start justify-between gap-3"><div><b className="text-sm text-slate-900">{fecha}</b><p className="mt-0.5 text-slate-500">{descripcion}</p></div>{monto != null && <b className="shrink-0 text-sm text-slate-900">{dinero(monto)}</b>}</div></div>)}</div>
       <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-[10px] font-semibold leading-4 text-amber-800"><LockKeyhole className="h-4 w-4 shrink-0" />Esta vista es informativa. No realiza movimientos de dinero.</div><button type="button" onClick={() => setMostrarRetiro(false)} className="mt-4 w-full rounded-xl bg-slate-950 py-3 text-xs font-black text-white">Entendido</button>
     </div></div>}
   </div>;

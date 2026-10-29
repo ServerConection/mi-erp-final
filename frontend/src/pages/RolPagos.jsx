@@ -88,7 +88,7 @@ function RolAsesor({ rol, mes, editable, onGuardar }) {
         <span className="text-sm font-black uppercase text-slate-700">Valor a pagar</span>
         <span className={`text-3xl font-black ${rol.valor_a_pagar < 0 ? 'text-red-600' : 'text-slate-900'}`}>{dinero(rol.valor_a_pagar)}</span>
       </div>
-      <p className="mt-3 text-[11px] text-slate-500">Comisión total = solo ventas REGULARIZADAS del mes por fecha de activación. Asegurado y asegurado pagado se compensan (el asegurado ya se anticipó). Retención 8%: pendiente de definir con Sergio.</p>
+      <p className="mt-3 text-[11px] text-slate-500">Solo ventas REGULARIZADAS del mes por fecha de activación. Con asegurado, los $550 cubren las primeras 35 ventas y la comisión es solo desde la venta 36; el asegurado ya se pagó, por eso se descuenta como asegurado pagado. El anticipo 40% es sobre la comisión. Retención 8%: pendiente de definir con Sergio.</p>
     </div>
   );
 }

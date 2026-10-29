@@ -5,14 +5,21 @@ import { construirUrlListado, fechaHoraEcuador, obtenerBorradorNuevo } from './n
 test('construye el listado sin fecha cuando se quieren todos los leads desde el 15 de agosto', () => {
   assert.equal(
     construirUrlListado('/api/nexo-ia', 'NOVONET', ''),
-    '/api/nexo-ia?empresa=NOVONET',
+    '/api/nexo-ia?empresa=NOVONET&pagina=1&limite=100',
   );
 });
 
 test('envia el filtro como fecha de creacion del lead', () => {
   assert.equal(
     construirUrlListado('/api/nexo-ia', 'NOVONET', '2026-08-31'),
-    '/api/nexo-ia?empresa=NOVONET&fecha_creacion=2026-08-31',
+    '/api/nexo-ia?empresa=NOVONET&pagina=1&limite=100&fecha_creacion=2026-08-31',
+  );
+});
+
+test('envia pagina y limite para no descargar miles de conversaciones', () => {
+  assert.equal(
+    construirUrlListado('/api/nexo-ia', 'NOVONET', '', 3, 100),
+    '/api/nexo-ia?empresa=NOVONET&pagina=3&limite=100',
   );
 });
 

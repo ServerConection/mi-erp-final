@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import HalloweenPumpkinFlight from "./HalloweenPumpkinFlight";
 
-const MIN_INTERVAL = 15 * 60 * 1000;
-const MAX_INTERVAL = 20 * 60 * 1000;
+const MIN_INTERVAL = 5 * 60 * 1000;
+const MAX_INTERVAL = 7 * 60 * 1000;
 const FLIGHT_DURATION = 7000;
 const NEXT_FLIGHT_KEY = "novo_erp_halloween_next_flight";
 

@@ -74,10 +74,10 @@ function puedeCrearBase(user) {
 function configuracion(user) {
   const empresa = empresaUsuario(user)
   const webhook = empresa === 'VELSA'
-    ? (process.env.BITRIX_VELSA_URL || process.env.VELSA_WEBHOOK || process.env.BITRIX_WEBHOOK)
+    ? (process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK || process.env.BITRIX_VELSA_URL || process.env.VELSA_WEBHOOK)
     : (process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK)
   const categoryId = empresa === 'VELSA'
-    ? (process.env.VELSA_CATEGORY_ID || '8')
+    ? (process.env.VELSA_CATEGORY_ID || '51')
     : empresa === 'SEMILLERO'
       ? (process.env.SEMILLERO_CATEGORY_ID || process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
       : (process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')

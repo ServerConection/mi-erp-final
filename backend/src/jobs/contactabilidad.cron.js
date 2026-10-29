@@ -29,8 +29,8 @@ function initContactabilidadSync() {
   const { recalcularConsolidados } = require('../contactabilidad/contactabilidad.recalculo');
 
   const candidatos = [
-    { empresa: 'NOVONET', habilitado: process.env.CONTACTABILIDAD_NOVONET_ENABLED, webhook: process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK, categoryId: process.env.NOVONET_CATEGORY_ID || '19', campoChat: process.env.NOVONET_CAMPO_CHAT || 'UF_CRM_1782402564693' },
-    { empresa: 'VELSA', habilitado: process.env.CONTACTABILIDAD_VELSA_ENABLED, webhook: process.env.VELSA_WEBHOOK, categoryId: process.env.VELSA_CATEGORY_ID || '8', campoChat: process.env.VELSA_CAMPO_CHAT || null },
+    { empresa: 'NOVONET', habilitado: process.env.CONTACTABILIDAD_NOVONET_ENABLED ?? ((process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK) ? 'true' : undefined), webhook: process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK, categoryId: process.env.NOVONET_CATEGORY_ID || '19', campoChat: process.env.NOVONET_CAMPO_CHAT || 'UF_CRM_1782402564693' },
+    { empresa: 'VELSA', habilitado: process.env.CONTACTABILIDAD_VELSA_ENABLED ?? ((process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK) ? 'true' : undefined), webhook: process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK || process.env.VELSA_WEBHOOK || process.env.BITRIX_VELSA_URL, categoryId: process.env.VELSA_CATEGORY_ID || '51', campoChat: process.env.VELSA_CAMPO_CHAT || null },
   ];
   const crms = candidatos.filter((crm) => String(crm.habilitado).toLowerCase() === 'true' && crm.webhook);
   if (!crms.length && String(process.env.CONTACTABILIDAD_ENABLED).toLowerCase() === 'true') {

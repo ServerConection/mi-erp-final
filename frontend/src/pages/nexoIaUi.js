@@ -1,5 +1,5 @@
-export function construirUrlListado(api, empresa, fechaCreacion = '') {
-  const query = new URLSearchParams({ empresa });
+export function construirUrlListado(api, empresa, fechaCreacion = '', pagina = 1, limite = 100) {
+  const query = new URLSearchParams({ empresa, pagina: String(pagina), limite: String(limite) });
   if (fechaCreacion) query.set('fecha_creacion', fechaCreacion);
   return `${api}?${query.toString()}`;
 }

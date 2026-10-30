@@ -93,7 +93,9 @@ const esTerceraEdad = (v) => String(v.tipo || '').toUpperCase() === 'TERCERA EDA
  *  - N >= 35 → la parte de tabla nunca baja de $550 (asegurado garantizado)
  *  - las de comisión se suman aparte con el mismo tramo
  */
-function calcularValor(ventas, reglas = REGLAS) {
+function calcularValor(ventas, reglas = REGLAS, registro = null) {
+  // registro(venta, concepto, valor): opcional, deja el detalle de cómo se pagó cada venta
+  const anotar = registro || (() => {});
   // "No vender": se pagan por comisión, pero NO cuentan como venta (ni tabla, ni 15%, ni bono volumen)
   const noVender = ventas.filter((v) => v.categoria === 'NO_VENDER');
   const cuentan = ventas.filter((v) => v.categoria !== 'NO_VENDER');
@@ -131,6 +133,22 @@ function calcularValor(ventas, reglas = REGLAS) {
   }
   const valorDirecto = [...directas, ...noVender].reduce((a, v) => a + valorDe(v), 0);
   const valorPymeBono = pymeComoBono ? pymes.reduce((a, v) => a + valorDe(v), 0) : 0;
+
+  if (registro) {
+    const sinTarifa = (v) => (v.t1 === null || v.t1 === undefined ? ' · sin valor en catálogo' : '');
+    noVender.forEach((v) => anotar(v, `No vender (se paga como comisión, no cuenta)${sinTarifa(v)}`, valorDe(v)));
+    excedentes.forEach((v) => anotar(v, 'Tercera edad sobre el 15% (no se paga)', 0));
+    directas.forEach((v) => anotar(v, `Plan de comisión${sinTarifa(v)}`, valorDe(v)));
+    if (pymeComoBono) pymes.forEach((v) => anotar(v, `PYME como bono${sinTarifa(v)}`, valorDe(v)));
+    const ordenadas = [...tabla].sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    ordenadas.forEach((v, i) => {
+      const num = i + 1;
+      if (!aseguradoAplica) return anotar(v, `Venta a tabla “hasta 41” (venta ${num})${sinTarifa(v)}`, t1De(v));
+      if (num <= reglas.meta) return anotar(v, `Asegurado (venta ${num} de ${reglas.meta})`, reglas.asegurado / reglas.meta);
+      if (num >= reglas.desdeTramo2) return anotar(v, `Extra “42 en adelante” (venta ${num})${sinTarifa(v)}`, t2De(v));
+      return anotar(v, `Extra “hasta 41” (venta ${num})${sinTarifa(v)}`, t1De(v));
+    });
+  }
 
   // Bono al volumen: cuentan todas las ventas pagables (sin "No vender" ni excedentes de 3ra edad)
   const escalon = (reglas.bonoVolumen || []).find(([desde]) => pagables.length >= desde);
@@ -284,7 +302,13 @@ async function calcularComisiones(query) {
           public.parse_fecha_flex(e.fecha_activacion_netlife::text)::date AS fecha_activacion,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
-          ${VELOCIDAD_VENTA} AS velocidad
+          ${VELOCIDAD_VENTA} AS velocidad,
+          NULLIF(BTRIM(e.id_bitrix::text), '') AS id_bitrix,
+          NULLIF(BTRIM(e.netlife_login::text), '') AS login,
+          COALESCE(NULLIF(BTRIM(e.plan_contratado_final), ''), e.plan_contratado) AS plan,
+          e.servicios_digitales AS servicios,
+          e.estatus_regularizacion AS estado_reg,
+          e.nombre_cliente_completo AS cliente
         FROM public.envios_ventas e
         LEFT JOIN public.usuarios u ON u.id = e.usuario_id
         LEFT JOIN LATERAL (
@@ -306,11 +330,13 @@ async function calcularComisiones(query) {
       ), cat AS (${catalogo})
       SELECT v.codigo, v.usuario, v.nombre_asesor, v.tipo, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
              to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.reg,
-             c.t1::float AS t1, c.t2::float AS t2, c.categoria
+             c.t1::float AS t1, c.t2::float AS t2, c.categoria,
+             v.velocidad, v.id_bitrix, v.login, v.plan, v.servicios, v.estado_reg, v.cliente
       FROM ventas v
       LEFT JOIN cat c ON c.tipo = v.tipo AND c.velocidad = v.velocidad
     `, values);
 
+    if (query.__soloVentas === true) return { empresa, ventas, mes_catalogo: mes };
     // Solo REGULARIZADO se paga (disponible); valor total = si todas sus activas se regularizan.
     const rows = calcularAsesores(ventas);
     const suma = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
@@ -522,8 +548,51 @@ async function rolAjuste(req, res) {
   }
 }
 
+
+/** Detalle venta por venta de un asesor: cómo se paga cada una (solo REGULARIZADO suma al disponible). */
+function detalleAsesor(vs, usuario, reglas = REGLAS) {
+  const sinAsesor = usuario === 'SIN ASIGNAR';
+  const reglasGrupo = sinAsesor ? { ...reglas, meta: Infinity, desdeTramo2: Infinity } : reglas;
+  const conceptos = new Map();
+  calcularValor(vs.filter((v) => v.reg === 'REGULARIZADO'), reglasGrupo, (v, concepto, valor) => conceptos.set(v, { concepto, valor }));
+  const items = vs.map((v) => {
+    const c = conceptos.get(v);
+    const pagada = Boolean(c);
+    return {
+      id_bitrix: v.id_bitrix, login: v.login, cliente: v.cliente, plan: v.plan, servicios: v.servicios,
+      tipo: v.tipo, velocidad: v.velocidad, categoria: v.categoria || (v.t1 == null ? null : 'TABLA'),
+      fecha_activacion: v.fecha_activacion, fecha_telcos: v.fecha_telcos,
+      estado_regularizacion: v.estado_reg || 'SIN ESTADO',
+      regularizada: v.reg === 'REGULARIZADO',
+      concepto: pagada ? c.concepto : 'Por regularizar (no se paga todavía)',
+      valor_pagado: pagada ? r2(c.valor) : 0,
+      valor_si_regulariza: pagada ? r2(c.valor) : r2(v.t1 ?? 0),
+      tarifa_hasta_41: v.t1, tarifa_desde_42: v.t2,
+    };
+  }).sort((a, b) => Number(b.regularizada) - Number(a.regularizada)
+    || String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+  const totalCrudo = [...conceptos.values()].reduce((a, c) => a + Number(c.valor || 0), 0);
+  return { items, total_pagado: r2(totalCrudo) };
+}
+
+// GET /api/comisiones/detalle?empresa=&usuario=&activacionDesde=&activacionHasta=
+async function detalle(req, res) {
+  try {
+    const usuario = String(req.query.usuario || '').trim();
+    if (!usuario) return res.status(400).json({ success: false, error: 'Falta el asesor.' });
+    const { empresa, ventas, mes_catalogo } = await calcularComisiones({ ...req.query, __soloVentas: true });
+    const vs = ventas.filter((v) => v.usuario === usuario);
+    const d = detalleAsesor(vs, usuario);
+    return res.json({ success: true, data: { empresa, usuario, mes_catalogo, ...d } });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+    console.error('[comisiones.detalle]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo armar el detalle.' });
+  }
+}
+
 module.exports = {
-  listar, catalogoResumen, catalogoCargar, rolListar, rolAjuste,
-  _test: { fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido,
+  listar, detalle, catalogoResumen, catalogoCargar, rolListar, rolAjuste,
+  _test: { detalleAsesor, fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido,
     categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS, armarRol, ROL_CONCEPTOS },
 };

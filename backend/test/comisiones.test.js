@@ -115,3 +115,21 @@ assert.equal(f2(vt(60, 10)).bono_volumen, 80);
 const rolB = _test.armarRol({ ...filaRol, bono_volumen: 60 }, {});
 assert.equal(rolB.conceptos.find((c) => c.clave === 'incentivos').valor, 60);
 console.log('OK comisiones: fase 2 (no vender, tope 3ra edad, PYME bono, bono volumen)');
+
+// ── Detalle venta por venta: suma igual al disponible ──
+const casos = [
+  [...vt(41, 14.899), ...vt(2, 10.091, 'COMISION'), ...vt(1, 6.45, 'NO_VENDER', 'TERCERA EDAD')],
+  [...vt(20, 14.899), ...vt(3, 10, 'TABLA', 'HOME').map((v) => ({ ...v, reg: 'PORREGULARIZAR' }))],
+  [...vt(35, 14.899), ...vt(2, 18.35, 'PYME', 'PYME'), ...vt(6, 10, 'TABLA', 'TERCERA EDAD')],
+];
+for (const vs of casos) {
+  const filaD = _test.calcularAsesores(vs)[0];
+  const det = _test.detalleAsesor(vs, 'b');
+  assert.equal(det.total_pagado, filaD.valor_disponible);
+  assert.equal(det.items.length, vs.length);
+}
+const det2 = _test.detalleAsesor(casos[1], 'b');
+assert.equal(det2.items.filter((x) => !x.regularizada).length, 3);
+assert.ok(det2.items.find((x) => !x.regularizada).concepto.startsWith('Por regularizar'));
+assert.ok(_test.detalleAsesor(casos[0], 'b').items.some((x) => x.concepto.startsWith('Asegurado (venta 35 de 35)')));
+console.log('OK comisiones: detalle venta por venta');

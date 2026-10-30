@@ -110,11 +110,55 @@ const COLUMNAS = [
   { k: 'valor_disponible', txt: 'Disponible', r: true },
 ];
 
-function Detalle({ r, reglas, empresa, mes, onCerrar }) {
+function VentasAsesor({ r, empresa, mes, filtros }) {
+  const [det, setDet] = useState(null); const [cargando, setCargando] = useState(true); const [err, setErr] = useState('');
+  const [verTodas, setVerTodas] = useState(true);
+  useEffect(() => {
+    const ctrl = new AbortController(); setCargando(true); setErr('');
+    fetch(`${API}/api/comisiones/detalle?${new URLSearchParams({ empresa, ...filtros, usuario: r.usuario })}`, { headers: auth(), signal: ctrl.signal })
+      .then(async (x) => { const b = await x.json().catch(() => ({})); if (!x.ok) throw new Error(b.error || `HTTP ${x.status}`); return b; })
+      .then((b) => setDet(b.data)).catch((e) => { if (e.name !== 'AbortError') setErr(e.message); })
+      .finally(() => { if (!ctrl.signal.aborted) setCargando(false); });
+    return () => ctrl.abort();
+  }, [r.usuario, empresa, filtros]);
+  const items = (det?.items || []).filter((x) => verTodas || x.regularizada);
+  const descargar = () => {
+    const filas = (det?.items || []).map((x) => ({
+      'ID Bitrix': x.id_bitrix, Login: x.login, Cliente: x.cliente, Plan: x.plan, Servicios: x.servicios, Tipo: x.tipo, 'Velocidad (Mbps)': x.velocidad,
+      'Fecha activación': x.fecha_activacion, 'Ingreso Telcos': x.fecha_telcos, 'Estado regularización': x.estado_regularizacion,
+      'Cómo se paga': x.concepto, 'Valor a pagar': x.valor_pagado, 'Valor si regulariza': x.valor_si_regulariza,
+    }));
+    filas.push({ 'Cómo se paga': 'TOTAL A PAGAR (solo regularizadas)', 'Valor a pagar': det?.total_pagado });
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas), 'Detalle');
+    XLSX.writeFile(libro, `Comisiones_${empresa}_${mes}_${r.usuario}.xlsx`);
+  };
+  return <div className="mt-6">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-black uppercase text-slate-500">Ventas, logins y planes</h3>
+      <div className="flex items-center gap-2"><label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500"><input type="checkbox" checked={!verTodas} onChange={(e) => setVerTodas(!e.target.checked)} />Solo regularizadas</label>
+        <button type="button" onClick={descargar} disabled={!det?.items?.length} className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" />Descargar</button></div></div>
+    {cargando ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">Cargando ventas…</p>
+      : err ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{err}</p>
+      : <div className="mt-2 max-h-[45vh] overflow-auto rounded-xl border"><table className="w-full text-left text-[11px]">
+        <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500"><tr><th className="px-2 py-2">Login / ID</th><th className="px-2 py-2">Plan</th><th className="px-2 py-2">Activación</th><th className="px-2 py-2">Cómo se paga</th><th className="px-2 py-2 text-right">Valor</th></tr></thead>
+        <tbody className="divide-y">{items.map((x, i) => <tr key={`${x.id_bitrix}-${i}`} className={x.regularizada ? '' : 'bg-amber-50/60'}>
+          <td className="px-2 py-2"><div className="font-bold text-slate-800">{x.login || 'Sin login'}</div><div className="text-slate-400">{x.id_bitrix || '—'}</div></td>
+          <td className="px-2 py-2"><div className="font-semibold text-slate-700">{x.plan || '—'}</div><div className="text-slate-400">{x.tipo} {x.velocidad ? `· ${x.velocidad} Mbps` : ''}</div></td>
+          <td className="whitespace-nowrap px-2 py-2 text-slate-600">{formatearFechaTelcos(x.fecha_activacion)}</td>
+          <td className={`px-2 py-2 ${x.regularizada ? 'text-slate-600' : 'font-semibold text-amber-700'}`}>{x.concepto}{!x.regularizada && <div className="font-normal text-amber-600">{x.estado_regularizacion}</div>}</td>
+          <td className="whitespace-nowrap px-2 py-2 text-right font-black">{x.regularizada ? <span className="text-emerald-700">{dinero(x.valor_pagado)}</span> : <span className="text-slate-400" title="Lo que cobraría si se regulariza">({dinero(x.valor_si_regulariza)})</span>}</td>
+        </tr>)}</tbody>
+        <tfoot className="sticky bottom-0 bg-emerald-50"><tr><td colSpan={4} className="px-2 py-2 text-xs font-black text-emerald-800">Total a pagar · {det?.items?.filter((x) => x.regularizada).length || 0} regularizadas</td><td className="px-2 py-2 text-right text-xs font-black text-emerald-800">{dinero(det?.total_pagado)}</td></tr></tfoot>
+      </table></div>}
+    <p className="mt-1 text-[10px] text-slate-400">En el asegurado, cada una de las primeras 35 ventas vale $550 / 35. Entre paréntesis: lo que cobraría si se regulariza.</p>
+  </div>;
+}
+
+function Detalle({ r, reglas, empresa, mes, filtros, onCerrar }) {
   const d = desglose(r, reglas); const hito = proximoHito(r, reglas);
   const fila = (txt, v, ayuda, tono = 'text-slate-800') => v > 0 && <div className="flex items-start justify-between gap-3 border-b border-slate-100 py-2.5"><div><div className="text-sm font-semibold text-slate-700">{txt}</div>{ayuda && <div className="text-[11px] text-slate-400">{ayuda}</div>}</div><div className={`text-sm font-black ${tono}`}>{dinero(v)}</div></div>;
   return <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-[2px]" onClick={onCerrar}>
-    <aside className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-widest text-amber-600">{empresa} · {nombreMes(mes)}</p><h2 className="mt-1 text-xl font-black text-slate-900">{r.nombre_asesor || r.usuario}</h2><p className="text-xs text-slate-500">{r.usuario} · Código {r.codigo_asesor || '—'}</p><p className="text-[11px] text-slate-400">Última activación {formatearFechaTelcos(r.ultima_fecha_activacion)} · último ingreso Telcos {formatearFechaTelcos(r.ultima_fecha_ingreso_telcos)}</p></div><button type="button" onClick={onCerrar} aria-label="Cerrar" className="rounded-full p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
       <div className="mt-5 grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-emerald-50 p-3"><div className="text-2xl font-black text-emerald-700">{r.activas_regularizadas}</div><div className="text-[10px] font-bold uppercase text-emerald-700">Regularizadas</div></div>
@@ -137,6 +181,7 @@ function Detalle({ r, reglas, empresa, mes, onCerrar }) {
         {Number(r.te_excedentes) > 0 && <p className="rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700">{r.te_excedentes} de tercera edad pasan su 15% y no se pagan.</p>}
         {Number(r.no_vender) > 0 && <p className="rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-800">{r.no_vender} planes “No vender”: se pagan como comisión pero no cuentan como venta.</p>}
       </div>}
+      <VentasAsesor r={r} empresa={empresa} mes={mes} filtros={filtros} />
       <Link to={`/rol-pagos?${new URLSearchParams({ empresa, mes, usuario: r.usuario })}`} className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-black text-white hover:bg-slate-700"><FileSpreadsheet className="h-4 w-4" />Ver rol de pago</Link>
     </aside>
   </div>;
@@ -284,6 +329,6 @@ export default function Comisiones() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-xs text-slate-500"><span>Haz clic en un asesor para ver el detalle y su rol de pago.</span>{sinAsignar.length > 0 && <span className="font-bold text-amber-700">{sinAsignar.reduce((a, r) => a + Number(r.activas_totales || 0), 0)} ventas sin asesor asignado ({dinero(sinAsignar.reduce((a, r) => a + Number(r.valor_total || 0), 0))})</span>}</div>
     </div>
 
-    {abierto && <Detalle r={abierto} reglas={reglas} empresa={empresa} mes={mes} onCerrar={() => setAbierto(null)} />}
+    {abierto && <Detalle r={abierto} reglas={reglas} empresa={empresa} mes={mes} filtros={filtros} onCerrar={() => setAbierto(null)} />}
   </div></div>;
 }

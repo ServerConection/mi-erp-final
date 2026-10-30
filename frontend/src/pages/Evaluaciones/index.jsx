@@ -28,8 +28,10 @@ export default function Evaluaciones() {
   const [aviso, setAviso]                       = useState(null);
   const puedeGestionar = useMemo(() => {
     try {
-      const perfil = JSON.parse(localStorage.getItem('userProfile') || '{}')?.perfil;
-      return !['USUARIO', 'ATC'].includes(String(perfil || '').trim().toUpperCase());
+      const usuario = JSON.parse(localStorage.getItem('userProfile') || '{}');
+      const perfil = String(usuario?.perfil || '').trim().toUpperCase();
+      const login = String(usuario?.usuario || '').trim().toLowerCase();
+      return login === 'arengel' || !['USUARIO', 'ATC'].includes(perfil);
     } catch {
       return false;
     }

@@ -9,20 +9,22 @@
 const pool = require('../config/db');
 
 // Todo perfil autenticado puede gestionar, excepto USUARIO (asesores) y ATC,
-// que únicamente responden lo asignado desde "Mis evaluaciones".
-const puedeGestionarEvaluaciones = (perfil) =>
-  Boolean(perfil) && !['USUARIO', 'ATC'].includes(String(perfil).trim().toUpperCase());
+// que únicamente responden lo asignado desde "Mis evaluaciones". arengel es
+// una excepción nominal autorizada para gestionar evaluaciones.
+const puedeGestionarEvaluaciones = (perfil, usuario = '') =>
+  String(usuario).trim().toLowerCase() === 'arengel'
+  || (Boolean(perfil) && !['USUARIO', 'ATC'].includes(String(perfil).trim().toUpperCase()));
 
 const accesoEvaluaciones = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, error: 'No autenticado' });
   }
-  req.puedeCrearEvaluaciones = puedeGestionarEvaluaciones(req.user.perfil);
+  req.puedeCrearEvaluaciones = puedeGestionarEvaluaciones(req.user.perfil, req.user.usuario);
   next();
 };
 
 const puedeCrearEvaluacion = (req, res, next) => {
-  if (!puedeGestionarEvaluaciones(req.user?.perfil)) {
+  if (!puedeGestionarEvaluaciones(req.user?.perfil, req.user?.usuario)) {
     return res.status(403).json({
       success: false,
       error: 'Tu perfil no puede crear evaluaciones.',
@@ -61,7 +63,7 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
     const evaluacion = rows[0];
     const esCreador = evaluacion.creado_por === req.user.id || req.user.perfil === 'ADMINISTRADOR';
 
-    if (soloCreador && (!puedeGestionarEvaluaciones(req.user.perfil) || !esCreador)) {
+    if (soloCreador && (!puedeGestionarEvaluaciones(req.user.perfil, req.user.usuario) || !esCreador)) {
       return res.status(403).json({ success: false, error: 'Tu perfil no puede gestionar esta evaluación.' });
     }
 

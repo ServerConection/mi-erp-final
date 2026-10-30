@@ -8,7 +8,7 @@ test('analista accede únicamente a la lista solicitada', () => {
 });
 
 test('ATC conserva sus módulos y accede a todo WaBot Masivos', () => {
-  for (const ruta of ['/indicadores', '/indicadores-velsa', '/vista-backoffice', '/chat', '/tareas', '/evaluaciones', '/whatsapp/lineas', '/whatsapp/inbox', '/whatsapp/campanas', '/whatsapp/chatbots', '/whatsapp/contactos', '/whatsapp/respaldos', '/whatsapp/presentacion', '/whatsapp/control-lineas']) {
+  for (const ruta of ['/', '/indicadores', '/indicadores-velsa', '/vista-backoffice', '/chat', '/tareas', '/evaluaciones', '/whatsapp/lineas', '/whatsapp/inbox', '/whatsapp/campanas', '/whatsapp/chatbots', '/whatsapp/contactos', '/whatsapp/respaldos', '/whatsapp/presentacion', '/whatsapp/control-lineas']) {
     assert.equal(rutaPermitidaAtc(ruta), true, ruta);
   }
   for (const ruta of ['/gestionables-asesores', '/gestionables-velsa', '/redes', '/ventas', '/archivos-compartidos']) {

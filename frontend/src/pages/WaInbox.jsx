@@ -1003,7 +1003,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           </div>
 
           {/* Input */}
-          <div className="bg-[#f0f2f5] px-3 py-2 pr-3 md:pr-24 flex flex-wrap gap-2 items-center">
+          <div className="bg-[#f0f2f5] px-3 py-2 md:pr-24 flex flex-col gap-2">
             {internalImagePreview && (
               <div className="basis-full flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 p-2">
                 <img src={internalImagePreview} alt="Vista previa del mensaje oculto"
@@ -1018,7 +1018,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                 </button>
               </div>
             )}
-            <InboxAudioRecorder key={selected.id} onSend={sendFile} disabled={uploading || sending} />
+            <div className="flex items-end gap-2">
             <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-full hover:bg-[#e9edef] transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
               title="Enviar imagen o PDF">
               {uploading ? "⏳" : "📎"}
@@ -1049,11 +1049,14 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
               }}
               className="flex-1 min-w-0 max-h-40 resize-y bg-white rounded-lg px-4 py-2 text-[15px] leading-5 text-[#111b21] placeholder-[#667781] focus:outline-none whitespace-pre-wrap"
             />
+            <InboxAudioRecorder key={selected.id} onSend={sendFile} disabled={uploading || sending} />
             <button onClick={send} disabled={sending || !newMsg.trim()}
               aria-label="Enviar" title="Enviar"
               className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#c5cbcf] text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors text-lg">
               {sending ? "…" : "➤"}
             </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
             <button onClick={saveInternalNote} disabled={sending || uploading || (!newMsg.trim() && !internalImage)}
               title="Guardar solo en el ERP; no se envía al cliente"
               className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#54656f] px-3 py-1.5 rounded-full transition-colors text-xs font-medium">
@@ -1070,6 +1073,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
               <input type="file" accept="image/*" className="hidden" disabled={uploading || sending}
                 onChange={e => { selectInternalImage(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
+            </div>
           </div>
         </div>
       ) : (

@@ -6,6 +6,8 @@ import { getSocketCompartido } from "../utils/socketCompartido";
 import WaCreationDateFilter from "../components/WaCreationDateFilter";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 import { lineaEstaConectada } from "../utils/waLineStatus";
+import ReporteUsoCampanas, { puedeVerReporteCampanas } from "../components/ReporteUsoCampanas";
+import SelectorLineasCampana, { etiquetaModo } from "../components/SelectorLineasCampana";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
@@ -67,7 +69,7 @@ const interpolate = (text) =>
   (text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => PREVIEW_VARS[k] ?? `{{${k}}}`);
 
 const emptyForm = {
-  name: "", line_id: "", list_id: "",
+  name: "", line_ids: [], modo_responsable: "libre", list_id: "",
   min_delay_secs: 8, max_delay_secs: 20,
   batch_size: 50, batch_pause_secs: 120,
   send_days: [], send_hour_from: "", send_hour_to: "",
@@ -75,6 +77,8 @@ const emptyForm = {
 
 export default function WaCampanas() {
   const [campaigns, setCampaigns]   = useState([]);
+  const [verReporte, setVerReporte] = useState(false);
+  const PUEDE_VER_REPORTE = puedeVerReporteCampanas();
   const [lines, setLines]           = useState([]);
   const [lists, setLists]           = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -157,7 +161,8 @@ export default function WaCampanas() {
     const msgs = Array.isArray(d?.data) ? d.data : [];
     setForm({
       name: `${camp.name} (copia)`,
-      line_id: camp.line_id || "",
+      line_ids: (camp.line_ids && camp.line_ids.length ? camp.line_ids : [camp.line_id]).filter(Boolean).map(String),
+      modo_responsable: camp.modo_responsable || "libre",
       list_id: "",                       // el usuario elige la nueva base
       min_delay_secs: camp.min_delay_secs ?? 8,
       max_delay_secs: camp.max_delay_secs ?? 20,
@@ -188,7 +193,8 @@ export default function WaCampanas() {
       max_delay_secs: camp.max_delay_secs ?? 20,
       batch_size: camp.batch_size ?? 50,
       batch_pause_secs: camp.batch_pause_secs ?? 120,
-      line_id: camp.line_id || "",
+      line_ids: (camp.line_ids && camp.line_ids.length ? camp.line_ids : [camp.line_id]).filter(Boolean).map(String),
+      modo_responsable: camp.modo_responsable || "libre",
       send_days: camp.send_days || [],
       send_hour_from: camp.send_hour_from ?? "",
       send_hour_to: camp.send_hour_to ?? "",
@@ -255,7 +261,7 @@ export default function WaCampanas() {
   };
 
   const save = async () => {
-    if (!form.name || !form.line_id || !form.list_id) return;
+    if (!form.name || !form.line_ids.length || !form.list_id) return;
     if (variants.some(v => !v.message_text?.trim() && !v.media_url)) return;
     setSaving(true);
     try {
@@ -282,6 +288,8 @@ export default function WaCampanas() {
         ));
         setModal(null);
         load();
+      } else {
+        alert(d.error || "No se pudo crear la campaña");
       }
     } finally { setSaving(false); }
   };
@@ -328,11 +336,20 @@ export default function WaCampanas() {
           <h1 className="text-xl font-bold text-slate-800">📣 Campañas Masivas</h1>
           <p className="text-sm text-slate-500 mt-0.5">Envíos masivos con variantes de mensaje y throttling</p>
         </div>
-        <button onClick={openNew}
-          className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          + Nueva campaña
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {PUEDE_VER_REPORTE && (
+            <button onClick={() => setVerReporte(true)}
+              className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              📊 Reporte de uso
+            </button>
+          )}
+          <button onClick={openNew}
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            + Nueva campaña
+          </button>
+        </div>
       </div>
+      {verReporte && <ReporteUsoCampanas onClose={() => setVerReporte(false)} />}
 
       {/* Buscador */}
       <input
@@ -370,6 +387,9 @@ export default function WaCampanas() {
                     <span>📤 {camp.sent_count}/{camp.total_recipients}</span>
                     <span>✅ {camp.delivered_count} entregados</span>
                     {camp.failed_count > 0 && <span className="text-red-400">❌ {camp.failed_count} fallidos</span>}
+                    {camp.skipped_count > 0 && <span className="text-amber-600">⏭ {camp.skipped_count} saltados</span>}
+                    {camp.line_names?.length > 1 && <span title={camp.line_names.join(", ")}>📱 {camp.line_names.length} líneas</span>}
+                    {camp.modo_responsable && camp.modo_responsable !== "libre" && <span>🔁 {etiquetaModo(camp.modo_responsable)}</span>}
                   </div>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
@@ -449,15 +469,10 @@ export default function WaCampanas() {
                   placeholder="Promo Junio 2025"
                   className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Línea</label>
-                  <select value={form.line_id} onChange={e => setForm(f => ({ ...f, line_id: e.target.value }))}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Seleccionar…</option>
-                    {lines.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                </div>
+              <SelectorLineasCampana lines={lines} lineIds={form.line_ids}
+                onLineIds={ids => setForm(f => ({ ...f, line_ids: ids }))}
+                modo={form.modo_responsable} onModo={m => setForm(f => ({ ...f, modo_responsable: m }))} />
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Lista</label>
                   <select value={form.list_id} onChange={e => setForm(f => ({ ...f, list_id: e.target.value }))}
@@ -621,7 +636,7 @@ export default function WaCampanas() {
                 className="text-sm text-slate-500 px-4 py-2 hover:text-slate-700">
                 Cancelar
               </button>
-              <button onClick={save} disabled={saving || !form.name || !form.line_id || !form.list_id}
+              <button onClick={save} disabled={saving || !form.name || !form.line_ids.length || !form.list_id}
                 className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
                 {saving ? "Guardando…" : "Crear campaña"}
               </button>
@@ -633,18 +648,16 @@ export default function WaCampanas() {
       {/* Modal editar configuración (pausada/borrador/programada) */}
       {editCamp && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-slate-100">
               <h3 className="font-bold text-slate-800">⚙ Configuración: {editCamp.name}</h3>
               <p className="text-xs text-slate-400 mt-0.5">Los cambios aplican al reanudar el envío</p>
             </div>
             <div className="p-5 space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Línea de envío</label>
-                <select value={editForm.line_id} onChange={e => setEditForm(f => ({ ...f, line_id: e.target.value }))}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                  {lines.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
+                <SelectorLineasCampana lines={lines} lineIds={editForm.line_ids}
+                  onLineIds={ids => setEditForm(f => ({ ...f, line_ids: ids }))}
+                  modo={editForm.modo_responsable} onModo={m => setEditForm(f => ({ ...f, modo_responsable: m }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

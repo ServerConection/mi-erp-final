@@ -15,13 +15,69 @@ function empresaUsuario(user) {
   return ['NOVONET', 'VELSA', 'SEMILLERO'].includes(empresa) ? empresa : 'NOVONET'
 }
 
+// Pipelines que se pueden elegir al crear una base. El valor coincide con
+// bitrix_webhook_leads.empresa (en minúsculas).
+const EMPRESAS_BASE = [
+  { id: 'NOVONET', name: 'NOVONET' },
+  { id: 'VELSA', name: 'VELSA' },
+  { id: 'SEMILLERO', name: 'SEMILLERO' },
+  { id: 'VENTAENLINEA', name: 'VENTA EN LÍNEA' },
+]
+
+// Solo ADMINISTRADOR y usuarios autorizados pueden elegir la empresa/pipeline.
+// El resto queda fijo en la empresa registrada en su usuario.
+const USUARIOS_ELIGEN_EMPRESA = ['acloaiza']
+function puedeElegirEmpresa(user) {
+  if (String(user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR') return true
+  return USUARIOS_ELIGEN_EMPRESA.includes(String(user?.usuario || '').trim().toLowerCase())
+}
+
+// Perfiles que ven a todos los responsables de su empresa. El resto (asesores)
+// solo ve sus propios negocios.
+const PERFILES_VEN_TODOS = ['ADMINISTRADOR', 'SUPERVISOR', 'GERENCIA', 'ANALISTA']
+function soloSusNegocios(user) {
+  if (puedeElegirEmpresa(user)) return false
+  return !PERFILES_VEN_TODOS.includes(String(user?.perfil || '').trim().toUpperCase())
+}
+
+// Patrones para reconocer al asesor en el campo "responsible" de Bitrix:
+// cada palabra de su nombre debe aparecer (p. ej. "KATHERINE PUCHA" ->
+// "KATHERINE PAOLA PUCHA BRAVO"). Sin nombre no coincide con nadie.
+const SIN_TILDES = (txt) => String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+function patronesAsesor(user) {
+  const palabras = [...new Set(SIN_TILDES(user?.nombreCompleto).toUpperCase()
+    .split(/[^A-Z]+/).filter(p => p.length >= 3))]
+  return palabras.length ? palabras.map(p => `%${p}%`) : ['%__SIN_NOMBRE_ASESOR__%']
+}
+const RESPONSABLE_NORM_SQL = `UPPER(TRANSLATE(COALESCE(responsible, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'))`
+
+// Empresa registrada del usuario (incluye VENTA EN LÍNEA).
+function empresaFija(user) {
+  const propia = String(user?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
+  return EMPRESAS_BASE.some(e => e.id === propia) ? propia : empresaUsuario(user)
+}
+
+// Empresa del filtro: solo se respeta si el usuario puede elegirla; si no,
+// SIEMPRE la registrada (aunque el frontend mande otra).
+function empresaElegida(user, input = {}) {
+  if (!puedeElegirEmpresa(user)) return empresaFija(user)
+  const pedida = String(input?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
+  return EMPRESAS_BASE.some(e => e.id === pedida) ? pedida : empresaFija(user)
+}
+
+// Crear bases desde Bitrix: habilitado para todos los usuarios autenticados.
+// (Antes: solo ADMINISTRADOR y 'acloaiza'. Para volver a restringir, cambiar esta función.)
+function puedeCrearBase(user) {
+  return Boolean(user)
+}
+
 function configuracion(user) {
   const empresa = empresaUsuario(user)
   const webhook = empresa === 'VELSA'
-    ? (process.env.BITRIX_VELSA_URL || process.env.VELSA_WEBHOOK || process.env.BITRIX_WEBHOOK)
+    ? (process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK || process.env.BITRIX_VELSA_URL || process.env.VELSA_WEBHOOK)
     : (process.env.BITRIX_NOVONET_URL || process.env.NOVONET_WEBHOOK || process.env.BITRIX_WEBHOOK)
   const categoryId = empresa === 'VELSA'
-    ? (process.env.VELSA_CATEGORY_ID || '8')
+    ? (process.env.VELSA_CATEGORY_ID || '51')
     : empresa === 'SEMILLERO'
       ? (process.env.SEMILLERO_CATEGORY_ID || process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
       : (process.env.NOVONET_CATEGORY_ID || process.env.GESTIONABLES_CATEGORY_ID || '19')
@@ -96,27 +152,47 @@ function validarFiltros(input = {}) {
   return { stageIds, responsibleIds, sourceIds, from, to }
 }
 
-async function obtenerOpciones(user, db = require('../config/db')) {
-  const empresa = empresaUsuario(user)
+// input (opcional): { empresa, date_from, date_to }. Con fechas válidas, las
+// etapas, responsables y orígenes se limitan a los negocios creados en ese rango.
+// Compatibilidad: obtenerOpciones(user, db) sigue funcionando.
+async function obtenerOpciones(user, input = {}, db) {
+  if (input && typeof input.query === 'function') { db = input; input = {} }
+  db = db || require('../config/db')
+  const empresa = empresaElegida(user, input)
+  const params = [empresa.toLowerCase()]
+  let rango = ''
+  const from = String(input?.date_from || '').trim()
+  const to = String(input?.date_to || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) {
+    params.push(from, to)
+    rango = `\n          AND (created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $2::date AND $3::date`
+  }
+  // Asesor: solo sus propios negocios (etapas, responsables y orígenes).
+  if (soloSusNegocios(user)) {
+    params.push(patronesAsesor(user))
+    rango += `\n          AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
+  }
   const [stageResult, responsibleResult, sourceResult] = await Promise.all([
     db.query(
       `SELECT etapa AS id,
               COALESCE(NULLIF(MAX(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(etapa), '') IS NOT NULL
-        GROUP BY etapa ORDER BY name`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(etapa), '') IS NOT NULL${rango}
+        GROUP BY etapa ORDER BY name`, params),
     db.query(
       `SELECT responsible AS id, responsible AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL
-        GROUP BY responsible ORDER BY responsible`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(responsible), '') IS NOT NULL${rango}
+        GROUP BY responsible ORDER BY responsible`, params),
     db.query(
       `SELECT BTRIM(source) AS id, BTRIM(source) AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL
-        GROUP BY BTRIM(source) ORDER BY 2`, [empresa.toLowerCase()]),
+        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL${rango}
+        GROUP BY BTRIM(source) ORDER BY 2`, params),
   ])
-  return { empresa, stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
+  const elegir = puedeElegirEmpresa(user)
+  return { empresa, puede_elegir_empresa: elegir, solo_sus_negocios: soloSusNegocios(user),
+    empresas: elegir ? EMPRESAS_BASE : EMPRESAS_BASE.filter(e => e.id === empresa), stages: stageResult.rows, responsibles: responsibleResult.rows, sources: sourceResult.rows }
 }
 
 function extraerTelefonos(contact) {
@@ -138,7 +214,7 @@ async function cargarContactos(webhook, contactIds) {
 }
 
 async function consultar(user, input, db = require('../config/db')) {
-  const empresa = empresaUsuario(user)
+  const empresa = empresaElegida(user, input)
   const f = validarFiltros(input)
   const params = [empresa.toLowerCase(), f.from, f.to]
   let filtrosExtra = ''
@@ -149,6 +225,11 @@ async function consultar(user, input, db = require('../config/db')) {
   if (f.responsibleIds.length) {
     params.push(f.responsibleIds.map(r => r.toUpperCase()))
     filtrosExtra += `\n        AND UPPER(BTRIM(responsible)) = ANY($${params.length}::text[])`
+  }
+  // Asesor: forzado a sus propios negocios aunque el navegador pida otros.
+  if (soloSusNegocios(user)) {
+    params.push(patronesAsesor(user))
+    filtrosExtra += `\n        AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
   }
   if (f.sourceIds.length) {
     params.push(f.sourceIds.map(o => o.toUpperCase()))
@@ -189,4 +270,18 @@ async function consultar(user, input, db = require('../config/db')) {
     unique_contacts: items.length, truncated: deals.length >= MAX_DEALS, items }
 }
 
-module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario }
+// Vista previa: nunca expone el número completo; solo ID de Bitrix y los
+// dos últimos dígitos.
+function enmascararTelefono(numero) {
+  const d = String(numero || '').replace(/\D/g, '')
+  return d.length >= 2 ? `${'•'.repeat(Math.max(d.length - 2, 4))}${d.slice(-2)}` : '••'
+}
+function itemsVistaPrevia(items = [], max = 100) {
+  return items.slice(0, max).map(item => ({
+    bitrix_id: item.variables?.bitrix_id || null,
+    name: item.name || null,
+    telefono: enmascararTelefono(item.wa_number),
+  }))
+}
+
+module.exports = { obtenerOpciones, consultar, validarFiltros, empresaUsuario, empresaElegida, puedeElegirEmpresa, soloSusNegocios, patronesAsesor, enmascararTelefono, itemsVistaPrevia, puedeCrearBase, EMPRESAS_BASE }

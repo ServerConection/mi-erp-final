@@ -169,6 +169,9 @@ const crearReparto = (empresa) => {
     const conteo = await conteoGestionablesHoy(db, empresa);
     for (const r of rows) {
       const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
+      // Los leads de orígenes sin conteo (FB Messenger - Novo) no consumen cupo
+      // ni los de Duplicado / Regularización / Remarketing
+      r.asignados = Math.max(0, r.asignados - (c?.sin_conteo || 0) - (c?.dup_reg_rmk || 0));
       r.total = r.asignados;
       r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0 }) : false;
       // Efectividad: vencidos (+3 h sin Venta Subida) ≥ meta y aún no cubre su meta (30% ↑) → no recibe

@@ -2,6 +2,10 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../config/db");
 const { verificarToken } = require("../middleware/auth");
+const { recolectar: recolectarBitrix } = require("../controllers/bitrixSesiones.controller");
+const { claveNombre, mismaPalabra } = require("../services/asesorMatcher.service");
+
+const TOLERANCIA_INGRESO_MIN = 5;
 
 // ─────────────────────────────────────────────────────────────
 // CONFIGURACIÓN
@@ -55,6 +59,31 @@ const puedeVerResumenGeneral = (perfil) => {
   return PERFILES_PERMITIDOS.has(normalizado) || /^GEREN(?:CIA|TE)[ _-]/.test(normalizado);
 };
 
+const esAdministrador = (perfil) => /^ADMINISTRADOR(?:A)?(?:[ _-]|$)/.test(normalizarTexto(perfil));
+
+const tokensNombre = (valor) => [...new Set(claveNombre(valor).split(" ").filter((x) => x.length > 1))];
+
+// Vincula únicamente coincidencias inequívocas. Nunca elige al "más parecido":
+// si hay cero o más de un candidato, el estado queda expresamente no verificable.
+function vincularUsuarioBitrix(nombre, usuariosBitrix) {
+  const clave = claveNombre(nombre);
+  const exactos = usuariosBitrix.filter((u) => claveNombre(u.nombre) === clave);
+  if (exactos.length === 1) return { estado: "EXACTO", usuario: exactos[0] };
+  if (exactos.length > 1) return { estado: "AMBIGUO", usuario: null };
+
+  const origen = tokensNombre(nombre);
+  if (origen.length < 2) return { estado: "NO_ENCONTRADO", usuario: null };
+  const candidatos = usuariosBitrix.filter((u) => {
+    const destino = tokensNombre(u.nombre);
+    const corto = origen.length <= destino.length ? origen : destino;
+    const largo = origen.length <= destino.length ? destino : origen;
+    return corto.length >= 2 && corto.every((x) => largo.some((y) => mismaPalabra(x, y)));
+  });
+  return candidatos.length === 1
+    ? { estado: "NOMBRE_UNICO", usuario: candidatos[0] }
+    : { estado: candidatos.length > 1 ? "AMBIGUO" : "NO_ENCONTRADO", usuario: null };
+}
+
 // ─────────────────────────────────────────────────────────────
 // OBTENER IP
 // ─────────────────────────────────────────────────────────────
@@ -96,6 +125,7 @@ router.get("/mi-perfil", verificarToken, async (req, res) => {
       cargo: usuario.cargo || "",
       perfil: usuario.perfil || "",
       empresa: usuario.empresa || "",
+      modalidad_asistencia: usuario.modalidad_asistencia || "",
     },
   });
 });
@@ -321,7 +351,8 @@ router.post("/", verificarToken, async (req, res) => {
       data: registro,
 
       mensaje:
-        (perfilUsuario === PERFIL_COMISIONISTA
+        (normalizarTexto(usuario.modalidad_asistencia) === "CONEXION" ||
+        (!usuario.modalidad_asistencia && [PERFIL_COMISIONISTA, "ASESOR"].includes(perfilUsuario))
           ? MENSAJES_CONEXION[actividad]
           : MENSAJES_ACTIVIDAD[actividad]) ||
         "Marcación registrada correctamente",
@@ -390,6 +421,214 @@ router.get("/resumen-dia", verificarToken, async (req, res) => {
   } catch (error) {
     console.error("[controlAsistencia.routes] Error consultando resumen diario:", error);
     return res.status(500).json({ success: false, error: "Error al obtener el resumen diario" });
+  }
+});
+
+// GET /api/control-asistencia/control-ingresos?empresa=NOVONET
+// Cruce operativo del día: horario PostgreSQL + primera marcación de Access +
+// estado vivo de Bitrix. El estado externo nunca se infiere si la API falla o
+// si el nombre no se puede vincular de forma única.
+router.get("/control-ingresos", verificarToken, async (req, res) => {
+  try {
+    const usuario = req.user;
+    if (!usuario?.id) return res.status(401).json({ success: false, error: "Usuario no autenticado" });
+    if (!esAdministrador(usuario.perfil)) {
+      return res.status(403).json({ success: false, error: "No tiene permiso para consultar el control de ingresos" });
+    }
+
+    const empresaSolicitada = String(req.query.empresa || usuario.empresa || "").trim().toUpperCase();
+    if (!["NOVONET", "VELSA", "SEMILLERO"].includes(empresaSolicitada)) {
+      return res.status(400).json({ success: false, error: "Empresa no habilitada para el control de ingresos" });
+    }
+    const empresa = empresaSolicitada;
+    const fechaConsulta = String(req.query.fecha || "").trim()
+      || new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
+    const fechaObj = new Date(`${fechaConsulta}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaConsulta)
+        || Number.isNaN(fechaObj.getTime())
+        || fechaObj.toISOString().slice(0, 10) !== fechaConsulta) {
+      return res.status(400).json({ success: false, error: "La fecha debe tener formato YYYY-MM-DD" });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT
+        u.id AS usuario_id,
+        BTRIM(COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellidos, '')) AS nombre_completo,
+        ht.supervisor,
+        ht.modalidad,
+        ht.tipo,
+        TO_CHAR(ht.hora_inicio, 'HH24:MI') AS hora_programada,
+        TO_CHAR(ht.hora_fin, 'HH24:MI') AS hora_fin,
+        TO_CHAR(ht.hora_inicio2, 'HH24:MI') AS hora_inicio2,
+        TO_CHAR(ht.hora_fin2, 'HH24:MI') AS hora_fin2,
+        COALESCE(u.usuario, '') AS usuario,
+        COALESCE(u.modalidad_asistencia, 'JORNADA') AS modalidad_asistencia,
+        TO_CHAR(m.ingreso, 'HH24:MI') AS ingreso_access,
+        CASE WHEN m.ingreso IS NULL OR ht.hora_inicio IS NULL THEN NULL
+             ELSE ROUND(EXTRACT(EPOCH FROM (m.ingreso - ht.hora_inicio)) / 60)::int
+        END AS diferencia_minutos,
+        CASE WHEN ht.hora_inicio IS NULL THEN NULL
+          WHEN $3::date < (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date THEN TRUE
+          WHEN $3::date > (CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::date THEN FALSE
+          ELSE ((CURRENT_TIMESTAMP AT TIME ZONE 'America/Guayaquil')::time
+            > ht.hora_inicio + ($1::int * INTERVAL '1 minute'))
+        END AS turno_vencido
+      FROM public.usuarios u
+      LEFT JOIN LATERAL (
+        SELECT h.*
+        FROM public.horarios_turnos h
+        WHERE h.usuario_id = u.id
+          AND h.empresa = $2
+          AND h.fecha = $3::date
+        ORDER BY h.id DESC
+        LIMIT 1
+      ) ht ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT MIN(ca.hora) AS ingreso
+        FROM public.control_asistencia ca
+        WHERE ca.usuario_id = u.id
+          AND ca.fecha = $3::date
+          AND UPPER(BTRIM(ca.actividad)) = 'INGRESO'
+      ) m ON TRUE
+      WHERE UPPER(BTRIM(COALESCE(u.empresa, ''))) = $2
+        AND UPPER(BTRIM(COALESCE(u.activo, ''))) = 'SI'
+        AND UPPER(BTRIM(COALESCE(u.modalidad_asistencia, ''))) = 'CONEXION'
+        AND COALESCE(ht.tipo, 'TURNO') = 'TURNO'
+      ORDER BY ht.hora_inicio NULLS LAST, nombre_completo
+    `, [TOLERANCIA_INGRESO_MIN, empresa, fechaConsulta]);
+
+    let catalogo = [];
+    let catalogoRespaldo = [];
+    try {
+      if (empresa === "VELSA") {
+        const r = await pool.query(`
+          SELECT DISTINCT ON (UPPER(BTRIM(nombre_asesor)))
+                 nombre_asesor AS nombre, nombre_supervisor AS supervisor
+          FROM public.catalogo_asesores_velsa
+          WHERE nombre_asesor IS NOT NULL
+            AND periodo <= date_trunc('month', $1::date)::date
+          ORDER BY UPPER(BTRIM(nombre_asesor)), periodo DESC
+        `, [fechaConsulta]);
+        catalogo = r.rows;
+      } else {
+        const metas = await pool.query(`
+          SELECT asesor AS nombre, supervisor
+          FROM public.metas_asesor
+          WHERE empresa = $1 AND activo
+            AND anio = EXTRACT(YEAR FROM $2::date)::int
+            AND mes = EXTRACT(MONTH FROM $2::date)::int
+        `, [empresa, fechaConsulta]);
+        catalogo = metas.rows;
+        const empleados = await pool.query(`
+          SELECT DISTINCT ON (UPPER(BTRIM(nombre_completo)))
+                 nombre_completo AS nombre, supervisor
+          FROM public.empleados
+          WHERE nombre_completo IS NOT NULL AND supervisor IS NOT NULL
+          ORDER BY UPPER(BTRIM(nombre_completo)),
+                   CASE WHEN BTRIM(codigo) ~ '^\\d+$' THEN BTRIM(codigo)::int ELSE -1 END DESC
+        `);
+        catalogoRespaldo = empleados.rows;
+      }
+    } catch (error) {
+      console.warn("[control-ingresos] catálogo de supervisores no disponible:", error.message);
+    }
+
+    for (const fila of rows) {
+      if (fila.supervisor) continue;
+      let cruce = vincularUsuarioBitrix(fila.nombre_completo, catalogo);
+      if (!cruce.usuario && catalogoRespaldo.length) {
+        cruce = vincularUsuarioBitrix(fila.nombre_completo, catalogoRespaldo);
+      }
+      if (cruce.usuario?.supervisor) fila.supervisor = cruce.usuario.supervisor;
+    }
+
+    let bitrix = null;
+    let bitrixError = null;
+    const hoyEcuador = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
+    try {
+      if (fechaConsulta !== hoyEcuador) {
+        throw new Error("Bitrix no conserva un histórico confiable del estado en línea");
+      }
+      bitrix = await recolectarBitrix({ forzar: String(req.query.forzar || "") === "1" });
+      const fuente = bitrix?.fuentes?.[empresa];
+      // La licencia corporativa NOVONET también puede devolver usuarios VELSA.
+      // Bitrix Live los clasifica por su identidad ERP; esos datos siguen siendo
+      // válidos aunque el webhook directo BITRIX_VELSA_URL no esté configurado.
+      const usuariosClasificados = (bitrix?.usuarios || []).filter((u) => u.cuenta === empresa);
+      if (!usuariosClasificados.length && fuente?.error) bitrixError = fuente.error;
+      if (!usuariosClasificados.length && !fuente?.error) bitrixError = `Bitrix no devolvió usuarios de ${empresa}`;
+    } catch (error) {
+      bitrixError = error.message;
+    }
+
+    const universoBitrix = bitrixError
+      ? []
+      : (bitrix?.usuarios || []).filter((u) => u.cuenta === empresa);
+
+    const data = rows.map((fila) => {
+      const vinculo = bitrixError
+        ? { estado: "FUENTE_NO_DISPONIBLE", usuario: null }
+        : vincularUsuarioBitrix(fila.nombre_completo, universoBitrix);
+      const bx = vinculo.usuario;
+      const conectado = bx ? Boolean(bx.online) : null;
+
+      let estado;
+      if (fila.ingreso_access && !fila.hora_programada) {
+        estado = "INGRESO_REGISTRADO_SIN_HORARIO";
+      } else if (fila.ingreso_access) {
+        estado = Number(fila.diferencia_minutos) <= TOLERANCIA_INGRESO_MIN
+          ? "INGRESO_A_TIEMPO"
+          : "INGRESO_ATRASADO";
+      } else if (fila.hora_programada && !fila.turno_vencido) {
+        estado = "TURNO_PENDIENTE";
+      } else if (!bx) {
+        estado = "BITRIX_NO_VERIFICABLE";
+      } else if (conectado) {
+        estado = "BITRIX_SIN_ACCESS";
+      } else {
+        estado = "SIN_ACCESS_Y_DESCONECTADO";
+      }
+
+      return {
+        ...fila,
+        bitrix_vinculo: vinculo.estado,
+        bitrix_id: bx?.id || null,
+        bitrix_nombre: bx?.nombre || null,
+        bitrix_conectado: conectado,
+        bitrix_jornada: bx?.jornada || null,
+        bitrix_ultima_actividad: bx?.ultimaActividad || null,
+        estado,
+      };
+    });
+
+    const conteos = data.reduce((acc, fila) => {
+      acc.programados++;
+      if (fila.ingreso_access) acc.con_ingreso++;
+      else if (!fila.hora_programada || fila.turno_vencido) acc.sin_ingreso++;
+      if (fila.estado === "BITRIX_SIN_ACCESS") acc.bitrix_sin_access++;
+      if (fila.estado === "INGRESO_ATRASADO") acc.atrasados++;
+      if (["BITRIX_NO_VERIFICABLE", "USUARIO_ERP_NO_VINCULADO"].includes(fila.estado)) acc.no_verificables++;
+      return acc;
+    }, { programados: 0, con_ingreso: 0, sin_ingreso: 0, bitrix_sin_access: 0, atrasados: 0, no_verificables: 0 });
+
+    return res.json({
+      success: true,
+      data,
+      meta: {
+        empresa,
+        fecha: fechaConsulta,
+        bitrix_es_en_vivo: fechaConsulta === hoyEcuador,
+        generado_en: new Date().toISOString(),
+        tolerancia_minutos: TOLERANCIA_INGRESO_MIN,
+        bitrix_disponible: !bitrixError,
+        bitrix_error: bitrixError,
+        bitrix_generado_en: bitrix?.generado || null,
+        conteos,
+      },
+    });
+  } catch (error) {
+    console.error("[controlAsistencia.routes] Error en control de ingresos:", error);
+    return res.status(500).json({ success: false, error: "No se pudo generar el control de ingresos" });
   }
 });
 
@@ -480,4 +719,5 @@ router.get(
   }
 );
 
+router._test = { vincularUsuarioBitrix };
 module.exports = router;

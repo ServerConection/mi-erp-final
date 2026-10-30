@@ -136,9 +136,17 @@ async function removeItem(req, res) {
   }
 }
 
+// Crear bases desde Bitrix: solo administradores y usuarios autorizados.
+function sinPermisoBase(req, res) {
+  if (bitrixLists.puedeCrearBase(req.user)) return false
+  res.status(403).json({ success: false, error: 'Solo administradores pueden crear bases desde Bitrix' })
+  return true
+}
+
 async function getBitrixOptions(req, res) {
+  if (sinPermisoBase(req, res)) return
   try {
-    res.json({ success: true, data: await bitrixLists.obtenerOpciones(req.user) })
+    res.json({ success: true, data: await bitrixLists.obtenerOpciones(req.user, req.query || {}) })
   } catch (err) {
     console.error('[lists.getBitrixOptions]', err)
     res.status(err.status || 502).json({ success: false, error: err.message || 'No se pudo consultar Bitrix' })
@@ -146,9 +154,10 @@ async function getBitrixOptions(req, res) {
 }
 
 async function previewBitrix(req, res) {
+  if (sinPermisoBase(req, res)) return
   try {
     const data = await bitrixLists.consultar(req.user, req.body)
-    res.json({ success: true, data: { ...data, items: data.items.slice(0, 100) } })
+    res.json({ success: true, data: { ...data, items: bitrixLists.itemsVistaPrevia(data.items) } })
   } catch (err) {
     console.error('[lists.previewBitrix]', err)
     res.status(err.status || 502).json({ success: false, error: err.message || 'No se pudo consultar Bitrix' })
@@ -156,6 +165,7 @@ async function previewBitrix(req, res) {
 }
 
 async function createFromBitrix(req, res) {
+  if (sinPermisoBase(req, res)) return
   try {
     const name = String(req.body?.name || '').trim().slice(0, 160)
     if (!name) return res.status(400).json({ success: false, error: 'Nombre de lista requerido' })
@@ -182,7 +192,7 @@ async function createFromBitrix(req, res) {
       }
       return created
     })
-    res.status(201).json({ success: true, data: { ...list, contact_count: preview.items.length }, summary: preview })
+    res.status(201).json({ success: true, data: { ...list, contact_count: preview.items.length }, summary: { ...preview, items: undefined } })
   } catch (err) {
     console.error('[lists.createFromBitrix]', err)
     res.status(err.status || 502).json({ success: false, error: err.message || 'No se pudo crear la lista desde Bitrix' })

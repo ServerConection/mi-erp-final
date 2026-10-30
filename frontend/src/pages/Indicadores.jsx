@@ -637,7 +637,8 @@ export default function ReporteComercialCore({
       return {
         ...convertirMeta(meta),
         nombre,
-        supervisor,
+        supervisor: meta?.supervisor || supervisor,
+        codigo_asesor: meta?.codigo_asesor || fila.codigo_asesor || null,
         leads_total: leadsTotal,
         leads_gestion: gestionables,
         ingresos_crm: ingresosCrm,
@@ -675,6 +676,24 @@ export default function ReporteComercialCore({
       const nombre = fila.nombre_grupo || 'SIN RESPONSABLE';
       return completar(fila, nombre, fila.supervisor || 'SIN SUPERVISOR', metasAsesor.get(normalizarNombre(nombre)));
     });
+    const filtrosDeDetalle = [
+      'asesor', 'supervisor', 'estadoNetlife', 'etapaJotform',
+      'estadoRegularizacion', 'etapaCRM', 'idBitrix', 'gestionables',
+      'origen', 'canal', 'fechaActivacionDesde', 'fechaActivacionHasta',
+    ];
+    const incluirNominaCompleta = !filtrosDeDetalle.some((campo) => {
+      const valor = filtrosActivos?.[campo];
+      return Array.isArray(valor) ? valor.length > 0 : valor != null && String(valor).trim() !== '';
+    });
+    if (incluirNominaCompleta) {
+      const presentes = new Set(asesores.map((fila) => normalizarNombre(fila.nombre)));
+      for (const meta of metasVigentes?.asesores || []) {
+        const clave = normalizarNombre(meta.asesor);
+        if (!clave || presentes.has(clave)) continue;
+        asesores.push(completar({}, meta.asesor, meta.supervisor || 'SIN SUPERVISOR', meta));
+        presentes.add(clave);
+      }
+    }
     const supervisores = (resultado.supervisores || []).map((fila) => {
       const nombre = fila.nombre_grupo || 'SIN SUPERVISOR';
       return completar(fila, nombre, nombre, metasSupervisor.get(normalizarNombre(nombre)));

@@ -17,6 +17,7 @@ const {
 } = require('../controllers/redesWebhook.controller');
 const { verificarToken, noAsesor } = require('../middleware/auth');
 const { forceSyncInversionNovonet } = require('../controllers/redesWintracker.controller');
+const { getMapaVentas } = require('../controllers/redesMapa.controller');
 
 // ─── AUTENTICACIÓN OBLIGATORIA PARA TODO EL MÓDULO ──────────────────────────
 // Hasta ahora las 7 rutas de monitoreo eran públicas: cualquiera con la URL
@@ -33,6 +34,7 @@ router.get('/monitoreo-atc',     getMonitoreoAtc);
 router.get('/monitoreo-costo',   getMonitoreoCosto);
 router.get('/monitoreo-metas',   getMonitoreoMetas);
 router.get('/reporte-data',      getReporteData);
+router.get('/mapa-ventas',      getMapaVentas);
 
 // Módulo "Agencias" (catálogo origen -> agencia + inversión por origen).
 // El token ya lo aplica el router.use() de arriba; aquí solo queda el

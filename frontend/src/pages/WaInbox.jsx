@@ -106,6 +106,13 @@ Si lo que necesita es gestionar una venta nueva, por favor confírmenos para pod
 // antes cada modulo abria el suyo y el backend veia 7 conexiones por usuario.
 const getSocket = () => getSocketCompartido();
 
+// Fondo del chat estilo WhatsApp Web (beige con patrón suave, sin imágenes externas)
+const WA_FONDO = {
+  backgroundColor: "#efeae2",
+  backgroundImage: "radial-gradient(rgba(0,0,0,0.035) 1px, transparent 1px)",
+  backgroundSize: "18px 18px",
+};
+
 const STATUS_BADGE = {
   active: "bg-green-100 text-green-700",
   human: "bg-blue-100 text-blue-700",
@@ -168,6 +175,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [accionesAbiertas, setAccionesAbiertas] = useState(false);
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
@@ -713,135 +721,8 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     </div>
   );
 
-  return (
-    <div className="flex h-[calc(100vh-120px)] gap-0 -mx-6 -mb-6">
-      {/* Lista de conversaciones */}
-      <div className={`flex flex-col border-r border-slate-200 bg-white ${selected ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0`}>
-        <div className="p-3 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-slate-800">{dealId ? `💬 Negociación #${dealId}` : "💬 Inbox"}</h2>
-            {!dealId && (
-              <button onClick={() => { setBitrixId(""); setBitrixModal("new"); }}
-                title="Iniciar conversación con un ID de negociación de Bitrix"
-                className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                + Nueva
-              </button>
-            )}
-          </div>
-          {!dealId && notificationPermission !== "granted" && notificationPermission !== "unsupported" && (
-            <button type="button" onClick={enableNotifications}
-              title={notificationPermission === "denied" ? "Habilita las notificaciones en los permisos del navegador" : "Permitir avisos de nuevos mensajes"}
-              className="w-full mb-2 text-xs border border-amber-300 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-lg font-medium">
-              🔔 {notificationPermission === "denied" ? "Notificaciones bloqueadas por el navegador" : "Activar notificaciones"}
-            </button>
-          )}
-          {/* Buscador, filtro por línea y filtro de estado: no aplican en modo
-              negociación (acotado a un solo Deal), así que se ocultan. */}
-          {!dealId && (
-            <>
-              <input type="text" placeholder="Nombre, teléfono o ID Bitrix…" value={search} onChange={e => setSearch(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2" />
-
-              {/* Filtro por usuario/línea (admin y supervisor) */}
-              {CAN_PICK_LINE && lines.length > 0 && (
-                <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-400 mb-2 bg-white">
-                  <option value="">👥 Todos los asesores / líneas</option>
-                  {lines.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.owner_username ? `${l.owner_username} — ` : ""}{l.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <div className="flex gap-1">
-                {[
-                  { key: "all", label: "Todos" },
-                  { key: "active", label: "Activos" },
-                  { key: "human_takeover", label: "Humano" },
-                  { key: "closed", label: "Cerrados" },
-                ].map(f => (
-                  <button key={f.key} onClick={() => setFilter(f.key)}
-                    className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${filter === f.key ? "bg-green-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                      }`}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="text-center py-12 px-4 text-slate-400">
-              <div className="text-3xl mb-2">💬</div>
-              <div className="text-sm">
-                {dealId ? `Esta negociación (#${dealId}) no tiene ningún chat de WhatsApp vinculado todavía.` : "No hay conversaciones"}
-              </div>
-              {dealId && (
-                <button onClick={() => { setBitrixId(dealId); setNewMode("bitrix"); setBitrixModal("new"); }}
-                  title="Vincular un chat de WhatsApp a esta negociación"
-                  className="mt-3 text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                  + Vincular esta negociación
-                </button>
-              )}
-            </div>
-          ) : filtered.map(conv => (
-            <button key={conv.id} onClick={() => selectConv(conv)}
-              className={`w-full text-left p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors flex gap-3 items-start ${selected?.id === conv.id ? "bg-green-50 border-l-2 border-l-green-500" : ""
-                }`}
-            >
-              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
-                {(conv.contact_name || (pilotoPc ? "" : conv.wa_number) || "?").charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-sm font-semibold text-slate-800 truncate">
-                    {conv.contact_name || numVisible(conv.wa_number)}
-                  </span>
-                  <span className="text-xs text-slate-400 flex-shrink-0">{timeAgo(conv.last_msg_at)}</span>
-                </div>
-                {conv.last_message && (
-                  <div className="text-xs text-slate-400 truncate mt-0.5">
-                    {conv.last_direction === "out" ? "Tú: " : ""}{conv.last_message}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[conv.status] || STATUS_BADGE.active}`}>
-                    {STATUS_LABEL[conv.status] || conv.status}
-                  </span>
-                  {conv.line_name && (
-                    <span className="text-xs text-slate-400 truncate">📱 {conv.line_name}</span>
-                  )}
-                  {conv.unread_count > 0 && (
-                    <span className="ml-auto bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold flex-shrink-0">
-                      {conv.unread_count > 9 ? "9+" : conv.unread_count}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Panel de chat */}
-      {selected ? (
-        <div className="flex-1 flex flex-col bg-slate-50 min-w-0">
-          {/* Header */}
-          <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-            <button onClick={() => setSelected(null)} className="md:hidden text-slate-400 mr-1">←</button>
-            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
-              {(selected.contact_name || (pilotoPc ? "" : selected.wa_number) || "?").charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-slate-800 text-sm truncate">
-                {selected.contact_name || numVisible(selected.wa_number)}
-              </div>
-              <div className="text-xs text-slate-500">{numVisible(selected.wa_number)}</div>
-            </div>
-            <div className="flex gap-2">
+  const accionesChat = selected ? (
+    <>
               {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
                   negociación en Bitrix -- el enlace/botón sería redundante. */}
               {pilotoPc ? (
@@ -851,19 +732,6 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                     className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
                     {llamandoPc ? "Llamando…" : "📞 Llamar (PC)"}
                   </button>
-                  {llamadaPc && (
-                    <div className="fixed bottom-6 right-6 z-50 bg-white border border-emerald-200 shadow-xl rounded-xl px-4 py-3 flex items-center gap-3">
-                      <span className="text-lg">📞</span>
-                      <div className="text-sm">
-                        <div className="font-semibold text-slate-700">Llamada en curso</div>
-                        <div className="text-xs text-slate-500 tabular-nums">{duracionPc()}</div>
-                      </div>
-                      <button onClick={colgarPc}
-                        className="ml-2 text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors">
-                        Colgar
-                      </button>
-                    </div>
-                  )}
                 </>
               ) : (
               <button onClick={openWhatsAppForCall}
@@ -916,26 +784,186 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   🗑️ Eliminar
                 </button>
               )}
+    </>
+  ) : null;
+
+
+  return (
+    <div className="flex h-[calc(100vh-120px)] gap-0 -mx-6 -mb-6">
+      {/* Lista de conversaciones */}
+      <div className={`flex flex-col border-r border-[#d1d7db] bg-white ${selected ? "hidden md:flex" : "flex"} w-full md:w-[380px] flex-shrink-0`}>
+        <div className="px-3 pt-3 pb-2 bg-white">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-bold text-[#111b21]">{dealId ? `💬 Negociación #${dealId}` : "💬 Inbox"}</h2>
+            {!dealId && (
+              <button onClick={() => { setBitrixId(""); setBitrixModal("new"); }}
+                title="Iniciar conversación con un ID de negociación de Bitrix"
+                className="text-xs bg-[#00a884] hover:bg-[#008f6f] text-white px-3 py-1.5 rounded-full font-medium transition-colors">
+                + Nueva
+              </button>
+            )}
+          </div>
+          {!dealId && notificationPermission !== "granted" && notificationPermission !== "unsupported" && (
+            <button type="button" onClick={enableNotifications}
+              title={notificationPermission === "denied" ? "Habilita las notificaciones en los permisos del navegador" : "Permitir avisos de nuevos mensajes"}
+              className="w-full mb-2 text-xs border border-amber-300 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-lg font-medium">
+              🔔 {notificationPermission === "denied" ? "Notificaciones bloqueadas por el navegador" : "Activar notificaciones"}
+            </button>
+          )}
+          {/* Buscador, filtro por línea y filtro de estado: no aplican en modo
+              negociación (acotado a un solo Deal), así que se ocultan. */}
+          {!dealId && (
+            <>
+              <input type="text" placeholder="Nombre, teléfono o ID Bitrix…" value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full bg-[#f0f2f5] rounded-lg px-4 py-2 text-sm text-[#111b21] placeholder-[#667781] focus:outline-none focus:ring-1 focus:ring-[#00a884] mb-2" />
+
+              {/* Filtro por usuario/línea (admin y supervisor) */}
+              {CAN_PICK_LINE && lines.length > 0 && (
+                <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
+                  className="w-full bg-[#f0f2f5] rounded-lg px-3 py-2 text-sm text-[#111b21] focus:outline-none focus:ring-1 focus:ring-[#00a884] mb-2">
+                  <option value="">👥 Todos los asesores / líneas</option>
+                  {lines.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.owner_username ? `${l.owner_username} — ` : ""}{l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="flex gap-1">
+                {[
+                  { key: "all", label: "Todos" },
+                  { key: "active", label: "Activos" },
+                  { key: "human_takeover", label: "Humano" },
+                  { key: "closed", label: "Cerrados" },
+                ].map(f => (
+                  <button key={f.key} onClick={() => setFilter(f.key)}
+                    className={`text-[13px] px-3 py-1 rounded-full font-medium transition-colors ${filter === f.key ? "bg-[#d9fdd3] text-[#008069]" : "bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]"
+                      }`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 px-4 text-slate-400">
+              <div className="text-3xl mb-2">💬</div>
+              <div className="text-sm">
+                {dealId ? `Esta negociación (#${dealId}) no tiene ningún chat de WhatsApp vinculado todavía.` : "No hay conversaciones"}
+              </div>
+              {dealId && (
+                <button onClick={() => { setBitrixId(dealId); setNewMode("bitrix"); setBitrixModal("new"); }}
+                  title="Vincular un chat de WhatsApp a esta negociación"
+                  className="mt-3 text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                  + Vincular esta negociación
+                </button>
+              )}
+            </div>
+          ) : filtered.map(conv => (
+            <button key={conv.id} onClick={() => selectConv(conv)}
+              className={`w-full text-left pl-3 pr-4 py-2.5 hover:bg-[#f5f6f6] transition-colors flex gap-3 items-center ${selected?.id === conv.id ? "bg-[#f0f2f5]" : ""
+                }`}
+            >
+              <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-semibold text-lg flex-shrink-0">
+                {(conv.contact_name || (pilotoPc ? "" : conv.wa_number) || "?").charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0 border-b border-[#e9edef] pb-2.5">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[15px] text-[#111b21] truncate">
+                    {conv.contact_name || numVisible(conv.wa_number)}
+                  </span>
+                  <span className={`text-xs flex-shrink-0 ${conv.unread_count > 0 ? "text-[#25d366] font-medium" : "text-[#667781]"}`}>{timeAgo(conv.last_msg_at)}</span>
+                </div>
+                {conv.last_message && (
+                  <div className="text-sm text-[#667781] truncate mt-0.5">
+                    {conv.last_direction === "out" ? "Tú: " : ""}{conv.last_message}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[conv.status] || STATUS_BADGE.active}`}>
+                    {STATUS_LABEL[conv.status] || conv.status}
+                  </span>
+                  {conv.line_name && (
+                    <span className="text-xs text-[#667781] truncate">📱 {conv.line_name}</span>
+                  )}
+                  {conv.unread_count > 0 && (
+                    <span className="ml-auto bg-[#25d366] text-white text-[11px] rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center font-semibold flex-shrink-0">
+                      {conv.unread_count > 9 ? "9+" : conv.unread_count}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Panel de chat */}
+      {selected ? (
+        <div className="flex-1 flex flex-col min-w-0 bg-[#efeae2]" style={WA_FONDO}>
+          {/* Header */}
+          <div className="bg-[#f0f2f5] border-b border-[#d1d7db] px-4 py-2.5 flex items-center gap-3">
+            <button onClick={() => setSelected(null)} className="md:hidden text-slate-400 mr-1">←</button>
+            <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-semibold flex-shrink-0">
+              {(selected.contact_name || (pilotoPc ? "" : selected.wa_number) || "?").charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[#111b21] text-base truncate">
+                {selected.contact_name || numVisible(selected.wa_number)}
+              </div>
+              <div className="text-xs text-[#667781]">{numVisible(selected.wa_number)}</div>
+            </div>
+            <div className="hidden md:flex gap-2">{accionesChat}</div>
+            <div className="md:hidden relative flex-shrink-0">
+              <button onClick={() => setAccionesAbiertas(v => !v)} aria-label="Acciones"
+                className="text-[#54656f] text-2xl leading-none px-2 py-1">⋮</button>
+              {accionesAbiertas && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setAccionesAbiertas(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-40 flex flex-col items-stretch gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg min-w-[200px]"
+                    onClick={() => setAccionesAbiertas(false)}>
+                    {accionesChat}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
+          {/* Panel de llamada en curso (piloto) — siempre visible */}
+                  {llamadaPc && (
+                    <div className="fixed bottom-6 right-6 z-50 bg-white border border-emerald-200 shadow-xl rounded-xl px-4 py-3 flex items-center gap-3">
+                      <span className="text-lg">📞</span>
+                      <div className="text-sm">
+                        <div className="font-semibold text-slate-700">Llamada en curso</div>
+                        <div className="text-xs text-slate-500 tabular-nums">{duracionPc()}</div>
+                      </div>
+                      <button onClick={colgarPc}
+                        className="ml-2 text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors">
+                        Colgar
+                      </button>
+                    </div>
+                  )}
+
           {/* Mensajes */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="flex-1 overflow-y-auto px-4 md:px-16 py-4 space-y-1">
             {messages.length === 0 && (
               <div className="text-center py-12 text-slate-400 text-sm">Sin mensajes aún</div>
             )}
             {messages.map((msg, i) => (
               <Fragment key={msg.id || i}>
                 {(i === 0 || new Date(msg.timestamp).toLocaleDateString("es-EC") !== new Date(messages[i - 1].timestamp).toLocaleDateString("es-EC")) &&
-                  <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-slate-200/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
+                  <div className="flex justify-center py-3"><time dateTime={msg.timestamp} className="rounded-lg bg-white px-3 py-1 text-xs text-[#54656f] shadow-sm">{new Date(msg.timestamp).toLocaleDateString("es-EC", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
                 <div className={`flex ${msg.type === "call" ? "justify-center" : msg.direction === "out" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${msg.type === "internal_note"
+                  <div className={`max-w-[75%] rounded-lg px-2.5 pt-1.5 pb-1 text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] ${msg.type === "internal_note"
                     ? "bg-slate-700 text-white border border-slate-600 shadow-sm"
                     : msg.type === "call"
                       ? "bg-slate-100 text-slate-700 border border-slate-300 shadow-sm"
                       : msg.direction === "out"
-                        ? "bg-green-600 text-white rounded-br-sm"
-                        : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-sm"
+                        ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                        : "bg-white text-[#111b21] rounded-tl-none"
                     }`}>
                     {msg.type === "internal_note" && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-300">🔒 Mensaje oculto · {msg.metadata?.author || "Usuario"}</div>}
                     {msg.type === "call" && <div className="mb-1 font-semibold">{msg.metadata?.video ? "🎥" : "📞"} {msg.direction === "out" ? "Llamada del asesor" : "Llamada del cliente"}</div>}
@@ -953,16 +981,17 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                       <video controls src={mediaSrc(msg.media_url)} className="max-w-full max-h-72 rounded-lg mb-1" />
                     ) : msg.media_url ? (
                       <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer"
-                        className={`text-xs underline ${msg.direction === "out" ? "text-green-100" : "text-blue-500"}`}>
+                        className="text-xs underline text-[#027eb5]">
                         📎 Ver archivo
                       </a>
                     ) : null}
                     {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
-                    <div className={`text-xs mt-0.5 ${msg.type === "internal_note" ? "text-slate-300" : msg.direction === "out" ? "text-green-100" : "text-slate-400"}`}>
+                    <div className={`text-[11px] mt-0.5 text-right ${msg.type === "internal_note" ? "text-slate-300" : "text-[#667781]"}`}>
                       {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
                       {msg.direction === "out" && !["internal_note", "call"].includes(msg.type) && (
-                        <span className={`ml-1 ${msg.status === "read" ? "text-sky-300 font-semibold" : "text-green-100"}`}>
-                          {msg.status === "read" ? "✓✓ Leído" : msg.status === "delivered" ? "✓✓ Entregado" : "✓ Enviado"}
+                        <span title={msg.status === "read" ? "Leído" : msg.status === "delivered" ? "Entregado" : "Enviado"}
+                          className={`ml-1 font-semibold ${msg.status === "read" ? "text-[#53bdeb]" : "text-[#667781]"}`}>
+                          {msg.status === "read" || msg.status === "delivered" ? "✓✓" : "✓"}
                         </span>
                       )}
                     </div>
@@ -974,7 +1003,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           </div>
 
           {/* Input */}
-          <div className="bg-white border-t border-slate-200 p-3 pr-24 flex flex-wrap gap-2 items-center">
+          <div className="bg-[#f0f2f5] px-3 py-2 pr-3 md:pr-24 flex flex-wrap gap-2 items-center">
             {internalImagePreview && (
               <div className="basis-full flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 p-2">
                 <img src={internalImagePreview} alt="Vista previa del mensaje oculto"
@@ -990,7 +1019,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
               </div>
             )}
             <InboxAudioRecorder key={selected.id} onSend={sendFile} disabled={uploading || sending} />
-            <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-xl hover:bg-slate-100 transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
+            <label className={`cursor-pointer text-xl px-2 py-1.5 rounded-full hover:bg-[#e9edef] transition-colors ${uploading ? "opacity-40 pointer-events-none" : ""}`}
               title="Enviar imagen o PDF">
               {uploading ? "⏳" : "📎"}
               <input
@@ -1018,23 +1047,24 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   }
                 }
               }}
-              className="flex-1 min-w-0 max-h-40 resize-y border border-slate-200 rounded-xl px-4 py-2 text-sm leading-5 focus:outline-none focus:border-green-400 whitespace-pre-wrap"
+              className="flex-1 min-w-0 max-h-40 resize-y bg-white rounded-lg px-4 py-2 text-[15px] leading-5 text-[#111b21] placeholder-[#667781] focus:outline-none whitespace-pre-wrap"
             />
             <button onClick={send} disabled={sending || !newMsg.trim()}
-              className="bg-green-600 hover:bg-green-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
-              {sending ? "Enviando…" : "Enviar"}
+              aria-label="Enviar" title="Enviar"
+              className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#c5cbcf] text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors text-lg">
+              {sending ? "…" : "➤"}
             </button>
             <button onClick={saveInternalNote} disabled={sending || uploading || (!newMsg.trim() && !internalImage)}
               title="Guardar solo en el ERP; no se envía al cliente"
-              className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
+              className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#54656f] px-3 py-1.5 rounded-full transition-colors text-xs font-medium">
               🔒 Oculto
             </button>
             <button onClick={sendPlantilla} disabled={sending || uploading || !newMsg.trim()}
               title="Escribe el nombre de la plantilla (ej. ATC) y pulsa para enviarla al cliente"
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
+              className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#54656f] px-3 py-1.5 rounded-full transition-colors text-xs font-medium">
               📋 Plantilla
             </button>
-            <label className={`cursor-pointer bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm font-medium ${uploading || sending ? "opacity-40 pointer-events-none" : ""}`}
+            <label className={`cursor-pointer bg-white hover:bg-[#e9edef] text-[#54656f] px-3 py-1.5 rounded-full text-xs font-medium ${uploading || sending ? "opacity-40 pointer-events-none" : ""}`}
               title="Guardar una imagen solo en el ERP; no se envía al cliente">
               🔒🖼️
               <input type="file" accept="image/*" className="hidden" disabled={uploading || sending}
@@ -1043,10 +1073,10 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           </div>
         </div>
       ) : (
-        <div className="hidden md:flex flex-1 items-center justify-center bg-slate-50">
+        <div className="hidden md:flex flex-1 items-center justify-center bg-[#f0f2f5] border-b-[6px] border-[#25d366]">
           <div className="text-center text-slate-400">
             <div className="text-6xl mb-3">💬</div>
-            <div className="font-medium text-slate-500">Selecciona una conversación</div>
+            <div className="text-2xl font-light text-[#41525d]">Selecciona una conversación</div>
             <div className="text-sm mt-1">para ver los mensajes</div>
           </div>
         </div>

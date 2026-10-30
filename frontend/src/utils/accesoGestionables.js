@@ -22,6 +22,12 @@ export function empresaGestionables(valor) {
 export function tieneAccesoGestionables(usuario, empresaObjetivo) {
   const perfil = perfilGestionables(usuario?.perfil || usuario?.rol);
   const objetivo = empresaGestionables(empresaObjetivo);
+  const usuarioNormalizado = normalizar(usuario?.usuario || usuario?.username);
+
+  // Cuentas de pantalla dedicadas: cada una ve y abre solamente el reparto
+  // correspondiente, aunque su perfil general no sea de supervisión.
+  if (usuarioNormalizado === 'TVNOVO') return objetivo === 'NOVONET';
+  if (usuarioNormalizado === 'TVVELSA') return objetivo === 'VELSA';
 
   // El administrador corporativo puede operar ambos repartos, sin depender de
   // la empresa guardada en su perfil. Los demás perfiles siguen limitados a su

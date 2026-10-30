@@ -22,7 +22,7 @@ function construirCrms(env = process.env) {
   return [
     {
       empresa: 'NOVONET',
-      habilitado: env.CONTACTABILIDAD_NOVONET_ENABLED,
+      habilitado: env.CONTACTABILIDAD_NOVONET_ENABLED ?? ((env.NOVONET_WEBHOOK || env.BITRIX_WEBHOOK) ? 'true' : undefined),
       webhook: env.NOVONET_WEBHOOK || env.BITRIX_WEBHOOK,
       categoryId: env.NOVONET_CATEGORY_ID || '19',
       campoChat: env.NOVONET_CAMPO_CHAT || 'UF_CRM_1782402564693',
@@ -30,9 +30,11 @@ function construirCrms(env = process.env) {
     },
     {
       empresa: 'VELSA',
-      habilitado: env.CONTACTABILIDAD_VELSA_ENABLED,
-      webhook: env.VELSA_WEBHOOK,
-      categoryId: env.VELSA_CATEGORY_ID || '8',
+      // VELSA vive en el mismo portal Bitrix que NOVONET; se separa por el
+      // pipeline/categoria 51, no mediante otro webhook.
+      habilitado: env.CONTACTABILIDAD_VELSA_ENABLED ?? ((env.BITRIX_NOVONET_URL || env.NOVONET_WEBHOOK || env.BITRIX_WEBHOOK) ? 'true' : undefined),
+      webhook: env.BITRIX_NOVONET_URL || env.NOVONET_WEBHOOK || env.BITRIX_WEBHOOK || env.VELSA_WEBHOOK || env.BITRIX_VELSA_URL,
+      categoryId: env.VELSA_CATEGORY_ID || '51',
       campoChat: env.VELSA_CAMPO_CHAT || null,
       tokenWebhook: env.CONTACTABILIDAD_WEBHOOK_TOKEN_VELSA || env.CONTACTABILIDAD_WEBHOOK_TOKEN,
     },

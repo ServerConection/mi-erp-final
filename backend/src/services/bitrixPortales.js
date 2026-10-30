@@ -45,7 +45,7 @@ const conector = {
  */
 async function empresaDeLinea(lineId) {
   const r = await pool.query(
-    `SELECT UPPER(u.empresa) AS empresa
+    `SELECT UPPER(TRIM(u.empresa)) AS empresa
      FROM lines l LEFT JOIN usuarios u ON l.created_by = u.id
      WHERE l.id = $1`,
     [lineId]

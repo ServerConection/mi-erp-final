@@ -21,3 +21,15 @@ test('analista ve NOVONET pero no VELSA', () => {
   assert.equal(tieneAccesoGestionables({ perfil: 'ANALISTA', empresa: 'VELSA' }, 'NOVONET'), true);
   assert.equal(tieneAccesoGestionables({ perfil: 'ANALISTA', empresa: 'NOVONET' }, 'VELSA'), false);
 });
+
+test('tvnovo solo puede abrir el reparto NOVONET', () => {
+  const usuario = { usuario: 'tvnovo', perfil: 'TV', empresa: 'VELSA' };
+  assert.equal(tieneAccesoGestionables(usuario, 'NOVONET'), true);
+  assert.equal(tieneAccesoGestionables(usuario, 'VELSA'), false);
+});
+
+test('tvvelsa solo puede abrir el reparto VELSA', () => {
+  const usuario = { usuario: ' TvVelsa ', perfil: 'TV', empresa: 'NOVONET' };
+  assert.equal(tieneAccesoGestionables(usuario, 'VELSA'), true);
+  assert.equal(tieneAccesoGestionables(usuario, 'NOVONET'), false);
+});

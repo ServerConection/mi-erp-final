@@ -11,7 +11,29 @@ const BITRIX_API = {
   NOVONET: `${import.meta.env.VITE_API_URL}/api/bitrix-connector`,
   VELSA:   `${import.meta.env.VITE_API_URL}/api/bitrix-connector-velsa`,
 };
-const portalDeLinea = (line) => (line.owner_empresa === "VELSA" ? "VELSA" : "NOVONET");
+const normalizarEmpresa = (valor) => String(valor || "").trim().toUpperCase();
+const portalDeLinea = (line) => {
+  const empresa = normalizarEmpresa(
+    line.owner_empresa || line.empresa || line.line_empresa
+  );
+  return empresa === "VELSA" ? "VELSA" : "NOVONET";
+};
+
+// /lines/dashboard ya agrupa cada línea por la empresa de su propietario. Se
+// usa como respaldo porque algunas versiones antiguas de /lines no incluían
+// owner_empresa y el frontend terminaba poniendo todo en NOVONET.
+const empresasDesdeDashboard = (data) => {
+  const porLinea = new Map();
+  for (const grupo of Array.isArray(data) ? data : []) {
+    const empresa = normalizarEmpresa(grupo?.empresa);
+    for (const asesor of Array.isArray(grupo?.asesores) ? grupo.asesores : []) {
+      for (const linea of Array.isArray(asesor?.lineas) ? asesor.lineas : []) {
+        if (linea?.id && empresa) porLinea.set(String(linea.id), empresa);
+      }
+    }
+  }
+  return porLinea;
+};
 
 // Permisos: solo ADMINISTRADOR elimina líneas.
 // Crear líneas SIN límite: ADMINISTRADOR y perfiles gerenciales (SUPERVISOR,
@@ -114,9 +136,19 @@ export default function WaLineas() {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/lines`, { headers: authH(false) });
+      const [r, rd] = await Promise.all([
+        fetch(`${API}/lines`, { headers: authH(false) }),
+        fetch(`${API}/lines/dashboard`, { headers: authH(false) }).catch(() => null),
+      ]);
       const d = await r.json();
-      setLines(Array.isArray(d?.data) ? d.data.map(normalizarLinea) : []);
+      const dd = rd?.ok ? await rd.json().catch(() => null) : null;
+      const empresaPorLinea = empresasDesdeDashboard(dd?.data);
+      setLines(Array.isArray(d?.data) ? d.data.map(line => normalizarLinea({
+        ...line,
+        owner_empresa: normalizarEmpresa(line.owner_empresa)
+          || empresaPorLinea.get(String(line.id))
+          || null,
+      })) : []);
       setProxyPool(d?.meta?.proxyPool ?? null);
       if (d && d.success === false) setError(d.error || "Error cargando líneas");
     } catch { setError("Error cargando líneas"); }

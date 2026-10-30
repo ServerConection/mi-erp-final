@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive, ArchiveRestore, Award, BarChart3, CheckCircle2, Clock, FileQuestion,
-  GraduationCap, Hourglass, Plus, Search, Sparkles, Trash2, TrendingUp, Users,
+  GraduationCap, Hourglass, Plus, RotateCcw, Search, Sparkles, Trash2, TrendingUp, Users,
 } from 'lucide-react';
 import { evaluacionesApi } from '../../hooks/useEvaluaciones';
 import {
@@ -304,6 +304,17 @@ function TabMias({ onTomar }) {
                 </div>
                 <span className="w-12 text-right text-sm font-bold tabular-nums text-slate-700">{e.miNota}%</span>
                 <EstadoBadge aprobado={e.miAprobado} />
+                {!e.miAprobado && (
+                  <button
+                    type="button"
+                    onClick={() => onTomar(e.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2"
+                    aria-label={`Volver a intentar ${e.titulo}`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Volver a intentar
+                  </button>
+                )}
               </div>
             ))}
           </div>

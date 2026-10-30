@@ -5,7 +5,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Send, Trash2, UserPlus, Users } from 'lucide-react';
+import { Download, FileArchive, Loader2, Paperclip, Send, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { chatApi, useSocketChat } from '../../hooks/useChat';
 import { Avatar, Cargando, ErrorBox, horaCorta } from './ui';
 
@@ -14,10 +14,13 @@ export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeid
   const [cargando, setCargando] = useState(true);
   const [error, setError]       = useState(null);
   const [texto, setTexto]       = useState('');
+  const [archivo, setArchivo]   = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
+  const [descargandoId, setDescargandoId] = useState(null);
   const [errorAccion, setErrorAccion] = useState('');
   const finRef = useRef(null);
+  const archivoRef = useRef(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -72,18 +75,46 @@ export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeid
   const enviar = async (e) => {
     e.preventDefault();
     const contenido = texto.trim();
-    if (!contenido || enviando) return;
+    if ((!contenido && !archivo) || enviando) return;
 
     setEnviando(true);
     setTexto('');
     try {
-      const r = await chatApi.enviarMensaje(conversacion.id, contenido);
+      const r = archivo
+        ? await chatApi.enviarArchivo(conversacion.id, archivo, contenido)
+        : await chatApi.enviarMensaje(conversacion.id, contenido);
       setMensajes(prev => [...prev, r.data]);
+      setArchivo(null);
+      if (archivoRef.current) archivoRef.current.value = '';
     } catch (e2) {
       setError(e2.message);
       setTexto(contenido); // devuelve el texto al input si falló
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const seleccionarArchivo = (e) => {
+    const elegido = e.target.files?.[0] || null;
+    setErrorAccion('');
+    if (elegido && elegido.size > 25 * 1024 * 1024) {
+      setErrorAccion('El archivo supera el límite de 25 MB.');
+      e.target.value = '';
+      setArchivo(null);
+      return;
+    }
+    setArchivo(elegido);
+  };
+
+  const descargar = async (adjunto) => {
+    setDescargandoId(adjunto.id);
+    setErrorAccion('');
+    try {
+      await chatApi.descargarArchivo(adjunto.id, adjunto.nombre);
+    } catch (e) {
+      setErrorAccion(e.message || 'No se pudo descargar el archivo');
+    } finally {
+      setDescargandoId(null);
     }
   };
 
@@ -144,9 +175,11 @@ export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeid
                   <Burbuja
                     m={m}
                     mostrarAutor={conversacion.tipo === 'GRUPO' && !m.esMio && !mismoAutorSeguido}
-                    puedeEliminar={m.esMio || esAdmin}
+                    puedeEliminar={esAdmin}
                     eliminando={eliminandoId === m.id}
+                    descargando={descargandoId === m.archivo?.id}
                     onEliminar={() => eliminar(m)}
+                    onDescargar={() => m.archivo && descargar(m.archivo)}
                   />
                 </Fragment>
               );
@@ -157,42 +190,69 @@ export default function VentanaChat({ conversacion, miUsuarioId, esAdmin, onLeid
       </div>
 
       {/* Input */}
-      <form onSubmit={enviar} className="flex items-end gap-2 border-t border-slate-200 bg-white p-3">
-        <textarea
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
-          }}
-          placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)"
-          rows={1}
-          maxLength={20000}
-          className="max-h-32 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
-        />
-        <button
-          type="submit"
-          disabled={!texto.trim() || enviando}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
-        >
-          <Send className="h-4 w-4" />
-        </button>
+      <form onSubmit={enviar} className="border-t border-slate-200 bg-white p-3">
+        {archivo && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            <FileArchive className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate font-medium">{archivo.name}</span>
+            <span className="shrink-0 text-blue-500">{formatearTamano(archivo.size)}</span>
+            <button type="button" onClick={() => { setArchivo(null); if (archivoRef.current) archivoRef.current.value = ''; }} className="rounded p-1 hover:bg-blue-100" aria-label="Quitar archivo"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <input ref={archivoRef} type="file" className="hidden" onChange={seleccionarArchivo} />
+          <button type="button" onClick={() => archivoRef.current?.click()} disabled={enviando} title="Adjuntar archivo (máximo 25 MB)" aria-label="Adjuntar archivo" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40"><Paperclip className="h-4 w-4" /></button>
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
+            }}
+            placeholder={archivo ? 'Agrega un mensaje opcional…' : 'Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)'}
+            rows={1}
+            maxLength={20000}
+            className="max-h-32 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+          />
+          <button
+            type="submit"
+            disabled={(!texto.trim() && !archivo) || enviando}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+          >
+            {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
 
-function Burbuja({ m, mostrarAutor, puedeEliminar, eliminando, onEliminar }) {
+const formatearTamano = bytes => {
+  const n = Number(bytes || 0);
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+};
+
+function Burbuja({ m, mostrarAutor, puedeEliminar, eliminando, descargando, onEliminar, onDescargar }) {
+  const contenidoVisible = m.contenido && (!m.archivo || m.contenido !== `📎 ${m.archivo.nombre}`);
   return (
     <div className={`flex ${m.esMio ? 'justify-end' : 'justify-start'}`}>
       {m.esMio && puedeEliminar && <BotonEliminar eliminando={eliminando} onEliminar={onEliminar} />}
       <div className={`max-w-[75%] ${m.esMio ? 'items-end' : 'items-start'} flex flex-col`}>
         {mostrarAutor && <span className="mb-0.5 px-1 text-[11px] font-medium text-slate-400">{m.autor}</span>}
         <div
-          className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm ${
+          className={`min-w-48 whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm ${
             m.esMio ? 'rounded-br-sm bg-blue-600 text-white' : 'rounded-bl-sm bg-white text-slate-800 shadow-sm border border-slate-100'
           }`}
         >
-          {m.contenido}
+          {contenidoVisible && <div className={m.archivo ? 'mb-2' : ''}>{m.contenido}</div>}
+          {m.archivo && (
+            <button type="button" onClick={onDescargar} disabled={descargando} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition disabled:opacity-60 ${m.esMio ? 'border-blue-400 bg-blue-500 hover:bg-blue-400' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
+              <FileArchive className="h-5 w-5 shrink-0" />
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{m.archivo.nombre}</span><span className={`block text-[10px] ${m.esMio ? 'text-blue-100' : 'text-slate-400'}`}>{formatearTamano(m.archivo.tamano)}</span></span>
+              {descargando ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Download className="h-4 w-4 shrink-0" />}
+            </button>
+          )}
         </div>
         <span className="mt-0.5 px-1 text-[10px] text-slate-400">{horaCorta(m.createdAt)}</span>
       </div>

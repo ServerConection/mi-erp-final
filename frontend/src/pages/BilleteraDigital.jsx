@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, CalendarDays, Check, CheckCircle2, Clock3, CreditCard, LockKeyhole, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, CalendarDays, Check, CheckCircle2, Clock3, CreditCard, FileSpreadsheet, LockKeyhole, Search, ShoppingBag, Target, Trophy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const API = import.meta.env.VITE_API_URL;
@@ -16,6 +16,29 @@ const nombreCorto = (nombre) => {
     if (limpia && !unicos.some((x) => x.toLocaleLowerCase('es') === limpia.toLocaleLowerCase('es'))) unicos.push(limpia);
   });
   return unicos.slice(0, 2).map((parte) => parte.toLocaleLowerCase('es').replace(/(^|[-'])\p{L}/gu, (letra) => letra.toLocaleUpperCase('es'))).join(' ') || 'Asesor';
+};
+const META = 35;
+const BONOS = [[40, 40], [50, 60], [60, 80]];
+const hitoAsesor = (a) => {
+  const n = Number(a.ventas_tabla || 0); const v = Number(a.ventas_volumen ?? a.activas_regularizadas ?? 0);
+  if (n < META) return { texto: `Te faltan ${META - n} ventas para el asegurado de $550`, pct: Math.round((n / META) * 100), tono: 'ambar', meta: META, actual: n };
+  const sig = BONOS.find(([desde]) => v < desde);
+  if (sig) return { texto: `¡Asegurado ganado! Te faltan ${sig[0] - v} para el bono de ${dinero(sig[1])}`, pct: Math.round((v / sig[0]) * 100), tono: 'violeta', meta: sig[0], actual: v };
+  return { texto: '¡Asegurado y bono máximo de volumen logrados!', pct: 100, tono: 'verde', meta: v, actual: v };
+};
+const FILTROS = [
+  { id: 'todos', txt: 'Todos', fn: () => true },
+  { id: 'asegurado', txt: 'Con asegurado', fn: (a) => a.asegurado_aplicado },
+  { id: 'cerca', txt: 'Cerca del asegurado', fn: (a) => !a.asegurado_aplicado && Number(a.ventas_tabla || 0) >= META - 5 },
+  { id: 'pendientes', txt: 'Con por regularizar', fn: (a) => Number(a.activas_por_regularizar) > 0 },
+  { id: 'alertas', txt: 'Con alertas', fn: (a) => Number(a.sin_valor) > 0 || Number(a.te_excedentes) > 0 },
+];
+const ORDENES = {
+  disponible: { txt: 'Mayor saldo disponible', fn: (x, y) => (y.valor_disponible - x.valor_disponible) || (y.valor_total - x.valor_total) },
+  total: { txt: 'Mayor comisión del mes', fn: (x, y) => (y.valor_total - x.valor_total) },
+  meta: { txt: 'Más cerca del asegurado', fn: (x, y) => Number(y.ventas_tabla || 0) - Number(x.ventas_tabla || 0) },
+  pendientes: { txt: 'Más por regularizar', fn: (x, y) => Number(y.activas_por_regularizar || 0) - Number(x.activas_por_regularizar || 0) },
+  nombre: { txt: 'Nombre (A-Z)', fn: (x, y) => String(x.nombre_asesor || x.usuario).localeCompare(String(y.nombre_asesor || y.usuario)) },
 };
 const NOMBRE_MES = (mes) => { const [y, m] = mes.split('-').map(Number); const t = new Date(y, m - 1, 1).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); };
 const fechasPago = (mes) => {
@@ -52,7 +75,9 @@ function CelularBilletera({ a, mes, empresa }) {
   const puedeRetirar = Number(a.valor_disponible || 0) > 0 && new Date() >= pagos.fechaRetiro;
   const tieneSoloPendientes = Number(a.valor_disponible || 0) === 0 && enCamino > 0;
   const todoLiberado = pct === 100 && enCamino === 0;
-  const totalComision = Number(a.valor_total || 0);
+  // El asegurado ($550) se paga aparte; el 40% / 60% es solo sobre la comisión que va encima.
+  const montoAsegurado = a.asegurado_total_aplicado ? 550 : 0;
+  const totalComision = Math.max(0, Number(a.valor_total || 0) - montoAsegurado);
   const pagosComision = totalComision > 0 ? { anticipo: totalComision * 0.4, restante: totalComision * 0.6 } : null;
   return <div className="relative mx-auto w-full max-w-[360px] overflow-hidden rounded-[2.5rem] border-[9px] border-slate-950 bg-[#f4f7fb] shadow-[0_24px_60px_-24px_rgba(15,23,42,.5)]">
     <div className="mx-auto mt-2 h-5 w-24 rounded-full bg-slate-950" />
@@ -68,8 +93,16 @@ function CelularBilletera({ a, mes, empresa }) {
         <div className="relative mt-5 flex items-end justify-between gap-3"><span className="min-w-0 truncate text-[13px] font-normal text-white/85">Cód. asesor: {a.codigo_asesor || 'Sin código'}</span><span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-white/70">Comisiones</span></div>
       </div>
       <div className="mt-4 grid grid-cols-[3fr_2fr] gap-2"><button type="button" onClick={() => setMostrarRetiro(true)} className={`flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 py-3 text-xs font-black transition ${puedeRetirar ? 'bg-slate-950 text-white shadow-lg hover:-translate-y-0.5 hover:bg-blue-700' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}>{puedeRetirar ? <ArrowDownToLine className="h-4 w-4 shrink-0" /> : <CalendarDays className="h-4 w-4 shrink-0" />} {puedeRetirar ? 'Retirar' : 'Ver fechas de retiro'}</button><div className="flex items-center justify-center gap-2 rounded-2xl bg-white px-3 py-3 text-xs font-black text-slate-700 shadow-sm"><ShoppingBag className="h-4 w-4 text-blue-600" /> {cantidadTexto(a.activas_totales, 'venta')}</div></div>
+      <Link to={`/rol-pagos?${new URLSearchParams({ empresa, mes, usuario: a.usuario })}`} className="mt-2 flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:text-blue-700"><FileSpreadsheet className="h-4 w-4 shrink-0" /> Rol de pago</Link>
+      {tieneVentas && (() => { const h = hitoAsesor(a); const color = h.tono === 'ambar' ? 'bg-amber-500' : h.tono === 'violeta' ? 'bg-violet-500' : 'bg-emerald-500'; return <div className="mt-4 rounded-2xl bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between text-[11px] font-black text-slate-700"><span className="flex items-center gap-1.5">{a.asegurado_aplicado ? <Trophy className="h-3.5 w-3.5 text-amber-500" /> : <Target className="h-3.5 w-3.5 text-blue-600" />}{a.asegurado_aplicado ? 'Meta: bono al volumen' : 'Meta: asegurado'}</span><span className="text-slate-400">{h.actual}/{h.meta}</span></div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${color} transition-all duration-700`} style={{ width: `${Math.min(100, h.pct)}%` }} /></div>
+        <p className="mt-2 text-[11px] font-semibold leading-4 text-slate-600">{h.texto}</p>
+      </div>; })()}
       <div className="mt-5 flex items-center justify-between"><p className="text-xs font-black text-slate-800">Resumen del mes</p><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{NOMBRE_MES(mes)}</span></div>
       <div className="mt-2 space-y-2 text-xs">
+        {a.asegurado_aplicado && <div className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><span className="flex items-center gap-2 font-semibold text-slate-600"><span className="rounded-full bg-amber-100 p-1.5 text-amber-600"><Trophy className="h-3.5 w-3.5" /></span>Asegurado ganado</span><b className="text-emerald-600">{dinero(550)}</b></div>}
+        {Number(a.bono_volumen) > 0 && <div className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><span className="flex items-center gap-2 font-semibold text-slate-600"><span className="rounded-full bg-violet-100 p-1.5 text-violet-600"><Trophy className="h-3.5 w-3.5" /></span>Bono al volumen</span><b className="text-violet-600">+{dinero(a.bono_volumen)}</b></div>}
         <div className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><span className="flex items-center gap-2 font-semibold text-slate-600"><span className="rounded-full bg-emerald-100 p-1.5 text-emerald-600"><Check className="h-3.5 w-3.5" /></span>{cantidadTexto(a.activas_regularizadas, 'regularizada')}</span><b className="text-emerald-600">+{dinero(a.valor_disponible)}</b></div>
         <div className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><span className="flex items-center gap-2 font-semibold text-slate-600"><span className="rounded-full bg-amber-100 p-1.5 text-amber-600"><Clock3 className="h-3.5 w-3.5" /></span>{cantidadTexto(a.activas_por_regularizar, 'por regularizar', 'por regularizar')}</span><b className="text-amber-600">{dinero(enCamino)}</b></div>
       </div>
@@ -77,7 +110,7 @@ function CelularBilletera({ a, mes, empresa }) {
     {mostrarRetiro && <div className="absolute inset-0 z-20 flex items-end bg-slate-950/55 p-3 backdrop-blur-sm"><div className="w-full rounded-[1.75rem] bg-white p-5 shadow-2xl">
       <span className="inline-flex rounded-2xl bg-blue-100 p-3 text-blue-700"><CalendarDays className="h-5 w-5" /></span>
       <h3 className="mt-4 text-lg font-black text-slate-900">Fechas de retiro de {pagos.mesPago}</h3><p className="mt-1 text-xs leading-5 text-slate-500">Los pagos de {pagos.mesPeriodo} estarán disponibles en estas fechas.</p>
-      <div className="relative mt-5 space-y-5 pl-8 text-xs before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-0.5 before:bg-blue-200">{[[pagos.asegurado, 'Pago del asegurado', null], [pagos.anticipo, 'Pago del 40% de la comisión', pagosComision?.anticipo], [pagos.restante, 'Pago del 60% restante', pagosComision?.restante]].map(([fecha, descripcion, monto]) => <div key={fecha} className="relative"><span className="absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-[3px] border-blue-600 bg-white" /><div className="flex items-start justify-between gap-3"><div><b className="text-sm text-slate-900">{fecha}</b><p className="mt-0.5 text-slate-500">{descripcion}</p></div>{monto != null && <b className="shrink-0 text-sm text-slate-900">{dinero(monto)}</b>}</div></div>)}</div>
+      <div className="relative mt-5 space-y-5 pl-8 text-xs before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-0.5 before:bg-blue-200">{[[pagos.asegurado, 'Pago del asegurado', montoAsegurado || null], [pagos.anticipo, 'Pago del 40% de la comisión', pagosComision?.anticipo], [pagos.restante, 'Pago del 60% restante', pagosComision?.restante]].map(([fecha, descripcion, monto]) => <div key={fecha} className="relative"><span className="absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-[3px] border-blue-600 bg-white" /><div className="flex items-start justify-between gap-3"><div><b className="text-sm text-slate-900">{fecha}</b><p className="mt-0.5 text-slate-500">{descripcion}</p></div>{monto != null && <b className="shrink-0 text-sm text-slate-900">{dinero(monto)}</b>}</div></div>)}</div>
       <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-[10px] font-semibold leading-4 text-amber-800"><LockKeyhole className="h-4 w-4 shrink-0" />Esta vista es informativa. No realiza movimientos de dinero.</div><button type="button" onClick={() => setMostrarRetiro(false)} className="mt-4 w-full rounded-xl bg-slate-950 py-3 text-xs font-black text-white">Entendido</button>
     </div></div>}
   </div>;
@@ -85,20 +118,26 @@ function CelularBilletera({ a, mes, empresa }) {
 
 export default function BilleteraDigital() {
   const [empresa, setEmpresa] = useState('NOVONET'); const [mes, setMes] = useState(mesActual()); const [data, setData] = useState({ filas: [], totales: {} }); const [loading, setLoading] = useState(true), [error, setError] = useState(''); const [buscar, setBuscar] = useState(''); const [soloSinValor, setSoloSinValor] = useState(false);
-  useEffect(() => { const ctrl = new AbortController(); const r = rangoMes(mes); const qs = new URLSearchParams({ empresa, activacionDesde: r.desde, activacionHasta: r.hasta }); fetch(`${API}/api/comisiones?${qs}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, signal: ctrl.signal }).then(async (res) => { const b = await res.json().catch(() => ({})); if (!res.ok) throw new Error(b.error || `HTTP ${res.status}`); return b; }).then((b) => setData(b.data || { filas: [], totales: {} })).catch((e) => { if (e.name !== 'AbortError') setError(e.message); }).finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); return () => ctrl.abort(); }, [empresa, mes]);
+  const [recarga, setRecarga] = useState(0);
+  const [filtro, setFiltro] = useState('todos'); const [orden, setOrden] = useState('disponible');
+  // Actualización automática cada 10 minutos (igual que Comisiones)
+  useEffect(() => { const id = setInterval(() => setRecarga((x) => x + 1), 10 * 60 * 1000); return () => clearInterval(id); }, []);
+  useEffect(() => { const ctrl = new AbortController(); const r = rangoMes(mes); const qs = new URLSearchParams({ empresa, activacionDesde: r.desde, activacionHasta: r.hasta }); fetch(`${API}/api/comisiones?${qs}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, signal: ctrl.signal }).then(async (res) => { const b = await res.json().catch(() => ({})); if (!res.ok) throw new Error(b.error || `HTTP ${res.status}`); return b; }).then((b) => setData(b.data || { filas: [], totales: {} })).catch((e) => { if (e.name !== 'AbortError') setError(e.message); }).finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); return () => ctrl.abort(); }, [empresa, mes, recarga]);
   const cambiarEmpresa = (valor) => { setLoading(true); setError(''); setEmpresa(valor); };
   const cambiarMes = (valor) => { if (!valor) return; setLoading(true); setError(''); setMes(valor); };
   const filasAsignadas = useMemo(() => (data.filas || []).filter((a) => !esSinAsignar(a)), [data]);
   const sinAsignar = useMemo(() => (data.filas || []).filter(esSinAsignar).reduce((acc, fila) => ({ activas_totales: acc.activas_totales + Number(fila.activas_totales || 0), valor_total: acc.valor_total + Number(fila.valor_total || 0) }), { activas_totales: 0, valor_total: 0 }), [data]);
-  const asesores = useMemo(() => { const q = buscar.trim().toLowerCase(); return [...filasAsignadas].filter((a) => (!soloSinValor || Number(a.sin_valor) > 0) && (!q || `${a.nombre_asesor || ''} ${a.usuario} ${a.codigo_asesor}`.toLowerCase().includes(q))).sort((x, y) => (y.valor_total - x.valor_total) || (y.valor_disponible - x.valor_disponible)); }, [filasAsignadas, buscar, soloSinValor]);
+  const asesores = useMemo(() => { const q = buscar.trim().toLowerCase(); const f = FILTROS.find((x) => x.id === filtro) || FILTROS[0]; return [...filasAsignadas].filter((a) => f.fn(a) && (!soloSinValor || Number(a.sin_valor) > 0) && (!q || `${a.nombre_asesor || ''} ${a.usuario} ${a.codigo_asesor}`.toLowerCase().includes(q))).sort(ORDENES[orden].fn); }, [filasAsignadas, buscar, soloSinValor, filtro, orden]);
+  const conteo = (id) => filasAsignadas.filter(FILTROS.find((x) => x.id === id).fn).length;
   const t = data.totales || {}; const conSaldo = filasAsignadas.filter((a) => a.valor_disponible > 0).length;
   return <div className="min-h-full bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-4 md:p-7"><div className="mx-auto max-w-7xl space-y-5">
     <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-blue-600">Administración</p><h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">Billetera Digital <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">Vista previa</span></h1><p className="mt-1 text-sm text-slate-500">Saldo de comisiones de cada asesor. Disponible = ventas regularizadas; por liberar = activas pendientes de regularización.</p></div><div className="flex flex-wrap items-center gap-2"><div className="inline-flex rounded-xl border bg-white p-1 shadow-sm">{['NOVONET', 'VELSA'].map((x) => <button key={x} onClick={() => cambiarEmpresa(x)} className={`rounded-lg px-4 py-1.5 text-sm font-bold ${empresa === x ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{x}</button>)}</div><input type="month" value={mes} onChange={(e) => cambiarMes(e.target.value)} className="rounded-xl border bg-white px-3 py-1.5 text-sm shadow-sm" aria-label="Mes" /></div></header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
     {loading ? <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[0, 1, 2, 3, 4].map((x) => <div key={x} className="h-[104px] animate-pulse rounded-2xl border border-slate-200 bg-slate-200" />)}</div> : <div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Kpi etiqueta="Saldo disponible" valor={dinero(t.valor_disponible)} ayuda="Listo para pagar" tono="verde" /><Kpi etiqueta="Por liberar" valor={dinero((t.valor_total || 0) - (t.valor_disponible || 0))} ayuda="Espera regularización" tono="ambar" /><Kpi etiqueta="Comisión proyectada" valor={dinero(t.valor_total)} ayuda={`${cantidadTexto(t.activas_totales, 'activa')} en el mes`} tono="azul" /><Kpi etiqueta="Asesores con saldo" valor={`${conSaldo} / ${filasAsignadas.length}`} ayuda={data.mes_catalogo ? `Catálogo ${data.mes_catalogo}` : 'Sin catálogo cargado'} /><Kpi etiqueta="Ventas sin valor en catálogo" valor={Number(t.sin_valor || 0)} ayuda={soloSinValor ? 'Mostrando solo alertas' : 'Haz clic para filtrar'} alerta activo={soloSinValor} onClick={() => setSoloSinValor((v) => !v)} /></div>}
-    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><p className="text-sm text-slate-500">Cada celular es lo que verá el asesor en su app · {NOMBRE_MES(mes)}. Ordenados por valor total.</p><input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar asesor o código…" className="w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-sm md:w-72" /></div>
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div className="flex flex-wrap gap-1.5">{FILTROS.map((f) => <button key={f.id} type="button" onClick={() => setFiltro(f.id)} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${filtro === f.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'}`}>{f.txt} <span className="opacity-60">{conteo(f.id)}</span></button>)}</div><div className="flex items-center gap-2"><select value={orden} onChange={(e) => setOrden(e.target.value)} aria-label="Ordenar" className="rounded-xl border bg-white px-3 py-2 text-sm shadow-sm">{Object.entries(ORDENES).map(([k, o]) => <option key={k} value={k}>{o.txt}</option>)}</select><label className="relative w-full md:w-64"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar asesor o código…" className="w-full rounded-xl border bg-white py-2 pl-9 pr-3 text-sm shadow-sm" /></label></div></div>
+    <p className="text-xs text-slate-500">Cada celular es lo que verá el asesor en su app · {NOMBRE_MES(mes)} · {asesores.length} de {filasAsignadas.length} asesores.</p>
     {!loading && sinAsignar.activas_totales > 0 && <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-amber-900"><AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" /><span><b>{cantidadTexto(sinAsignar.activas_totales, 'Venta')} sin asesor asignado:</b> {dinero(sinAsignar.valor_total)}</span></div><Link to="/comisiones" className="shrink-0 rounded-lg border border-amber-300 bg-white px-4 py-2 text-center text-xs font-bold text-amber-800 transition hover:bg-amber-100">Revisar</Link></div>}
-    {loading ? <Skeletons /> : !asesores.length ? <div className="rounded-2xl border border-dashed bg-white p-16 text-center text-sm text-slate-500">{soloSinValor ? 'No hay asesores con ventas sin valor en el catálogo.' : 'Sin asesores con activas en este mes.'}</div> : <div className="grid gap-8 sm:grid-cols-2 xl:grid-cols-3">{asesores.map((a) => <CelularBilletera key={`${a.usuario}-${a.codigo_asesor}`} a={a} mes={mes} empresa={empresa} />)}</div>}
+    {loading ? <Skeletons /> : !asesores.length ? <div className="rounded-2xl border border-dashed bg-white p-16 text-center text-sm text-slate-500">{soloSinValor || filtro !== 'todos' || buscar ? <>Ningún asesor coincide con el filtro. <button type="button" onClick={() => { setFiltro('todos'); setSoloSinValor(false); setBuscar(''); }} className="font-bold text-blue-600 underline">Ver todos</button></> : 'Sin asesores con activas en este mes.'}</div> : <div className="grid gap-8 sm:grid-cols-2 xl:grid-cols-3">{asesores.map((a) => <CelularBilletera key={`${a.usuario}-${a.codigo_asesor}`} a={a} mes={mes} empresa={empresa} />)}</div>}
     <p className="text-center text-[11px] text-slate-400">Vista informativa sin movimientos de dinero reales.</p>
   </div></div>;
 }

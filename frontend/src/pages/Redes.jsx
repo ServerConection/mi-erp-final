@@ -18,6 +18,7 @@ import TabReporteData    from "./TabReporteData";
 import TabAnalisisPautas from "./TabAnalisisPautas";
 import TabComparativo    from "./TabComparativo";
 import TabAsesorVsPauta  from "./TabAsesorVsPauta";
+import TabMapaCalor      from "./TabMapaCalor";
 import { CanalSelector, getCanalCfg, buildFiltroParams } from "./GlobalFilters";
 import { forzarSyncInversion } from "../utils/redesSync";
 import { cabecerasSesion } from "../utils/sesion";
@@ -1899,6 +1900,7 @@ const TABS = [
   { id: "pautas",        label: "Análisis Pautas",      icon: "🔬" },
   { id: "reporte",       label: "Reporte Data",         icon: "📑" },
   { id: "agencias",      label: "Agencias",             icon: "🏢" },
+  { id: "mapa",          label: "Mapa de Calor",        icon: "🗺️" },
   { id: "proximamente",  label: "Próximamente",         icon: "🚀" },
 ];
 
@@ -1985,6 +1987,7 @@ export default function Redes() {
       {/* Contenido */}
       {tab === "general"      && <TabMonitoreoGeneral data={data} loading={loading} canalesSel={canalesSel} />}
       {tab === "graficos"     && <TabGraficos data={data} loading={loading} canalesSel={canalesSel} />}
+      {tab === "mapa"         && <TabMapaCalor filtro={filtro} />}
       {tab === "asesorvpauta" && (
         <TabAsesorVsPauta filtro={filtro} canalesSel={canalesSel} onCanalesSel={setCanalesSel} />
       )}

@@ -35,7 +35,9 @@ const EMPRESAS = {
     pipeline: env.GESTIONABLES_PIPELINE || 'NETLIFE NUEVO',
     etapa: env.GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874201,
-    plazoVentaHoras: 3,                          // efectividad: horas para pasar a Venta Subida                                 // +1 = candado de la cola
+    plazoVentaHoras: 3,
+    // Orígenes que se REPARTEN en orden pero NO cuentan en leads, ATC ni gestionables
+    origenesSinConteo: ['FB MESSENGER - NOVO'],                          // efectividad: horas para pasar a Venta Subida                                 // +1 = candado de la cola
   },
   velsa: {
     clave: 'velsa',
@@ -59,7 +61,7 @@ const EMPRESAS = {
     pipeline: env.VELSA_GESTIONABLES_PIPELINE || 'VELSA',
     etapa: env.VELSA_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874301,
-    plazoVentaHoras: 8,                          // Velsa: 8 horas para pasar a Venta Subida
+    plazoVentaHoras: 5,                          // Velsa: 5 horas para pasar a Venta Subida
   },
 };
 

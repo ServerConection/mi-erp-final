@@ -254,7 +254,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-slate-500">
                 <th className="p-2">Turno</th><th className="p-2">Asesor</th><th className="p-2">Estado</th>
-                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center" title={`Gestionables con más de ${datos?.efectividad?.plazo_horas ?? 3} h desde la entrega y sin Venta Subida`}>Sin subir +{datos?.efectividad?.plazo_horas ?? 3}h</th><th className="p-2 text-center" title="Ventas Subidas / meta (30% de sus gestionables, redondeado hacia arriba). Si cubre la meta, sigue recibiendo">Venta subida</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
+                <th className="p-2" title="Leads entregados hoy (bot + humano, cualquier etapa) / Permitidos">Cupo usado (leads)</th><th className="p-2 text-center">Total asignados</th><th className="p-2 text-center">Bot</th><th className="p-2 text-center">Humano</th><th className="p-2 text-center" title="De los leads recibidos hoy, cuántos siguen en una etapa gestionable">Gestionables</th><th className="p-2 text-center" title="Leads de hoy en ATC / tope de ATC (% de sus permitidos). Al llegar al tope, el bot no le entrega">ATC</th><th className="p-2 text-center" title={`Gestionables con más de ${datos?.efectividad?.plazo_horas ?? 3} h desde la entrega y sin Venta Subida`}>Sin subir +{datos?.efectividad?.plazo_horas ?? 3}h</th><th className="p-2 text-center" title="Ventas Subidas / meta (30% de sus gestionables, redondeado hacia arriba). Si cubre la meta, sigue recibiendo">Venta subida</th><th className="p-2 text-center" title="Leads que pasaron a Duplicado, Regularización o Remarketing. No suman al total; revisar si un asesor los mueve ahí para seguir recibiendo">Dup/Reg/Rmk</th><th className="p-2 text-center">Disponibles</th><th className="p-2">Último lead</th>
               </tr></thead>
               <tbody>
                 {ordenadas.map(({ r, turno }) => {
@@ -276,7 +276,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                           <span className="tabular-nums">{r.asignados} / {r.permitidos}</span>
                         </div>
                       </td>
-                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.total_asignados ?? r.asignados}</td>
+                      <td className="p-2 text-center tabular-nums font-bold text-slate-800">{r.total_asignados ?? r.asignados}{r.sin_conteo > 0 && <span className="ml-1 text-xs font-normal text-slate-500" title="Leads de FB Messenger - Novo: se entregan en orden pero no cuentan en leads, ATC ni gestionables">+{r.sin_conteo} Messenger</span>}</td>
                       <td className="p-2 text-center tabular-nums">{r.asignados_bot ?? '—'}</td>
                       <td className={`p-2 text-center tabular-nums ${r.asignados_humano ? 'font-semibold text-violet-700' : ''}`}>{r.asignados_humano ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums font-semibold text-emerald-700">{r.gestionables ?? '—'}</td>
@@ -287,6 +287,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                         {r.vencidos ?? '—'}
                       </td>
                       <td className="p-2 text-center tabular-nums font-semibold text-blue-700">{r.venta_subida ?? '—'}{r.meta_venta != null && <span className="ml-1 text-xs font-normal">/ {r.meta_venta}</span>}</td>
+                      <td className={`p-2 text-center tabular-nums ${r.dup_reg_rmk ? 'font-semibold text-amber-700' : ''}`}>{r.dup_reg_rmk ?? '—'}</td>
                       <td className="p-2 text-center tabular-nums">{lleno ? 'Cupo lleno' : r.disponibles}</td>
                       <td className="p-2 tabular-nums">{horaEc(r.ultima_asignacion)}</td>
                     </tr>

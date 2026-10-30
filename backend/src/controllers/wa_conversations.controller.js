@@ -636,8 +636,8 @@ async function startFromBitrix(req, res) {
       candidates = (await query(`SELECT id, name, bot_id, created_by FROM lines ORDER BY created_at ASC`)).rows
     } else if (isSupervisor(req)) {
       candidates = (await query(
-        `SELECT id, name, bot_id, created_by FROM lines WHERE created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa)=$1) ORDER BY created_at ASC`,
-        [empresa]
+        `SELECT id, name, bot_id, created_by FROM lines WHERE created_by IN (SELECT id FROM usuarios WHERE UPPER(empresa) = ANY($1::text[])) ORDER BY created_at ASC`,
+        [empresasVisiblesWabot(req.user)]
       )).rows
     } else {
       candidates = (await query(

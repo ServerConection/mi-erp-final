@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
+const { fuenteJotNovonet } = require('../shared/fuenteJotNovonet');
 const filtroOrigenNovonet = (values, origenes = [], alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
 
 
@@ -135,12 +136,12 @@ const getEtapasCache = async () => {
 
   const [resCRM, resJot, resOrigenes] = await Promise.all([
     pool.query(`SELECT DISTINCT mb.b_etapa_de_la_negociacion AS etapa
-                FROM public.mestra_bitrix mb
+                FROM public.vw_mestra_novonet_live mb
                 WHERE mb.b_etapa_de_la_negociacion IS NOT NULL
                   AND TRIM(mb.b_etapa_de_la_negociacion) <> ''
                 ORDER BY etapa ASC`),
     pool.query(`SELECT DISTINCT COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS etapa
-                FROM public.mestra_bitrix mb
+                FROM public.vw_mestra_novonet_live mb
                 ORDER BY etapa ASC`),
     // Orígenes REALES presentes en la data (antes el filtro usaba una lista
     // hardcodeada de 6 canales que dejaba fuera la mayoría).
@@ -234,7 +235,7 @@ LEFT JOIN LATERAL (
 //       Novonet), y
 //   2) si el id existe en las dos empresas, el LEFT JOIN devuelve 2 filas y
 //      DUPLICA el registro en el detalle.
-// Este controller es el de NOVONET (queryCRM lee public.vw_bitrix_novonet),
+// Este controller es el de NOVONET (queryCRM lee public.vw_bitrix_novonet_v2),
 // por eso se fija el literal 'novonet'. El equivalente de Velsa vive en
 // indicadoresVelsa*.controller.js y debe usar 'velsa'.
 //
@@ -588,7 +589,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 -- La vista los une con FULL OUTER JOIN, así ninguno de los dos
                 -- pierde registros. Motivo: el ETL de mestra_bitrix va atrasado
                 -- (6 leads contra 279 del webhook para el mismo día).
-                FROM public.vw_bitrix_novonet mb
+                FROM public.vw_bitrix_novonet_v2 mb
                 ${joinEmpleadosDedup}
                 ${JOIN_VAN_NOVONET}
                 WHERE (
@@ -810,12 +811,13 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
-            FROM public.mestra_bitrix mb_jot
+            FROM ${fuenteJotNovonet()} mb_jot
+            -- 2026-10-28: lado JOT lee directo de envios_ventas (antes mestra_bitrix).
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
             -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
             -- 279 del webhook, por eso estas métricas daban 0.
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
-            JOIN public.vw_bitrix_novonet mb_crm
+            JOIN public.vw_bitrix_novonet_v2 mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -833,12 +835,13 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ventas_del_dia
-            FROM public.mestra_bitrix mb_jot
+            FROM ${fuenteJotNovonet()} mb_jot
+            -- 2026-10-28: lado JOT lee directo de envios_ventas (antes mestra_bitrix).
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
             -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
             -- 279 del webhook, por eso estas métricas daban 0.
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
-            JOIN public.vw_bitrix_novonet mb_crm
+            JOIN public.vw_bitrix_novonet_v2 mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -860,12 +863,13 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 ${normalizarAsesorExpr('mb_crm.b_persona_responsable')} AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
-            FROM public.mestra_bitrix mb_jot
+            FROM ${fuenteJotNovonet()} mb_jot
+            -- 2026-10-28: lado JOT lee directo de envios_ventas (antes mestra_bitrix).
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
             -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
             -- 279 del webhook, por eso estas métricas daban 0.
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
-            JOIN public.vw_bitrix_novonet mb_crm
+            JOIN public.vw_bitrix_novonet_v2 mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -882,12 +886,13 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COALESCE(e.supervisor, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(DISTINCT mb_jot.j_id_bitrix)::int AS ingresos_del_dia
-            FROM public.mestra_bitrix mb_jot
+            FROM ${fuenteJotNovonet()} mb_jot
+            -- 2026-10-28: lado JOT lee directo de envios_ventas (antes mestra_bitrix).
             -- El lado CRM sale del WEBHOOK (vw_bitrix_novonet), no de
             -- mestra_bitrix: el ETL va atrasado y hoy tiene 6 leads contra
             -- 279 del webhook, por eso estas métricas daban 0.
             -- El lado JOT sigue en mestra_bitrix, que es su fuente.
-            JOIN public.vw_bitrix_novonet mb_crm
+            JOIN public.vw_bitrix_novonet_v2 mb_crm
                 ON mb_crm.b_id::text = mb_jot.j_id_bitrix::text
             LEFT JOIN LATERAL (
                 SELECT e2.supervisor FROM public.empleados e2
@@ -908,7 +913,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COALESCE(${normalizarAsesorExpr(columna)}, 'SIN ASIGNAR') AS nombre_grupo,
                 COUNT(*)::int AS backlog
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${joinEmpleadosDedup}
             WHERE ${ACTIVACION_CON_PLAN}
             AND mb.j_fecha_activacion_netlife IS NOT NULL
@@ -938,7 +943,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_modificado_el_fecha AS "FECHA_MODIFICACION",
                 mb.b_modificado_el_hora AS "HORA_MODIFICACION",
                 mb.b_origen AS "ORIGEN"
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             ${joinEmpleadosDedup}
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersJoin}
             -- FIX (2026-08-27, data completa): se quita LIMIT 6000 a pedido -
@@ -1016,7 +1021,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_fecha_agenda AS "FECHA_AGENDA",
                 ${ASESOR_RESUELTO_NORMALIZADO} AS "ASESOR",
                 COALESCE(esup.supervisor, e.supervisor) AS "SUPERVISOR_ASIGNADO"
-            FROM mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
@@ -1042,7 +1047,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 SELECT
                     COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') AS estado,
                     COUNT(*) AS total
-                FROM public.mestra_bitrix mb
+                FROM public.vw_mestra_novonet_live mb
                 WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                 AND COALESCE(NULLIF(TRIM(mb.j_netlife_estatus_real), ''), 'SIN ESTADO') <> 'ACTIVO'
                 ${filtersNoJoin}
@@ -1053,7 +1058,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 SELECT
                     'ACTIVO' AS estado,
                     COUNT(*) AS total
-                FROM public.mestra_bitrix mb
+                FROM public.vw_mestra_novonet_live mb
                 WHERE ${ACTIVACION_CON_PLAN}
                 AND public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) BETWEEN $1::date AND $2::date
                 ${filtersNoJoin}
@@ -1078,7 +1083,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
@@ -1093,7 +1098,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.b_creado_el_fecha AS fecha,
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_creado_el_fecha, mb.b_etapa_de_la_negociacion
             ORDER BY fecha ASC
@@ -1104,7 +1109,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 UPPER(COALESCE(NULLIF(TRIM(mb.b_etapa_de_la_negociacion), ''), 'SIN ETAPA')) AS etapa,
                 mb.b_creado_el_fecha::date::text AS fecha,
                 COUNT(DISTINCT mb.b_id)::int AS total
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             LEFT JOIN public.bitrix_webhook_leads origen_tabla
               ON origen_tabla.empresa = 'novonet'
              AND BTRIM(origen_tabla.bitrix_id::text) = ${dealNovonet('mb')}
@@ -1120,7 +1125,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 COUNT(*) FILTER (
                     WHERE ${ACTIVACION_CON_PLAN}
                 )::int AS activos
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
@@ -1135,7 +1140,7 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT
                 public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) AS fecha,
                 COUNT(*)::int AS activaciones
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE ${ACTIVACION_CON_PLAN}
               AND mb.j_fecha_activacion_netlife IS NOT NULL
             AND TRIM(mb.j_fecha_activacion_netlife::text) != ''
@@ -1160,7 +1165,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
                 ) AS total_tarjeta,
                 COUNT(*) AS total_jotform
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
             ${filtersNoJoin}
         `;
@@ -1237,7 +1242,7 @@ const getIndicadoresDashboard = async (req, res) => {
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_activos
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${JOIN_VAN_NOVONET}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
         `;
@@ -1263,7 +1268,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
@@ -1294,7 +1299,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 mb.j_forma_pago AS "FORMA_PAGO",
                 mb.j_netlife_login AS "LOGIN",
                 mb.j_estatus_regularizacion AS "ESTADO_REGULARIZACION"
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${joinEmpleadosDedup}
             ${joinResponsableWebhook}
             ${joinSupervisorResuelto}
@@ -1564,7 +1569,7 @@ LEFT JOIN LATERAL (
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND ${VENTA_SERVICIO_VAN}
                 ) AS real_venta_servicio
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             ${joinMonitoreo}
             ${JOIN_VAN_NOVONET}
             WHERE (
@@ -1606,7 +1611,7 @@ LEFT JOIN LATERAL (
                     COUNT(*) FILTER (WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.')::numeric
                     / NULLIF(COUNT(*), 0)
                 , 0) * 100, 2) AS real_efectividad
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${joinMonitoreo}
             ${JOIN_VAN_NOVONET}
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
@@ -1777,7 +1782,7 @@ const getReporte180 = async (req, res) => {
                         AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     ), 0)
                 , 0) * 100, 2) AS pct_tercera_edad
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             ${JOIN_VAN_NOVONET}
             WHERE (
                 ${parseFecha('mb.b_creado_el_fecha')} BETWEEN $1::date AND $2::date
@@ -1790,7 +1795,7 @@ const getReporte180 = async (req, res) => {
             SELECT
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
-            FROM public.vw_bitrix_novonet mb
+            FROM public.vw_bitrix_novonet_v2 mb
             WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
@@ -1800,7 +1805,7 @@ const getReporte180 = async (req, res) => {
             SELECT
                 COALESCE(mb.j_netlife_estatus_real, 'SIN ESTADO') AS etapa,
                 COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
             GROUP BY mb.j_netlife_estatus_real
             ORDER BY total DESC
@@ -1811,7 +1816,7 @@ const getReporte180 = async (req, res) => {
                 TRIM(mb.j_fecha_registro_sistema) AS fecha,
                 COALESCE(TRIM(mb.j_ciudad), 'SIN CIUDAD') AS ciudad,
                 COUNT(*)::int AS total
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE mb.j_fecha_registro_sistema IS NOT NULL
             AND TRIM(mb.j_fecha_registro_sistema) != ''
             AND public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
@@ -1863,7 +1868,7 @@ const getReporte180 = async (req, res) => {
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
                 ) AS adulto_mayor_activos
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             ${JOIN_VAN_NOVONET}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
         `;
@@ -2079,7 +2084,7 @@ const getActivacionesPorDia = async (req, res) => {
             SELECT
                 public.parse_fecha_flex(mb.j_fecha_activacion_netlife::text) AS fecha,
                 COUNT(*)::int AS activaciones
-            FROM public.mestra_bitrix mb
+            FROM public.vw_mestra_novonet_live mb
             WHERE mb.j_fecha_activacion_netlife IS NOT NULL
               AND ${ACTIVACION_CON_PLAN}
               AND TRIM(mb.j_fecha_activacion_netlife::text) != ''

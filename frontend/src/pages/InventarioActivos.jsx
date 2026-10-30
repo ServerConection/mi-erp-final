@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardEdit, Cpu, Download, Image as ImageIcon, Laptop, Loader2, Plus, Save, Search, ShieldCheck, X } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import PlanoInventarioActivos from "../components/PlanoInventarioActivos";
 
 const API = `${(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")}/api/inventario-activos`;
@@ -118,20 +119,24 @@ function ModalDetalle({ activo, esAdmin, onCerrar, onEditar }) {
   </div>;
 }
 
-function Indicadores({ resumen, resumenGeneral, empresaActiva, onEmpresa }) {
-  const totalEmpresa = (empresa) => resumenGeneral.por_empresa?.find((item) => item.empresa === empresa)?.total || 0;
+const COLORES_ESTADO = ["#2563eb", "#10b981", "#f59e0b", "#64748b", "#8b5cf6"];
+
+function DashboardInventario({ datos, cargando, onFiltro, onDetalle }) {
+  if (cargando) return <div className="flex min-h-72 items-center justify-center rounded-2xl border border-slate-200 bg-white"><Loader2 className="animate-spin text-blue-600" size={30} /></div>;
+  const kpis = datos?.kpis || {};
   const tarjetas = [
-    { titulo: "Total general", valor: resumenGeneral.total || 0, empresa: "", color: "text-blue-600 bg-blue-50" },
-    { titulo: "NOVONET", valor: totalEmpresa("NOVONET"), empresa: "NOVONET", color: "text-cyan-700 bg-cyan-50" },
-    { titulo: "VELSA", valor: totalEmpresa("VELSA"), empresa: "VELSA", color: "text-violet-700 bg-violet-50" },
-    { titulo: "Resultados filtrados", valor: resumen.total || 0, empresa: null, color: "text-emerald-700 bg-emerald-50" },
+    ["Total", kpis.total, {}], ["NOVONET", kpis.novonet, { empresa: "NOVONET" }],
+    ["VELSA", kpis.velsa, { empresa: "VELSA" }], ["Sin responsable / POR DEFINIR", kpis.sin_responsable, { especial: "sin_responsable" }],
+    ["Sin auditoria (+90 dias)", kpis.sin_auditoria_90, { especial: "sin_auditoria_90" }], ["RAM menor a 8 GB", kpis.ram_menor_8, { ram_gb_max: "7.99" }],
   ];
-  return <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{tarjetas.map(({ titulo, valor, empresa, color }) => {
-    const seleccionable = empresa !== null;
-    const activo = seleccionable && empresaActiva === empresa;
-    return <button type="button" key={titulo} disabled={!seleccionable} onClick={() => seleccionable && onEmpresa(empresa)} className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition ${activo ? "border-blue-500 ring-4 ring-blue-100" : "border-slate-200"} ${seleccionable ? "hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md" : "cursor-default"}`}><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${color}`}><Laptop size={19} /></div><p className="text-2xl font-black text-slate-900">{valor}</p><p className="text-xs font-semibold text-slate-500">{titulo}</p>{seleccionable && <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-blue-600">Ver equipos</p>}</button>;
-  })}</div>
-    <div className="mt-3 flex flex-wrap gap-2">{(resumen.por_tipo || []).map((item) => <span key={item.tipo_dispositivo} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">{item.tipo_dispositivo}: {item.total}</span>)}</div></>;
+  return <div className="space-y-5">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">{tarjetas.map(([titulo, valor, filtro]) => <button type="button" key={titulo} onClick={() => onFiltro(filtro)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"><div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Laptop size={18} /></div><p className="text-2xl font-black text-slate-900">{valor || 0}</p><p className="mt-1 text-xs font-semibold leading-4 text-slate-500">{titulo}</p><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-blue-600">Ver equipos</p></button>)}</div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-black text-slate-800">Equipos por area</h2><p className="mb-4 text-xs text-slate-500">Haz clic en una barra para abrir el listado.</p><div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={datos?.por_area || []} layout="vertical" margin={{ left: 10, right: 20 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="nombre" width={115} tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="total" name="Equipos" radius={[0, 7, 7, 0]}>{(datos?.por_area || []).map((item) => <Cell key={item.nombre} fill="#2563eb" className="cursor-pointer" onClick={() => onFiltro({ area: item.nombre === "SIN AREA" ? "" : item.nombre })} />)}</Bar></BarChart></ResponsiveContainer></div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-black text-slate-800">Equipos por estado</h2><p className="mb-4 text-xs text-slate-500">Haz clic en un segmento para abrir el listado.</p><div className="h-80"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={datos?.por_estado || []} dataKey="total" nameKey="nombre" innerRadius={65} outerRadius={105} paddingAngle={3}>{(datos?.por_estado || []).map((item, indice) => <Cell key={item.nombre} fill={COLORES_ESTADO[indice % COLORES_ESTADO.length]} className="cursor-pointer" onClick={() => onFiltro({ estado: item.nombre === "SIN ESTADO" ? "" : item.nombre })} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div></section>
+    </div>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-100 px-5 py-4"><h2 className="font-black text-slate-800">10 equipos a revisar</h2><p className="text-xs text-slate-500">Priorizados por cantidad de alertas y antiguedad de auditoria.</p></div><div className="divide-y divide-slate-100">{(datos?.por_revisar || []).map((equipo) => <button type="button" key={equipo.id} onClick={() => onDetalle(equipo)} className="flex w-full flex-col gap-1 px-5 py-3 text-left hover:bg-blue-50 sm:flex-row sm:items-center sm:justify-between"><div><span className="font-black text-blue-700">{equipo.id}</span><span className="ml-2 text-sm font-semibold text-slate-700">{equipo.marca} {equipo.modelo || ""}</span><p className="text-xs text-slate-400">{equipo.empresa} · {equipo.area || "SIN AREA"}</p></div><p className="text-xs font-bold text-amber-700 sm:max-w-[55%] sm:text-right">{equipo.motivo}</p></button>)}{!datos?.por_revisar?.length && <p className="p-8 text-center text-sm font-semibold text-slate-400">No hay equipos pendientes de revision.</p>}</div></section>
+  </div>;
 }
 
 function EstadoBadge({ valor }) {
@@ -145,7 +150,7 @@ export default function InventarioActivos() {
   const esAdmin = String(perfil.perfil || "").trim().toUpperCase() === "ADMINISTRADOR";
   const usuarioSesion = normalizarEntrada(String(perfil.usuario || perfil.nombre || "USUARIO AUTENTICADO"));
   const [form, setForm] = useState(INICIAL);
-  const [activos, setActivos] = useState([]);
+  const [activosPaginados, setActivos] = useState([]);
   const [activosPlano, setActivosPlano] = useState([]);
   const [cargandoPlano, setCargandoPlano] = useState(true);
   const [vistaPrincipal, setVistaPrincipal] = useState("dashboard");
@@ -162,9 +167,10 @@ export default function InventarioActivos() {
   const [filtros, setFiltros] = useState(FILTROS_INICIAL);
   const [filtrosAplicados, setFiltrosAplicados] = useState(FILTROS_INICIAL);
   const [pagina, setPagina] = useState(1);
-  const [paginacion, setPaginacion] = useState({ page: 1, limit: 20, total: 0, total_pages: 0 });
-  const [resumen, setResumen] = useState({ total: 0, por_tipo: [] });
-  const [resumenGeneral, setResumenGeneral] = useState({ total: 0, por_tipo: [], por_empresa: [] });
+  const [paginacionReal, setPaginacion] = useState({ page: 1, limit: 20, total: 0, total_pages: 0 });
+  const [dashboard, setDashboard] = useState(null);
+  const [cargandoDashboard, setCargandoDashboard] = useState(true);
+  const [filtroEspecial, setFiltroEspecial] = useState("");
   const [responsable, setResponsable] = useState(usuarioSesion);
   const [fechaRevision, setFechaRevision] = useState("AUTOMATICA AL GUARDAR");
   const [cargando, setCargando] = useState(true);
@@ -177,6 +183,9 @@ export default function InventarioActivos() {
   const [mensaje, setMensaje] = useState(null);
 
   const marcas = useMemo(() => [...new Set(marcasOpciones.filter(Boolean))].sort(), [marcasOpciones]);
+  const activos = filtroEspecial ? (dashboard?.filtros_especiales?.[filtroEspecial] || []) : activosPaginados;
+  const activosVisibles = activos;
+  const paginacion = filtroEspecial ? { page: 1, limit: activos.length, total: activos.length, total_pages: 1 } : paginacionReal;
   const usuariosAsignablesFiltrados = useMemo(() => {
     const termino = normalizarEntrada(busquedaUsuario.trim());
     if (!termino) return usuariosAsignables;
@@ -223,18 +232,19 @@ export default function InventarioActivos() {
   };
 
   const cargarActivos = async () => {
-    const [respuestaListado, respuestaResumen, respuestaResumenGeneral] = await Promise.all([
-      fetch(`${API}?${parametrosListado(true)}`, { headers: cabeceras() }),
-      fetch(`${API}/resumen?${parametrosListado(false)}`, { headers: cabeceras() }),
-      fetch(`${API}/resumen`, { headers: cabeceras() }),
-    ]);
+    const respuestaListado = await fetch(`${API}?${parametrosListado(true)}`, { headers: cabeceras() });
     const listado = await leerRespuesta(respuestaListado);
-    const indicadores = await leerRespuesta(respuestaResumen);
-    const indicadoresGenerales = await leerRespuesta(respuestaResumenGeneral);
     setActivos(listado.data || []);
     setPaginacion(listado.pagination || { page: 1, limit: 20, total: 0, total_pages: 0 });
-    setResumen(indicadores.data || { total: 0, por_tipo: [] });
-    setResumenGeneral(indicadoresGenerales.data || { total: 0, por_tipo: [], por_empresa: [] });
+  };
+
+  const cargarDashboard = async () => {
+    setCargandoDashboard(true);
+    try {
+      const respuesta = await fetch(`${API}/dashboard`, { headers: cabeceras() });
+      const datos = await leerRespuesta(respuesta);
+      setDashboard(datos.data || null);
+    } finally { setCargandoDashboard(false); }
   };
 
   const cargarPlano = async () => {
@@ -252,21 +262,25 @@ export default function InventarioActivos() {
     let vigente = true;
     const params = new URLSearchParams();
     Object.entries(filtrosAplicados).forEach(([campo, valor]) => { if (valor) params.set(campo, valor); });
-    const resumenParams = params.toString();
     params.set("page", String(pagina)); params.set("limit", "20");
-    Promise.all([
-      fetch(`${API}?${params}`, { headers: cabeceras() }).then(leerRespuesta),
-      fetch(`${API}/resumen?${resumenParams}`, { headers: cabeceras() }).then(leerRespuesta),
-      fetch(`${API}/resumen`, { headers: cabeceras() }).then(leerRespuesta),
-    ])
-      .then(([listado, indicadores, indicadoresGenerales]) => {
+    fetch(`${API}?${params}`, { headers: cabeceras() }).then(leerRespuesta)
+      .then((listado) => {
         if (!vigente) return;
-        setActivos(listado.data || []); setPaginacion(listado.pagination || {}); setResumen(indicadores.data || {}); setResumenGeneral(indicadoresGenerales.data || {});
+        setActivos(listado.data || []); setPaginacion(listado.pagination || {});
       })
       .catch((error) => { if (vigente) setMensaje({ tipo: "error", texto: error.message }); })
       .finally(() => { if (vigente) setCargando(false); });
     return () => { vigente = false; };
   }, [filtrosAplicados, pagina]);
+
+  useEffect(() => {
+    let vigente = true;
+    fetch(`${API}/dashboard`, { headers: cabeceras() }).then(leerRespuesta)
+      .then((datos) => { if (vigente) setDashboard(datos.data || null); })
+      .catch((error) => { if (vigente) setMensaje({ tipo: "error", texto: error.message }); })
+      .finally(() => { if (vigente) setCargandoDashboard(false); });
+    return () => { vigente = false; };
+  }, []);
 
   useEffect(() => {
     let vigente = true;
@@ -338,7 +352,7 @@ export default function InventarioActivos() {
   const seleccionarActivo = (id) => {
     setActivoId(id); setMensaje(null);
     if (!id) return;
-    const activo = activos.find((item) => item.id === id);
+    const activo = activosVisibles.find((item) => item.id === id);
     const activoPlano = activosPlano.find((item) => item.id === id);
     const seleccionado = activo || activoPlano;
     if (!seleccionado) return;
@@ -432,6 +446,7 @@ export default function InventarioActivos() {
       setFotoArchivo(null); setFotoPreview(urlFoto(guardado.foto));
       await cargarActivos();
       await cargarPlano();
+      await cargarDashboard();
       setMensaje({ tipo: "exito", texto: editando ? `Activo ${guardado.id} actualizado correctamente.` : `Activo ${guardado.id} registrado correctamente.` });
       setMostrarFormulario(false);
       requestAnimationFrame(irAlInicio);
@@ -446,16 +461,18 @@ export default function InventarioActivos() {
   };
 
   const aplicarFiltros = (event) => {
-    event.preventDefault(); setPagina(1); setCargando(true); setFiltrosAplicados(filtros);
+    event.preventDefault(); setFiltroEspecial(""); setPagina(1); setCargando(true); setFiltrosAplicados(filtros);
   };
 
   const limpiarFiltros = () => {
-    setFiltros(FILTROS_INICIAL); setFiltrosAplicados(FILTROS_INICIAL); setPagina(1); setCargando(true);
+    setFiltroEspecial(""); setFiltros(FILTROS_INICIAL); setFiltrosAplicados(FILTROS_INICIAL); setPagina(1); setCargando(true);
   };
 
-  const filtrarPorEmpresa = (empresa) => {
-    const siguientes = { ...FILTROS_INICIAL, empresa };
+  const abrirListadoFiltrado = ({ especial = "", ...filtro } = {}) => {
+    const siguientes = { ...FILTROS_INICIAL, ...filtro };
+    setFiltroEspecial(especial);
     setFiltros(siguientes); setFiltrosAplicados(siguientes); setPagina(1); setCargando(true);
+    setVistaPrincipal("listado");
   };
 
   const exportarExcel = async () => {
@@ -589,11 +606,10 @@ export default function InventarioActivos() {
         </form> : <>
           <div className="mb-5 flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
             <button type="button" onClick={() => setVistaPrincipal("dashboard")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "dashboard" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Dashboard</button>
+            <button type="button" onClick={() => setVistaPrincipal("listado")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "listado" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Listado</button>
             <button type="button" onClick={() => setVistaPrincipal("plano")} className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-black sm:flex-none ${vistaPrincipal === "plano" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}>Plano de puestos</button>
           </div>
-          {vistaPrincipal === "plano" ? <PlanoInventarioActivos activos={activosPlano} cargando={cargandoPlano} esAdmin={esAdmin} urlFoto={urlFoto} onRegistrar={nuevoActivo} onEditar={(activo) => seleccionarActivo(activo.id)} /> : <div className="space-y-5">
-          <Indicadores resumen={resumen} resumenGeneral={resumenGeneral} empresaActiva={filtrosAplicados.empresa} onEmpresa={filtrarPorEmpresa} />
-
+          {vistaPrincipal === "plano" ? <PlanoInventarioActivos activos={activosPlano} cargando={cargandoPlano} esAdmin={esAdmin} urlFoto={urlFoto} onRegistrar={nuevoActivo} onEditar={(activo) => seleccionarActivo(activo.id)} /> : vistaPrincipal === "dashboard" ? <DashboardInventario datos={dashboard} cargando={cargandoDashboard} onFiltro={abrirListadoFiltrado} onDetalle={abrirDetalle} /> : <div className="space-y-5">
           <form onSubmit={aplicarFiltros} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><Search size={18} className="text-blue-600" /><h2 className="font-black text-slate-800">Buscar y filtrar</h2></div><button type="button" onClick={exportarExcel} disabled={exportando} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-60">{exportando ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />} {exportando ? "Exportando..." : "Exportar a Excel"}</button></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -611,7 +627,7 @@ export default function InventarioActivos() {
             </div>
           </form>
 
-          {cargando ? <div className="flex min-h-48 items-center justify-center rounded-2xl border border-slate-200 bg-white"><Loader2 className="animate-spin text-blue-600" size={28} /></div> : activos.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><Cpu className="mx-auto mb-3 text-slate-300" size={38} /><p className="font-black text-slate-700">No se encontraron activos</p><p className="mt-1 text-sm text-slate-400">Prueba con otros filtros o registra un activo nuevo.</p></div> : <>
+          {cargando && !filtroEspecial ? <div className="flex min-h-48 items-center justify-center rounded-2xl border border-slate-200 bg-white"><Loader2 className="animate-spin text-blue-600" size={28} /></div> : activosVisibles.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><Cpu className="mx-auto mb-3 text-slate-300" size={38} /><p className="font-black text-slate-700">No se encontraron activos</p><p className="mt-1 text-sm text-slate-400">Prueba con otros filtros o registra un activo nuevo.</p></div> : <>
             <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
               <div className="overflow-x-auto"><table className="w-full min-w-[1240px] text-left text-sm"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>{["Foto", "ID", "Empresa", "Tipo", "Marca / modelo", "Serie / MAC", "Ubicacion", "Area", "Responsable", "Estado", "Cambio / reemplazo"].map((h) => <th key={h} className="px-4 py-3 font-black">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{activos.map((a) => <tr key={a.id} onClick={() => abrirDetalle(a)} className="cursor-pointer transition hover:bg-blue-50/60"><td className="px-4 py-2">{a.foto ? <img src={urlFoto(a.foto)} alt="" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" loading="lazy" /> : <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-300"><ImageIcon size={18}/></div>}</td><td className="px-4 py-3 font-black text-blue-700">{a.id}</td><td className="px-4 py-3">{a.empresa}</td><td className="px-4 py-3 font-semibold">{a.tipo_dispositivo}</td><td className="px-4 py-3"><span className="font-semibold">{a.marca}</span><br/><span className="text-xs text-slate-400">{a.modelo || "-"}</span></td><td className="px-4 py-3 font-mono text-xs">{a.numero_serie}</td><td className="px-4 py-3">{a.ubicacion}</td><td className="px-4 py-3">{a.area}</td><td className="px-4 py-3">{a.responsable}</td><td className="px-4 py-3"><EstadoBadge valor={a.estado} /></td><td className="px-4 py-3 font-semibold">{a.cambio_reemplazo || "-"}</td></tr>)}</tbody></table></div>
             </div>

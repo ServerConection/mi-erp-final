@@ -20,6 +20,12 @@ function empresaGestionables(valor) {
 function puedeAccederGestionables(usuario, empresaObjetivo) {
   const perfil = perfilGestionables(usuario?.perfil || usuario?.rol);
   const objetivo = empresaGestionables(empresaObjetivo);
+  const usuarioNormalizado = normalizar(usuario?.usuario || usuario?.username);
+
+  // Cuentas de pantalla dedicadas: cada una puede operar exclusivamente el
+  // reparto que le corresponde, sin depender de su perfil o empresa en BD.
+  if (usuarioNormalizado === 'TVNOVO') return objetivo === 'NOVONET';
+  if (usuarioNormalizado === 'TVVELSA') return objetivo === 'VELSA';
 
   // El administrador es corporativo y puede operar NOVONET y VELSA. Para
   // supervisión y gerencia se mantiene el aislamiento por empresa.

@@ -34,6 +34,10 @@ const PCT_SIN_VENTA_MAX = Number(process.env.GESTIONABLES_PCT_SIN_VENTA) || 30;
 const normEtapa = (etapa) => String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/_/g, ' ').trim().replace(/\s+/g, ' ').toUpperCase();
 const esVentaSubida = (etapa) => normEtapa(etapa) === 'VENTA SUBIDA';
+// Etapas que NO cuentan en el total de leads del asesor (se muestran aparte
+// para detectar si alguien mueve leads ahí para seguir recibiendo).
+const ETAPAS_FUERA_DEL_TOTAL = new Set(['DUPLICADO', 'DUPLLICADO', 'REGULARIZACION', 'REMARKETING']);
+const esEtapaFueraDelTotal = (etapa) => ETAPAS_FUERA_DEL_TOTAL.has(normEtapa(etapa));
 const metaVentaSubida = (gestionables, pct = PCT_SIN_VENTA_MAX) =>
   Math.ceil(Math.round((Number(gestionables) || 0) * pct) / 100);
 const bloqueadoPorEfectividad = ({ gestionables, vencidos, venta = 0, pct = PCT_SIN_VENTA_MAX }) => {
@@ -69,29 +73,50 @@ const bloqueadoPorAtc = ({ permitidos, atc, maxPct = ATC_MAX_PCT }) => {
 const conteoGestionablesHoy = async (erpDb, empresa) => {
   const E = getEmpresa(empresa);
   const asig = await erpDb.query(
-    `SELECT asesor_asignado, bitrix_deal_id, creado_en FROM ${E.tablas.asignaciones}
+    `SELECT asesor_asignado, bitrix_deal_id, creado_en, origen FROM ${E.tablas.asignaciones}
       WHERE fecha = ${HOY_EC} AND vigente`
   );
   const m = new Map();
   if (!asig.rows.length) return m;
   const ids = [...new Set(asig.rows.map((r) => String(r.bitrix_deal_id)))];
   const etapas = new Map();
+  const sinConteo = new Set();   // deals de orígenes que se reparten pero no cuentan
+  const origenesSinConteo = new Set((E.origenesSinConteo || []).map(normalizarNombre));
   try {
     const r = await db.query(
-      `SELECT bitrix_id::text AS id, COALESCE(NULLIF(BTRIM(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS etapa
+      `SELECT bitrix_id::text AS id, COALESCE(NULLIF(BTRIM(etapa_bitrix), ''), REPLACE(etapa, '_', ' ')) AS etapa,
+              source
          FROM public.bitrix_webhook_leads
         WHERE empresa = $2 AND bitrix_id::text = ANY($1::text[])`,
       [ids, E.clave]
     );
-    r.rows.forEach((x) => etapas.set(x.id, x.etapa));
+    r.rows.forEach((x) => {
+      etapas.set(x.id, x.etapa);
+      if (origenesSinConteo.has(normalizarNombre(x.source))) sinConteo.add(x.id);
+    });
   } catch (e) {
     console.error('[gestionables] No se pudo leer la etapa de los leads (se cuenta todo como consumido):', e.message);
     return null;
   }
   for (const a of asig.rows) {
     const k = normalizarNombre(a.asesor_asignado);
-    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: 0, vencidos: 0 };
+    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: 0, vencidos: 0, sin_conteo: 0, sin_conteo_humano: 0, dup_reg_rmk: 0, dup_reg_rmk_humano: 0 };
+    // Origen "FB Messenger - Novo" (y otros configurados): se entregó en orden,
+    // pero no suma al total de leads, ni ATC, ni gestionables, ni efectividad.
+    if (sinConteo.has(String(a.bitrix_deal_id))) {
+      x.sin_conteo += 1;
+      if (a.origen === 'humano') x.sin_conteo_humano += 1;
+      m.set(k, x);
+      continue;
+    }
     const etapa = etapas.get(String(a.bitrix_deal_id));
+    // Duplicado / Regularización / Remarketing: no suman al total de leads (cupo)
+    if (etapa && esEtapaFueraDelTotal(etapa)) {
+      x.dup_reg_rmk += 1;
+      if (a.origen === 'humano') x.dup_reg_rmk_humano += 1;
+      m.set(k, x);
+      continue;
+    }
     x.total += 1;
     const gestionable = !etapa || esEtapaGestionable(etapa);
     if (gestionable) x.gestionables += 1;
@@ -104,4 +129,4 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, esEtapaFueraDelTotal, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };

@@ -2,6 +2,9 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import WhatsAppSupportButton from "./components/WhatsAppSupportButton";
 import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
+import HalloweenGhost from "./components/HalloweenGhost";
+import LogoLoader from "./components/LogoLoader";
+import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
 import { puedeAccederAdministracion } from './utils/accesoAdministracion';
 
@@ -60,6 +63,7 @@ const CargaMetasComerciales = lazy(() => import("./pages/CargaMetasComerciales")
 const MisVentasPendientes  = lazy(() => import("./pages/MisVentasPendientes"));
 const VistaBackoffice      = lazy(() => import("./pages/VistaBackoffice"));
 const ControlAsistencia    = lazy(() => import("./pages/ControlAsistencia"));
+const ConfiguracionAsistencia = lazy(() => import("./pages/ConfiguracionAsistencia"));
 const ConfiguracionAtc     = lazy(() => import("./pages/ConfiguracionAtc"));
 const RedesWinTracker      = lazy(() => import("./pages/RedesWinTracker"));
 // ── Módulo WhatsApp ──────────────────────────────────────────────────────────
@@ -79,20 +83,14 @@ const Contactabilidad      = lazy(() => import("./pages/Contactabilidad"));
 const NexoIa               = lazy(() => import("./pages/NexoIa"));
 const TalentoHumano        = lazy(() => import("./pages/TalentoHumano"));
 const Comisiones           = lazy(() => import("./pages/Comisiones"));
+const RolPagos             = lazy(() => import("./pages/RolPagos"));
 const BilleteraDigital     = lazy(() => import("./pages/BilleteraDigital"));
 const ForecastFinanciero   = lazy(() => import("./pages/ForecastFinanciero"));
 // Embed SSO para Bitrix (pestaña "WABOT" en el Deal): sin sidebar, solo el Inbox
 const EmbedInbox           = lazy(() => import("./pages/EmbedInbox"));
 
-// Spinner mínimo mientras se descarga el chunk
-const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-slate-100">
-    <div className="flex flex-col items-center gap-3">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cargando módulo…</span>
-    </div>
-  </div>
-);
+// Cargador global mientras se descarga el chunk de cualquier módulo.
+const PageLoader = () => <LogoLoader fullScreen text="Cargando módulo…" />;
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -167,6 +165,7 @@ const FloatingWidgets = () => {
 export default function App() {
   return (
     <BrowserRouter>
+      <GlobalModuleLoader />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -184,6 +183,7 @@ export default function App() {
             <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
             <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
+            <Route path="rol-pagos"                 element={<AdministracionRoute><RolPagos /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />
             <Route path="forecast-velsa"            element={<AdministracionRoute><ForecastFinanciero empresa="velsa" /></AdministracionRoute>} />
             <Route path="seguimiento-ventas"        element={<Seguimientoventas />} />
@@ -235,6 +235,7 @@ export default function App() {
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="conexiones"              element={<ControlAsistencia />} />
+            <Route path="configuracion-asistencia" element={<AdminOnlyRoute><ConfiguracionAsistencia /></AdminOnlyRoute>} />
             {/* Rutas anteriores de NOVONET ACCESS: redirigen a /conexiones */}
             <Route path="control-asistencia"      element={<Navigate to="/conexiones" replace />} />
             <Route path="control-conexion"        element={<Navigate to="/conexiones" replace />} />
@@ -272,6 +273,7 @@ export default function App() {
       </Suspense>
 
       <FloatingWidgets />
+      <HalloweenGhost />
     </BrowserRouter>
   );
 }

@@ -43,3 +43,10 @@ test('rechaza perfiles inferiores y empresas no admitidas', () => {
     assert.equal(puedeAccederGestionables({ perfil, empresa: 'NOVONET' }, 'NOVONET'), false);
   }
 });
+
+test('las cuentas TV acceden exclusivamente al reparto que les corresponde', () => {
+  assert.equal(puedeAccederGestionables({ usuario: 'tvnovo', perfil: 'TV' }, 'NOVONET'), true);
+  assert.equal(puedeAccederGestionables({ usuario: ' TVNOVO ', perfil: 'TV', empresa: 'VELSA' }, 'VELSA'), false);
+  assert.equal(puedeAccederGestionables({ usuario: 'tvvelsa', perfil: 'TV' }, 'VELSA'), true);
+  assert.equal(puedeAccederGestionables({ usuario: 'TvVelsa', perfil: 'TV', empresa: 'NOVONET' }, 'NOVONET'), false);
+});

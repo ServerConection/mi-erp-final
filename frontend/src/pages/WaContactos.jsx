@@ -7,6 +7,10 @@ import MultiSelectBuscable from "../components/MultiSelectBuscable";
 import { matchesCreationDate, formatCreationDate } from "../utils/waCreationDate";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
+
+// Crear bases desde Bitrix: habilitado para todos los usuarios
+// (antes solo ADMINISTRADOR y 'acloaiza'; la regla real vive en el backend).
+const puedeCrearBaseBitrix = () => true;
 const authH = (json = true) => {
   const h = { Authorization: `Bearer ${localStorage.getItem("token")}` };
   if (json) h["Content-Type"] = "application/json";
@@ -102,7 +106,9 @@ export default function WaContactos() {
   const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [creator, setCreator] = useState("");
   const [bitrixOptions, setBitrixOptions] = useState(null);
-  const [bitrixForm, setBitrixForm] = useState({ stage_ids: [], responsible_ids: [], date_from: "", date_to: "", name: "" });
+  const [bitrixForm, setBitrixForm] = useState({ empresa: "", stage_ids: [], responsible_ids: [], date_from: "", date_to: "", name: "" });
+  const PUEDE_BASE_BITRIX = useMemo(() => puedeCrearBaseBitrix(), []);
+  const bitrixReqRef = useRef(0); // descarta respuestas viejas si cambian filtros rápido
   const [bitrixPreview, setBitrixPreview] = useState(null);
   const [bitrixBusy, setBitrixBusy] = useState(false);
   const [bitrixError, setBitrixError] = useState("");
@@ -189,24 +195,49 @@ export default function WaContactos() {
     setListItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const openBitrix = async () => {
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
-    setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
-    setBitrixForm({ stage_ids: [], responsible_ids: [], date_from: today, date_to: today, name: "" });
-    // La empresa puede cambiar mientras la sesión sigue abierta. No reutilizar
-    // opciones anteriores: el backend resuelve siempre la empresa vigente desde BD.
-    setBitrixOptions(null);
+  // Carga etapas/responsables de la empresa (pipeline) elegida y SOLO de los
+  // negocios creados en el rango de fechas. Quita de la selección lo que ya
+  // no exista en el nuevo rango.
+  const loadBitrixOptions = async (filtros) => {
+    const reqId = ++bitrixReqRef.current;
     setBitrixBusy(true);
     try {
-      const response = await fetch(`${API}/lists/bitrix/options`, {
+      const qs = new URLSearchParams({
+        empresa: filtros.empresa || "",
+        date_from: filtros.date_from || "",
+        date_to: filtros.date_to || "",
+      });
+      const response = await fetch(`${API}/lists/bitrix/options?${qs}`, {
         headers: authH(false),
         cache: "no-store",
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudieron cargar los filtros de Bitrix");
-      setBitrixOptions(payload.data);
-    } catch (error) { setBitrixError(error.message); }
-    finally { setBitrixBusy(false); }
+      if (reqId !== bitrixReqRef.current) return;
+      const data = payload.data;
+      setBitrixOptions(data);
+      setBitrixForm(prev => {
+        const etapas = new Set((data.stages || []).map(o => String(o.id)));
+        const resp = new Set((data.responsibles || []).map(o => String(o.id)));
+        return {
+          ...prev,
+          empresa: prev.empresa || data.empresa,
+          stage_ids: prev.stage_ids.filter(id => etapas.has(String(id))),
+          responsible_ids: prev.responsible_ids.filter(id => resp.has(String(id))),
+        };
+      });
+    } catch (error) { if (reqId === bitrixReqRef.current) setBitrixError(error.message); }
+    finally { if (reqId === bitrixReqRef.current) setBitrixBusy(false); }
+  };
+
+  const openBitrix = async () => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
+    setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
+    const inicial = { empresa: "", stage_ids: [], responsible_ids: [], date_from: today, date_to: today, name: "" };
+    setBitrixForm(inicial);
+    // No reutilizar opciones anteriores: se piden de nuevo al abrir.
+    setBitrixOptions(null);
+    await loadBitrixOptions(inicial);
   };
 
   const generatedBitrixName = (current = bitrixForm) => {
@@ -220,11 +251,15 @@ export default function WaContactos() {
 
   const updateBitrixForm = (field, value) => {
     setBitrixPreview(null); setBitrixError("");
-    setBitrixForm(prev => {
-      const next = { ...prev, [field]: value };
-      if (field !== "name") next.name = generatedBitrixName(next);
-      return next;
-    });
+    const next = { ...bitrixForm, [field]: value };
+    // Cambiar de pipeline invalida etapas y responsables elegidos.
+    if (field === "empresa") { next.stage_ids = []; next.responsible_ids = []; }
+    if (field !== "name") next.name = generatedBitrixName(next);
+    setBitrixForm(next);
+    // Empresa o fechas cambian → recargar etapas y responsables de ese rango.
+    if (["empresa", "date_from", "date_to"].includes(field) && next.date_from && next.date_to) {
+      loadBitrixOptions(next);
+    }
   };
 
   const previewFromBitrix = async () => {
@@ -276,9 +311,11 @@ export default function WaContactos() {
           <p className="text-sm text-slate-500 mt-0.5">Listas de difusión y contactos</p>
         </div>
         {tab === "lists" && <div className="flex flex-wrap justify-end gap-2">
-          <button onClick={openBitrix} className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Importar desde Bitrix
-          </button>
+          {PUEDE_BASE_BITRIX && (
+            <button onClick={openBitrix} className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              Importar desde Bitrix
+            </button>
+          )}
           <button onClick={() => { setForm({}); setModal("newList"); }}
             className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">+ Nueva lista</button>
         </div>}
@@ -472,11 +509,18 @@ export default function WaContactos() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
             <div className="p-5 border-b border-slate-100 flex items-start justify-between">
               <div><h3 className="font-bold text-slate-800">Crear base desde Bitrix</h3>
-                <p className="text-xs text-slate-500 mt-1">Empresa: {bitrixOptions?.empresa || "cargando…"}</p></div>
+                <p className="text-xs text-slate-500 mt-1">Pipeline: {(bitrixOptions?.empresas || []).find(e => e.id === bitrixOptions?.empresa)?.name || bitrixOptions?.empresa || "cargando…"}</p></div>
               <button onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
+                <label className="text-xs font-semibold text-slate-500 md:col-span-2">EMPRESA / PIPELINE
+                  <select value={bitrixForm.empresa} onChange={e => updateBitrixForm("empresa", e.target.value)}
+                    disabled={bitrixBusy || !bitrixOptions || !bitrixOptions.puede_elegir_empresa}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    {(bitrixOptions?.empresas || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </label>
                 <div className="text-xs font-semibold text-slate-500">ETAPA
                   <MultiSelectBuscable options={bitrixOptions?.stages || []} value={bitrixForm.stage_ids}
                     onChange={value => updateBitrixForm("stage_ids", value)} disabled={bitrixBusy || !bitrixOptions}
@@ -509,8 +553,8 @@ export default function WaContactos() {
                 </div>
                 {bitrixPreview.truncated && <p className="text-xs text-amber-700 mb-2">La consulta alcanzó el límite de seguridad de 10.000 negocios. Reduce el rango de fechas.</p>}
                 <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 bg-white border border-slate-200 rounded-lg">
-                  {(bitrixPreview.items || []).map(item => <div key={item.wa_number} className="px-3 py-2 flex justify-between gap-3 text-sm">
-                    <span className="truncate">{item.name || "Sin nombre"}</span><span className="text-slate-500 whitespace-nowrap">+{item.wa_number}</span>
+                  {(bitrixPreview.items || []).map((item, i) => <div key={`${item.bitrix_id || "x"}-${i}`} className="px-3 py-2 flex justify-between gap-3 text-sm">
+                    <span className="truncate">{item.bitrix_id ? `#${item.bitrix_id} · ` : ""}{item.name || "Sin nombre"}</span><span className="text-slate-500 whitespace-nowrap font-mono">{item.telefono}</span>
                   </div>)}
                   {!bitrixPreview.items?.length && <div className="p-4 text-center text-sm text-slate-500">No se encontraron teléfonos válidos.</div>}
                 </div>

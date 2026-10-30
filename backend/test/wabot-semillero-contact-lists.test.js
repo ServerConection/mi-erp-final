@@ -17,11 +17,11 @@ test('las opciones de importación masiva consultan únicamente SEMILLERO', asyn
     },
   }
 
-  const result = await bitrixLists.obtenerOpciones({ empresa: 'SEMILLERO' }, db)
+  const result = await bitrixLists.obtenerOpciones({ empresa: 'SEMILLERO', perfil: 'SUPERVISOR' }, db)
 
   assert.equal(result.empresa, 'SEMILLERO')
-  assert.equal(calls.length, 2)
-  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero']])
+  assert.equal(calls.length, 3)
+  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero'], ['semillero']])
 })
 
 test('la previsualización masiva de SEMILLERO no mezcla registros de NOVONET', async () => {
@@ -43,7 +43,7 @@ test('la previsualización masiva de SEMILLERO no mezcla registros de NOVONET', 
     },
   }
 
-  const result = await bitrixLists.consultar({ empresa: 'SEMILLERO' }, {
+  const result = await bitrixLists.consultar({ empresa: 'SEMILLERO', perfil: 'SUPERVISOR' }, {
     stage_id: 'VENTA_SUBIDA',
     responsible_id: 'Adriana Salvatore',
     date_from: '2026-10-01',

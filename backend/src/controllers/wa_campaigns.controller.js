@@ -1,5 +1,35 @@
 const { query, transaction } = require('../config/db')
 const { normalizeNumber } = require('./wa_contacts.controller')
+const campaignsReport = require('../services/waCampaignsReport.service')
+const { esMandoWabot, empresasVisiblesWabot } = require('../shared/waAccesoEmpresa')
+const { normalizarModo } = require('../services/campaignLineas')
+
+// Líneas de envío de una campaña. Acepta line_ids (varias) o line_id (una).
+// Permisos: ADMINISTRADOR cualquiera; supervisores/gerencia solo líneas de su
+// empresa; asesores solo SU línea. Devuelve { ids } o { error }.
+async function validarLineasCampania(req, body) {
+  const crudas = Array.isArray(body.line_ids) && body.line_ids.length ? body.line_ids : (body.line_id ? [body.line_id] : [])
+  const ids = [...new Set(crudas.map(v => String(v || '').trim()).filter(Boolean))].slice(0, 50)
+  if (!ids.length) return { error: 'Selecciona al menos una línea de envío' }
+  const r = await query(
+    `SELECT l.id, l.created_by, UPPER(TRIM(COALESCE(u.empresa, ''))) AS empresa
+       FROM lines l LEFT JOIN usuarios u ON u.id = l.created_by
+      WHERE l.id::text = ANY($1::text[]) AND l.deleted_at IS NULL`,
+    [ids]
+  )
+  if (r.rows.length !== ids.length) return { error: 'Alguna línea seleccionada no existe' }
+  if (!isAdmin(req)) {
+    if (esMandoWabot(req.user)) {
+      const empresas = empresasVisiblesWabot(req.user)
+      if (r.rows.some(l => !empresas.includes(l.empresa))) return { error: 'Solo puedes usar líneas de tu empresa' }
+    } else {
+      if (ids.length > 1 || r.rows.some(l => l.created_by !== req.user.id)) {
+        return { error: 'Solo puedes enviar desde tu propia línea' }
+      }
+    }
+  }
+  return { ids }
+}
 
 const isAdmin = (req) => req.user?.perfil === 'ADMINISTRADOR'
 
@@ -58,7 +88,9 @@ async function getAll(req, res) {
              l.phone_number AS line_phone,
              t.name AS template_name,
              cl.name AS list_name,
-             u.usuario AS owner_username
+             u.usuario AS owner_username,
+             (SELECT array_agg(x.name ORDER BY x.name) FROM lines x WHERE x.id = ANY(c.line_ids)) AS line_names,
+             (SELECT COUNT(*)::int FROM campaign_recipients r WHERE r.campaign_id = c.id AND r.status = 'skipped') AS skipped_count
       FROM campaigns c
       LEFT JOIN lines l ON c.line_id = l.id
       LEFT JOIN templates t ON c.template_id = t.id
@@ -137,7 +169,10 @@ async function create(req, res) {
     } = req.body
 
     if (!name) return res.status(400).json({ success: false, error: 'Nombre requerido' })
-    if (!line_id) return res.status(400).json({ success: false, error: 'Línea requerida' })
+    const lineasOk = await validarLineasCampania(req, req.body)
+    if (lineasOk.error) return res.status(400).json({ success: false, error: lineasOk.error })
+    const lineIds = lineasOk.ids
+    const modoResponsable = normalizarModo(req.body.modo_responsable)
 
     let horario
     try {
@@ -210,14 +245,15 @@ async function create(req, res) {
           (name, line_id, template_id, list_id, body, media_url, media_type, media_filename,
            min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
            total_recipients, status, scheduled_at, created_by,
-           send_days, send_hour_from, send_hour_to)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+           send_days, send_hour_from, send_hour_to, line_ids, modo_responsable)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid[],$21) RETURNING *`,
         [
-          name, line_id, template_id || null, list_id || null,
+          name, lineIds[0], template_id || null, list_id || null,
           finalBody, finalMediaUrl, finalMediaType, finalMediaFilename,
           min_delay_secs ?? 8, max_delay_secs ?? 20, batch_size ?? 50, batch_pause_secs ?? 120,
           allRecipients.length, status, scheduled_at || null, req.user.id,
           horario.send_days, horario.send_hour_from, horario.send_hour_to,
+          lineIds, modoResponsable,
         ]
       )
       const campaign = c.rows[0]
@@ -265,6 +301,15 @@ async function update(req, res) {
       return res.status(400).json({ success: false, error: e.message })
     }
 
+    // Líneas / modo: solo se tocan si vienen en la petición.
+    let lineIds = null
+    if ((Array.isArray(req.body.line_ids) && req.body.line_ids.length) || line_id) {
+      const lineasOk = await validarLineasCampania(req, req.body)
+      if (lineasOk.error) return res.status(400).json({ success: false, error: lineasOk.error })
+      lineIds = lineasOk.ids
+    }
+    const modoResponsable = req.body.modo_responsable !== undefined ? normalizarModo(req.body.modo_responsable) : null
+
     const result = await query(
       `UPDATE campaigns SET
          name = COALESCE($1, name),
@@ -281,12 +326,15 @@ async function update(req, res) {
          send_days = $13,
          send_hour_from = $14,
          send_hour_to = $15,
-         paused_for_schedule = false
+         paused_for_schedule = false,
+         line_ids = COALESCE($16::uuid[], line_ids),
+         modo_responsable = COALESCE($17, modo_responsable)
        WHERE id=$12 RETURNING *`,
       [name, body, media_url || null, media_type || null, media_filename || null,
        min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
-       scheduled_at || null, line_id || null, id,
-       horario.send_days, horario.send_hour_from, horario.send_hour_to]
+       scheduled_at || null, lineIds ? lineIds[0] : null, id,
+       horario.send_days, horario.send_hour_from, horario.send_hour_to,
+       lineIds, modoResponsable]
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {
@@ -386,7 +434,21 @@ async function retryFailed(req, res) {
   }
 }
 
-module.exports = {
+// ── Reporte de uso por empresa / supervisor / asesor (admin + autorizados) ──
+async function usageReport(req, res) {
+  if (!campaignsReport.puedeVerReporte(req.user)) {
+    return res.status(403).json({ success: false, error: 'Solo administradores pueden ver el reporte de uso' })
+  }
+  try {
+    res.json({ success: true, data: await campaignsReport.reporteUso(req.query || {}) })
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ success: false, error: err.message })
+    console.error('[campaigns.usageReport]', err)
+    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+  }
+}
+
+module.exports = { usageReport,
   getAll, getOne, create, update, remove,
   start, pause, resume, cancel, retryFailed,
 }

@@ -6,6 +6,7 @@ const { asegurarTrazabilidadHojas } = require('./services/hojas.migracion');
 const { iniciarWhatsApp } = require('./services/whatsapp.service');
 const { refreshMaterializedView, initVelsaAutoRefresh } = require('./jobs/refreshVelsaMaterialized.cron');
 const { initConsultorVelsaRefresh } = require('./jobs/refreshConsultorVelsa.cron');
+const { initMestraBitrixRefresh } = require('./jobs/refreshMestraBitrix.cron');
 const { runInitialRefresh: refreshRedesMVs } = require('./jobs/refreshRedesMaterialized.cron');
 const { initJotformSync } = require('./jobs/jotformSync.cron');
 const { initWinTrackerSync } = require('./jobs/syncWinTracker.cron');
@@ -50,6 +51,8 @@ server.listen(process.env.PORT, async () => {
   // Refresco del MV pequeño de la API consultor externo Velsa (encendido por
   // defecto; refresco CONCURRENTLY con cliente dedicado, no bloquea nada).
   initConsultorVelsaRefresh();
+  // mestra_bitrix ahora es vista materializada: refresco cada 10 min.
+  initMestraBitrixRefresh();
   await refreshRedesMVs();
   initJotformSync();
   initContactabilidadSync();

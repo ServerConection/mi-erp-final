@@ -12,6 +12,7 @@ require('dotenv').config();
 
 const { initVelsaAutoRefresh }       = require('../jobs/refreshVelsaMaterialized.cron');
 const { initConsultorVelsaRefresh }  = require('../jobs/refreshConsultorVelsa.cron');
+const { initMestraBitrixRefresh }    = require('../jobs/refreshMestraBitrix.cron');
 const { runInitialRefresh: refreshRedesMVs } = require('../jobs/refreshRedesMaterialized.cron');
 const { initJotformSync }            = require('../jobs/jotformSync.cron');
 const { initCierreDiario }           = require('../jobs/cierreDiario.cron');
@@ -25,6 +26,7 @@ const { initJotformEvRefresh }      = require('../jobs/refreshJotformEv.cron');
   try {
     initVelsaAutoRefresh();       // apagado por defecto salvo VELSA_MV_AUTOREFRESH=on
     initConsultorVelsaRefresh();  // refresco del MV pequeño de consultor externo
+    initMestraBitrixRefresh();    // mestra_bitrix como vista materializada (cada 10 min)
     await refreshRedesMVs();      // refresco inicial de MVs de redes
     initJotformSync();            // sync programado de Jotform
     initWinTrackerSync();         // inversión Arts/Velsa al arrancar y cada 30 minutos

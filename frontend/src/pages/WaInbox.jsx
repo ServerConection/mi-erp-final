@@ -175,6 +175,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [accionesAbiertas, setAccionesAbiertas] = useState(false);
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
@@ -720,6 +721,73 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     </div>
   );
 
+  const accionesChat = selected ? (
+    <>
+              {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
+                  negociación en Bitrix -- el enlace/botón sería redundante. */}
+              {pilotoPc ? (
+                <>
+                  <button onClick={llamarDesdePc} disabled={llamandoPc || !!llamadaPc}
+                    title="Llamar desde esta PC"
+                    className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
+                    {llamandoPc ? "Llamando…" : "📞 Llamar (PC)"}
+                  </button>
+                </>
+              ) : (
+              <button onClick={openWhatsAppForCall}
+                title="Abrir este contacto en WhatsApp para iniciar una llamada de voz o video"
+                className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
+                📞 Abrir para llamar
+              </button>
+              )}
+              {!dealId && (selected.bitrix_deal_id ? (
+                <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
+                  onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}
+                  title={`Abrir negociación ${selected.bitrix_deal_id} en Bitrix`}
+                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
+                  🔗 Bitrix #{selected.bitrix_deal_id}
+                </a>
+              ) : (
+                <button onClick={() => { setBitrixId(""); setBitrixModal("add"); }}
+                  title="Asociar un ID de negociación de Bitrix a esta conversación"
+                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
+                  + ID Bitrix
+                </button>
+              ))}
+              {IS_ADMIN && (
+                <button onClick={() => exportChatPDF({
+                  wa_number: selected.wa_number,
+                  contact_name: selected.contact_name,
+                  line_name: selected.line_name,
+                  messages,
+                })}
+                  title="Exportar conversación a PDF"
+                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                  📄 PDF
+                </button>
+              )}
+              {!["human", "human_takeover"].includes(selected.status) ? (
+                <button onClick={takeOver}
+                  className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                  👤 Tomar control
+                </button>
+              ) : (
+                <button onClick={returnToBot}
+                  className="text-xs bg-purple-50 border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
+                  🤖 Regresar a bot
+                </button>
+              )}
+              {IS_ADMIN && (
+                <button onClick={deleteConv}
+                  title="Eliminar este chat (solo administrador)"
+                  className="text-xs bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
+                  🗑️ Eliminar
+                </button>
+              )}
+    </>
+  ) : null;
+
+
   return (
     <div className="flex h-[calc(100vh-120px)] gap-0 -mx-6 -mb-6">
       {/* Lista de conversaciones */}
@@ -848,16 +916,23 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
               </div>
               <div className="text-xs text-[#667781]">{numVisible(selected.wa_number)}</div>
             </div>
-            <div className="flex gap-2">
-              {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
-                  negociación en Bitrix -- el enlace/botón sería redundante. */}
-              {pilotoPc ? (
+            <div className="hidden md:flex gap-2">{accionesChat}</div>
+            <div className="md:hidden relative flex-shrink-0">
+              <button onClick={() => setAccionesAbiertas(v => !v)} aria-label="Acciones"
+                className="text-[#54656f] text-2xl leading-none px-2 py-1">⋮</button>
+              {accionesAbiertas && (
                 <>
-                  <button onClick={llamarDesdePc} disabled={llamandoPc || !!llamadaPc}
-                    title="Llamar desde esta PC"
-                    className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
-                    {llamandoPc ? "Llamando…" : "📞 Llamar (PC)"}
-                  </button>
+                  <div className="fixed inset-0 z-30" onClick={() => setAccionesAbiertas(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-40 flex flex-col items-stretch gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg min-w-[200px]"
+                    onClick={() => setAccionesAbiertas(false)}>
+                    {accionesChat}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Panel de llamada en curso (piloto) — siempre visible */}
                   {llamadaPc && (
                     <div className="fixed bottom-6 right-6 z-50 bg-white border border-emerald-200 shadow-xl rounded-xl px-4 py-3 flex items-center gap-3">
                       <span className="text-lg">📞</span>
@@ -871,60 +946,6 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                       </button>
                     </div>
                   )}
-                </>
-              ) : (
-              <button onClick={openWhatsAppForCall}
-                title="Abrir este contacto en WhatsApp para iniciar una llamada de voz o video"
-                className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-                📞 Abrir para llamar
-              </button>
-              )}
-              {!dealId && (selected.bitrix_deal_id ? (
-                <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
-                  onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}
-                  title={`Abrir negociación ${selected.bitrix_deal_id} en Bitrix`}
-                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
-                  🔗 Bitrix #{selected.bitrix_deal_id}
-                </a>
-              ) : (
-                <button onClick={() => { setBitrixId(""); setBitrixModal("add"); }}
-                  title="Asociar un ID de negociación de Bitrix a esta conversación"
-                  className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
-                  + ID Bitrix
-                </button>
-              ))}
-              {IS_ADMIN && (
-                <button onClick={() => exportChatPDF({
-                  wa_number: selected.wa_number,
-                  contact_name: selected.contact_name,
-                  line_name: selected.line_name,
-                  messages,
-                })}
-                  title="Exportar conversación a PDF"
-                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                  📄 PDF
-                </button>
-              )}
-              {!["human", "human_takeover"].includes(selected.status) ? (
-                <button onClick={takeOver}
-                  className="text-xs bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                  👤 Tomar control
-                </button>
-              ) : (
-                <button onClick={returnToBot}
-                  className="text-xs bg-purple-50 border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
-                  🤖 Regresar a bot
-                </button>
-              )}
-              {IS_ADMIN && (
-                <button onClick={deleteConv}
-                  title="Eliminar este chat (solo administrador)"
-                  className="text-xs bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
-                  🗑️ Eliminar
-                </button>
-              )}
-            </div>
-          </div>
 
           {/* Mensajes */}
           <div className="flex-1 overflow-y-auto px-4 md:px-16 py-4 space-y-1">
@@ -982,7 +1003,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           </div>
 
           {/* Input */}
-          <div className="bg-[#f0f2f5] px-3 py-2 pr-24 flex flex-wrap gap-2 items-center">
+          <div className="bg-[#f0f2f5] px-3 py-2 pr-3 md:pr-24 flex flex-wrap gap-2 items-center">
             {internalImagePreview && (
               <div className="basis-full flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 p-2">
                 <img src={internalImagePreview} alt="Vista previa del mensaje oculto"

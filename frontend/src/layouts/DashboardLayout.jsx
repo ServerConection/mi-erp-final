@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
-import { puedeAccederAdministracion } from '../utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederComisiones, puedeVerMenuAdministracion } from '../utils/accesoAdministracion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -352,7 +352,7 @@ const ALL_MENU_ITEMS = [
 
   // ── NOVONET ACCESS (asistencia / conexión) — visible para todos los perfiles
   { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
-  // Horarios semanales: solo administradores.
+  // Horarios semanales: administradores y perfiles gerenciales.
   { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p) => puedeAccederAdministracion(p) },
   // Piloto de llamadas WhatsApp Desktop ocultas: solo administradores.
   { name: "Piloto Llamadas", path: "/piloto-llamadas", icon: "📞", accessCheck: (p) => isAdmin(p) },
@@ -431,14 +431,14 @@ const ALL_MENU_ITEMS = [
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",
-    accessCheck: (p) => puedeAccederAdministracion(p) },
+    accessCheck: (p) => puedeVerMenuAdministracion(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
-  { name: "Billetera",  path: "/billetera",  icon: "💳", permiso: "Billetera",  isChild: true, group: "administracion" },
+  { name: "Billetera",  path: "/billetera",  icon: "💳", accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Modalidad de asistencia", path: "/configuracion-asistencia", icon: "🕘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
-    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+    accessCheck: (p) => puedeAccederComisiones(p), isChild: true, group: "administracion" },
   { name: "Rol de Pagos", path: "/rol-pagos", icon: "🧾",
     accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Forecast NOVONET", path: "/forecast-novonet", icon: "📈",
@@ -450,10 +450,10 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   // Reporte Gerencial: inversion, costo por venta y margen. Direccion y admin.
   { name: "Reporte Gerencial", path: "/reporte-gerencial", icon: "📈",
-    accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   // Carga mensual del Excel de metas (asesor / supervisor / equipos) -> Reporte D-1
   { name: "Carga de Metas", path: "/carga-metas", icon: "🎯",
-    accessCheck: (p) => p === 'ADMINISTRADOR' || p === 'GERENCIA', isChild: true, group: "administracion" },
+    accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
   { name: "Guía Comercial", path: "/guia-comercial", icon: "📘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Configuración ATC", path: "/configuracion-atc", icon: "🔔",
@@ -624,9 +624,9 @@ export default function DashboardLayout() {
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
     if (!itemActual) return;
 
-    // Todo el bloque de Administración es exclusivo de Gerencia y
-    // Administradores, incluso si alguien escribe una URL interna a mano.
-    if (itemActual.group === 'administracion' && !puedeAccederAdministracion(p)) {
+    // Analista solo puede entrar a Comisiones; Gerencia y Administración
+    // acceden al resto según la regla individual de cada opción.
+    if (itemActual.group === 'administracion' && !puedeVerMenuAdministracion(p)) {
       navigate('/', { replace: true });
       return;
     }
@@ -671,7 +671,7 @@ export default function DashboardLayout() {
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
     if (item.path === RUTA_NOVONET_ACCESS) return true;
-    if (item.group === 'administracion' && !puedeAccederAdministracion(perfil)) return false;
+    if (item.group === 'administracion' && !puedeVerMenuAdministracion(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {
       if (perfil === 'ANALISTA') return !!item.path && rutaPermitidaAnalista(item.path);
       if (perfil === 'ATC') return !!item.path && rutaPermitidaAtc(item.path);

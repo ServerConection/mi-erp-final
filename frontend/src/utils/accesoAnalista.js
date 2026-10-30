@@ -11,6 +11,7 @@ export const RUTAS_ANALISTA = new Set([
   '/redes', '/redes-velsa', '/ventas', '/nueva-venta',
   '/gestionables-asesores', ...RUTAS_WABOT_MASIVOS,
   '/archivos-compartidos', '/evaluaciones',
+  '/comisiones',
 ]);
 
 export const rutaPermitidaAnalista = (ruta) => RUTAS_ANALISTA.has(ruta);

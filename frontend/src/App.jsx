@@ -6,7 +6,7 @@ import HalloweenGhost from "./components/HalloweenGhost";
 import LogoLoader from "./components/LogoLoader";
 import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
-import { puedeAccederAdministracion } from './utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederComisiones } from './utils/accesoAdministracion';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -137,6 +137,15 @@ const AdministracionRoute = ({ children }) => {
   return children;
 };
 
+const ComisionesRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  let userProfile = null;
+  try { userProfile = JSON.parse(localStorage.getItem("userProfile") || "null"); } catch (_) { userProfile = null; }
+  if (!token) return <Navigate to="/login" replace />;
+  if (!puedeAccederComisiones(userProfile?.perfil)) return <Navigate to="/" replace />;
+  return children;
+};
+
 const GestionablesRoute = ({ children, empresa }) => {
   if (!puedeAccederGestionables(empresa)) return <Navigate to="/" replace />;
   return children;
@@ -182,7 +191,7 @@ export default function App() {
             <Route path="horarios"                  element={<AdministracionRoute><Horarios /></AdministracionRoute>} />
             <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
             <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
-            <Route path="comisiones"                element={<AdministracionRoute><Comisiones /></AdministracionRoute>} />
+            <Route path="comisiones"                element={<ComisionesRoute><Comisiones /></ComisionesRoute>} />
             <Route path="rol-pagos"                 element={<AdministracionRoute><RolPagos /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />
             <Route path="forecast-velsa"            element={<AdministracionRoute><ForecastFinanciero empresa="velsa" /></AdministracionRoute>} />

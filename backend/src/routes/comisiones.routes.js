@@ -1,10 +1,10 @@
 const express = require('express');
 const { verificarToken } = require('../middleware/auth');
-const { soloAdministracion } = require('../shared/accesoAdministracion');
+const { soloComisiones } = require('../shared/accesoAdministracion');
 const { listar, detalle, catalogoResumen, catalogoCargar, rolListar, rolAjuste } = require('../controllers/comisiones.controller');
 
 const router = express.Router();
-router.use(verificarToken, soloAdministracion);
+router.use(verificarToken, soloComisiones);
 router.get('/', listar);
 router.get('/detalle', detalle);
 router.get('/catalogo', catalogoResumen);

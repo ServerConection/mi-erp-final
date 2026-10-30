@@ -54,3 +54,18 @@ export function puedeAccederGestionables(empresaObjetivo) {
     return false;
   }
 }
+
+// Bolsa Leads (reparte la pauta entre NOVONET y VELSA): solo ADMINISTRADOR.
+export function puedeAccederBolsaLeads() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    const tokenUser = jwtDecode(token);
+    let storedUser = {};
+    try { storedUser = JSON.parse(localStorage.getItem('userProfile') || localStorage.getItem('user') || '{}'); } catch { /* el backend valida */ }
+    const u = { ...storedUser, ...tokenUser };
+    return perfilGestionables(u.perfil || u.rol) === 'ADMINISTRADOR';
+  } catch {
+    return false;
+  }
+}

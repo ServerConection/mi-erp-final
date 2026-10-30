@@ -217,6 +217,7 @@ app.use('/api/bitrix-connector-velsa', bitrixConnectorVelsaRoutes); // WABOT-BIT
 app.use(bitrixChatTransferRoutes); // ruta completa: /bitrix_chat_transfer.php
 app.use(bitrixChatTransferInstallRoutes); // rutas completas: /bitrix_chat_transfer_install.php y /bitrix_chat_transfer_events.php
 app.use(gestionablesWebhookRoutes); // ruta completa: /bitrix_webhook_gestionables.php
+app.use(require('./routes/bolsaLeadsWebhook.routes')); // ruta completa: /bitrix_webhook_bolsa_leads.php (Bolsa Leads → Novonet/Velsa)
 app.use(jotformWebhookRoutes); // rutas con paths completos: /jotform_webhook.php y /api/jotform-webhook/submissions
 app.use('/api/coverage',          coverageRoutes);
 app.use('/api/inventario',        inventarioRoutes);
@@ -270,6 +271,7 @@ app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));
+app.use('/api/bolsa-leads', require('./routes/bolsaLeads.routes'));
 app.use('/api/tareas',   tareasRoutes);
 app.use('/api/hojas',    hojasRoutes);
 app.use('/api/chat',     chatRoutes);

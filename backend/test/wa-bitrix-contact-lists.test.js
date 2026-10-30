@@ -107,13 +107,14 @@ test('crear base: asesor solo ve sus negocios; supervisor ve todos', async () =>
   assert.equal(service.soloSusNegocios({ ...asesor, perfil: 'SUPERVISOR' }), false)
   assert.equal(service.soloSusNegocios({ ...asesor, perfil: 'ADMINISTRADOR' }), false)
   assert.equal(service.soloSusNegocios({ ...asesor, usuario: 'acloaiza' }), false)
-  assert.deepEqual(service.patronesAsesor(asesor), ['%KATHERINE%', '%PUCHA%'])
+  assert.deepEqual(service.patronesAsesor(asesor), ['%KAT%', '%PUC%'])
+  assert.deepEqual(service.patronesAsesor({ nombreCompleto: 'Jacj Vera' }), ['%JAC%', '%VER%'])
   assert.deepEqual(service.patronesAsesor({}), ['%__SIN_NOMBRE_ASESOR__%'])
   const calls = []
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
   await service.consultar(asesor, { responsible_ids: ['OTRO ASESOR'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.match(calls[0].sql, /LIKE ALL/)
-  assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('%PUCHA%')))
+  assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('%PUC%')))
 })
 
 test('vista previa: solo ID y dos últimos dígitos del teléfono', () => {

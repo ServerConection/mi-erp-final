@@ -11,7 +11,8 @@ export default function Login() {
   const navigate = useNavigate();
   const navegarSegunPerfil = (user) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
-    if (perfil === 'ATC' || perfil === 'ANALISTA') return '/indicadores';
+    if (perfil === 'ATC') return '/';
+    if (perfil === 'ANALISTA') return '/indicadores';
     if (perfil !== 'TV') return '/';
     const empresa = (user?.empresa || '').toUpperCase();
     if (empresa === 'VELSA') return '/seguimiento-velsa';

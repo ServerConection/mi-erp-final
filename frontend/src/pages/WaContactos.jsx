@@ -106,7 +106,7 @@ export default function WaContactos() {
   const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [creator, setCreator] = useState("");
   const [bitrixOptions, setBitrixOptions] = useState(null);
-  const [bitrixForm, setBitrixForm] = useState({ empresa: "", stage_ids: [], responsible_ids: [], date_from: "", date_to: "", name: "" });
+  const [bitrixForm, setBitrixForm] = useState({ empresa: "", stage_ids: [], responsible_ids: [], source_ids: [], date_from: "", date_to: "", name: "" });
   const PUEDE_BASE_BITRIX = useMemo(() => puedeCrearBaseBitrix(), []);
   const bitrixReqRef = useRef(0); // descarta respuestas viejas si cambian filtros rápido
   const [bitrixPreview, setBitrixPreview] = useState(null);
@@ -219,11 +219,16 @@ export default function WaContactos() {
       setBitrixForm(prev => {
         const etapas = new Set((data.stages || []).map(o => String(o.id)));
         const resp = new Set((data.responsibles || []).map(o => String(o.id)));
+        const origenes = new Set((data.sources || []).map(o => String(o.id)));
+        const responsablesPermitidos = data.solo_sus_negocios
+          ? (data.responsibles || []).map(o => String(o.id))
+          : prev.responsible_ids.filter(id => resp.has(String(id)));
         return {
           ...prev,
           empresa: prev.empresa || data.empresa,
           stage_ids: prev.stage_ids.filter(id => etapas.has(String(id))),
-          responsible_ids: prev.responsible_ids.filter(id => resp.has(String(id))),
+          responsible_ids: responsablesPermitidos,
+          source_ids: (prev.source_ids || []).filter(id => origenes.has(String(id))),
         };
       });
     } catch (error) { if (reqId === bitrixReqRef.current) setBitrixError(error.message); }
@@ -233,7 +238,7 @@ export default function WaContactos() {
   const openBitrix = async () => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
     setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
-    const inicial = { empresa: "", stage_ids: [], responsible_ids: [], date_from: today, date_to: today, name: "" };
+    const inicial = { empresa: "", stage_ids: [], responsible_ids: [], source_ids: [], date_from: today, date_to: today, name: "" };
     setBitrixForm(inicial);
     // No reutilizar opciones anteriores: se piden de nuevo al abrir.
     setBitrixOptions(null);
@@ -245,15 +250,16 @@ export default function WaContactos() {
       ? (opts.find(o => String(o.id) === String(ids[0]))?.name || "") : `${ids.length} SELECCIONADOS`;
     const stage = resumen(current.stage_ids, bitrixOptions?.stages);
     const responsible = resumen(current.responsible_ids, bitrixOptions?.responsibles);
+    const source = resumen(current.source_ids || [], bitrixOptions?.sources);
     const date = current.date_from ? current.date_from.split("-").reverse().join("-") : "";
-    return [stage, date, responsible].filter(Boolean).join(" - ").toUpperCase();
+    return [stage, date, responsible, source].filter(Boolean).join(" - ").toUpperCase();
   };
 
   const updateBitrixForm = (field, value) => {
     setBitrixPreview(null); setBitrixError("");
     const next = { ...bitrixForm, [field]: value };
     // Cambiar de pipeline invalida etapas y responsables elegidos.
-    if (field === "empresa") { next.stage_ids = []; next.responsible_ids = []; }
+    if (field === "empresa") { next.stage_ids = []; next.responsible_ids = []; next.source_ids = []; }
     if (field !== "name") next.name = generatedBitrixName(next);
     setBitrixForm(next);
     // Empresa o fechas cambian → recargar etapas y responsables de ese rango.
@@ -528,8 +534,14 @@ export default function WaContactos() {
                 </div>
                 <div className="text-xs font-semibold text-slate-500">RESPONSABLE
                   <MultiSelectBuscable options={bitrixOptions?.responsibles || []} value={bitrixForm.responsible_ids}
-                    onChange={value => updateBitrixForm("responsible_ids", value)} disabled={bitrixBusy || !bitrixOptions}
+                    onChange={value => updateBitrixForm("responsible_ids", value)} disabled={bitrixBusy || !bitrixOptions || bitrixOptions.solo_sus_negocios}
                     placeholder="Buscar responsable…" todosLabel="Todos los responsables" />
+                  {bitrixOptions?.solo_sus_negocios && <p className="mt-1 font-normal text-slate-400">Fijado a tu usuario.</p>}
+                </div>
+                <div className="text-xs font-semibold text-slate-500 md:col-span-2">ORIGEN
+                  <MultiSelectBuscable options={bitrixOptions?.sources || []} value={bitrixForm.source_ids}
+                    onChange={value => updateBitrixForm("source_ids", value)} disabled={bitrixBusy || !bitrixOptions}
+                    placeholder="Buscar origen…" todosLabel="Todos los orígenes" />
                 </div>
                 <label className="text-xs font-semibold text-slate-500">FECHA DESDE
                   <input type="date" value={bitrixForm.date_from} onChange={e => updateBitrixForm("date_from", e.target.value)}

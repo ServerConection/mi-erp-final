@@ -40,14 +40,15 @@ function soloSusNegocios(user) {
   return !PERFILES_VEN_TODOS.includes(String(user?.perfil || '').trim().toUpperCase())
 }
 
-// Patrones para reconocer al asesor en el campo "responsible" de Bitrix:
-// cada palabra de su nombre debe aparecer (p. ej. "KATHERINE PUCHA" ->
-// "KATHERINE PAOLA PUCHA BRAVO"). Sin nombre no coincide con nadie.
+// Patrones para reconocer al asesor en el campo "responsible" de Bitrix.
+// Se comparan prefijos de tres letras de cada palabra: además de admitir
+// nombres intermedios, tolera errores menores del registro interno como
+// "Jacj Vera" frente a "Jack Vera". Sin nombre no coincide con nadie.
 const SIN_TILDES = (txt) => String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 function patronesAsesor(user) {
   const palabras = [...new Set(SIN_TILDES(user?.nombreCompleto).toUpperCase()
     .split(/[^A-Z]+/).filter(p => p.length >= 3))]
-  return palabras.length ? palabras.map(p => `%${p}%`) : ['%__SIN_NOMBRE_ASESOR__%']
+  return palabras.length ? palabras.map(p => `%${p.slice(0, 3)}%`) : ['%__SIN_NOMBRE_ASESOR__%']
 }
 const RESPONSABLE_NORM_SQL = `UPPER(TRANSLATE(COALESCE(responsible, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'))`
 

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 
 /**
- * BOLSA LEADS — reparte la pauta del pipeline "Bolsa Leads" entre NOVONET y VELSA.
- * Cada lead toma la casilla que toca del ciclo (N = NOVONET, V = VELSA); al
+ * BOLSA LEADS — reparte la pauta del pipeline "Bolsa Leads" entre NOVONET, VELSA y SEMILLERO.
+ * Cada lead toma la casilla que toca del ciclo (N = NOVONET, V = VELSA, S = SEMILLERO); al
  * terminar el ciclo vuelve a empezar. Luego entra el repartidor de asesores de
  * cada empresa.
  */
@@ -13,7 +13,11 @@ const hora = (iso) => new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guay
 const EMP = {
   novonet: { label: 'NOVONET', letra: 'N', chip: 'bg-blue-600 text-white', suave: 'bg-blue-50 text-blue-700 border-blue-200' },
   velsa: { label: 'VELSA', letra: 'V', chip: 'bg-fuchsia-600 text-white', suave: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' },
+  semillero: { label: 'SEMILLERO', letra: 'S', chip: 'bg-emerald-600 text-white', suave: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 };
+const LISTA = ['novonet', 'velsa', 'semillero'];
+const DE_LETRA = { N: 'novonet', V: 'velsa', S: 'semillero' };
+const SIGUIENTE_LETRA = { N: 'V', V: 'S', S: 'N' };
 const ESTADO = {
   entregado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   error: 'bg-red-50 text-red-700 border-red-200',
@@ -31,14 +35,17 @@ async function api(path, options = {}) {
 }
 
 // Mismo cálculo que el backend (shared/bolsaLeadsPatron.js → generarPatron)
-function generarPatron(pctNovonet, tamano) {
-  const n = Math.max(1, Math.min(50, Math.round(tamano)));
-  const cantN = Math.round((n * pctNovonet) / 100), cantV = n - cantN;
-  if (!cantV) return 'N'.repeat(n);
-  if (!cantN) return 'V'.repeat(n);
-  const [menor, mayor, m] = cantV <= cantN ? ['V', 'N', cantV] : ['N', 'V', cantN];
+function generarPatron(cantidades) {
+  const pesos = LISTA.map((e) => ({ e, w: Math.max(0, Math.round(Number(cantidades[e]) || 0)), act: 0 })).filter((x) => x.w > 0);
+  const total = pesos.reduce((t, x) => t + x.w, 0);
+  if (!total || total > 50) return '';
   let out = '';
-  for (let i = 1; i <= n; i++) out += Math.floor((i * m) / n + 0.5) > Math.floor(((i - 1) * m) / n + 0.5) ? menor : mayor;
+  for (let i = 0; i < total; i++) {
+    for (const x of pesos) x.act += x.w;
+    const el = pesos.reduce((a, b) => (b.act > a.act ? b : a));
+    el.act -= total;
+    out += EMP[el.e].letra;
+  }
   return out;
 }
 
@@ -54,7 +61,7 @@ export default function BolsaLeads() {
   const [fecha, setFecha] = useState(hoy);
   const [data, setData] = useState(null);
   const [borrador, setBorrador] = useState('');      // patrón que se está editando
-  const [pct, setPct] = useState(60), [tamano, setTamano] = useState(10);
+  const [cant, setCant] = useState({ novonet: 7, velsa: 4, semillero: 1 });
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [mensaje, setMensaje] = useState('');
   const [filtro, setFiltro] = useState('todos');
 
@@ -85,12 +92,13 @@ export default function BolsaLeads() {
 
   const cfg = data?.config;
   const cambioPatron = cfg && borrador !== cfg.patron;
-  const resumenBorrador = useMemo(() => {
-    const n = [...borrador].filter((c) => c === 'N').length;
-    return { n, v: borrador.length - n, pct: borrador.length ? Math.round((n * 100) / borrador.length) : 0 };
-  }, [borrador]);
-  const res = data?.resumen || { novonet: 0, velsa: 0, errores: 0, omitidos: 0 };
-  const total = res.novonet + res.velsa;
+  const resumenBorrador = useMemo(() => Object.fromEntries(LISTA.map((e) => {
+    const c = [...borrador].filter((l) => l === EMP[e].letra).length;
+    return [e, { c, pct: borrador.length ? Math.round((c * 100) / borrador.length) : 0 }];
+  })), [borrador]);
+  const res = data?.resumen || { novonet: 0, velsa: 0, semillero: 0, errores: 0, omitidos: 0 };
+  const total = LISTA.reduce((t, e) => t + (res[e] || 0), 0);
+  const totalCant = LISTA.reduce((t, e) => t + (Number(cant[e]) || 0), 0);
   const movimientos = (data?.movimientos || []).filter((m) => filtro === 'todos' || m.estado === filtro || m.empresa === filtro);
 
   if (!permitido) return <div className="p-8 text-slate-600">Solo el administrador puede usar Bolsa Leads.</div>;
@@ -101,7 +109,7 @@ export default function BolsaLeads() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Bolsa Leads</h1>
-          <p className="text-sm text-slate-500">Reparte la pauta del pipeline "Bolsa Leads" entre NOVONET y VELSA. Después entra el repartidor de asesores de cada empresa.</p>
+          <p className="text-sm text-slate-500">Reparte la pauta del pipeline "Bolsa Leads" entre NOVONET, VELSA y SEMILLERO. Después entra el repartidor de asesores de cada empresa.</p>
         </div>
         {cfg && (
           <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-2 shadow-sm">
@@ -122,7 +130,7 @@ export default function BolsaLeads() {
           <section className="rounded-2xl border bg-white p-4 shadow-sm">
             <h2 className="mb-3 font-semibold text-slate-700">¿A quién se entrega?</h2>
             <div className="flex flex-wrap gap-2">
-              {[['proporcion', 'Por proporción (ciclo)'], ['solo_novonet', 'Todo a NOVONET'], ['solo_velsa', 'Todo a VELSA']].map(([k, l]) => (
+              {[['proporcion', 'Por proporción (ciclo)'], ['solo_novonet', 'Todo a NOVONET'], ['solo_velsa', 'Todo a VELSA'], ['solo_semillero', 'Todo a SEMILLERO']].map(([k, l]) => (
                 <button key={k} type="button" disabled={busy} onClick={() => k !== cfg.modo && guardar({ modo: k }, `Modo cambiado: ${l}.`)}
                   className={`rounded-lg border px-4 py-2 text-sm font-medium ${cfg.modo === k ? 'border-slate-800 bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{l}</button>
               ))}
@@ -130,7 +138,7 @@ export default function BolsaLeads() {
             <label className="mt-4 flex items-center gap-3 text-sm text-slate-700">
               <Switch on={cfg.encadenar_reparto} disabled={busy}
                 onClick={() => guardar({ encadenar_reparto: !cfg.encadenar_reparto }, 'Guardado.')} />
-              Al entregar, pasar el lead al repartidor de asesores de la empresa
+              Al entregar, pasar el lead al repartidor de asesores de la empresa (SEMILLERO no tiene repartidor)
             </label>
           </section>
 
@@ -139,16 +147,16 @@ export default function BolsaLeads() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-slate-700">Ciclo de entrega</h2>
               <span className="text-sm text-slate-500">
-                {resumenBorrador.n} NOVONET ({resumenBorrador.pct}%) · {resumenBorrador.v} VELSA ({100 - resumenBorrador.pct}%) · {borrador.length} casillas
+                {LISTA.map((e) => `${resumenBorrador[e].c} ${EMP[e].label} (${resumenBorrador[e].pct}%)`).join(' · ')} · {borrador.length} casillas
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {[...borrador].map((c, i) => {
-                const e = c === 'N' ? EMP.novonet : EMP.velsa;
+                const e = EMP[DE_LETRA[c]] || EMP.novonet;
                 const toca = !cambioPatron && cfg.modo === 'proporcion' && i === cfg.posicion % borrador.length;
                 return (
                   <button key={i} type="button" title="Clic para cambiar de empresa"
-                    onClick={() => setBorrador(borrador.slice(0, i) + (c === 'N' ? 'V' : 'N') + borrador.slice(i + 1))}
+                    onClick={() => setBorrador(borrador.slice(0, i) + (SIGUIENTE_LETRA[c] || 'N') + borrador.slice(i + 1))}
                     className={`flex h-16 w-14 flex-col items-center justify-center rounded-xl text-xs font-semibold ${e.chip} ${toca ? 'ring-4 ring-amber-400 ring-offset-2' : ''}`}>
                     <span className="text-[10px] opacity-80">#{i + 1}</span>
                     <span className="text-lg leading-none">{c}</span>
@@ -158,20 +166,19 @@ export default function BolsaLeads() {
               })}
             </div>
             <div className="mt-4 flex flex-wrap items-end gap-3 text-sm">
-              <label className="flex flex-col gap-1">% NOVONET
-                <input type="number" min="0" max="100" step="10" value={pct} onChange={(e) => setPct(Number(e.target.value))} className="w-24 rounded-lg border px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">Casillas por ciclo
-                <input type="number" min="1" max="50" value={tamano} onChange={(e) => setTamano(Number(e.target.value))} className="w-24 rounded-lg border px-2 py-1.5" />
-              </label>
-              <button type="button" onClick={() => setBorrador(generarPatron(pct, tamano))} className="rounded-lg border px-3 py-2 hover:bg-slate-50">Generar</button>
+              {LISTA.map((e) => (
+                <label key={e} className="flex flex-col gap-1">Casillas {EMP[e].label}
+                  <input type="number" min="0" max="50" value={cant[e]} onChange={(ev) => setCant({ ...cant, [e]: Number(ev.target.value) })} className="w-24 rounded-lg border px-2 py-1.5" />
+                </label>
+              ))}
+              <button type="button" disabled={!totalCant || totalCant > 50} onClick={() => setBorrador(generarPatron(cant))} className="rounded-lg border px-3 py-2 hover:bg-slate-50 disabled:opacity-40">Generar ({totalCant})</button>
               <button type="button" disabled={!cambioPatron || busy} onClick={() => guardar({ patron: borrador }, 'Ciclo guardado. Empieza desde la casilla 1.')}
                 className="rounded-lg bg-slate-800 px-4 py-2 font-medium text-white disabled:opacity-40">Guardar ciclo</button>
               {cambioPatron && <button type="button" onClick={() => setBorrador(cfg.patron)} className="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-50">Descartar</button>}
               <button type="button" disabled={busy || cambioPatron} onClick={() => guardar({ reiniciar_ciclo: true }, 'Ciclo reiniciado en la casilla 1.')}
                 className="rounded-lg border px-3 py-2 hover:bg-slate-50 disabled:opacity-40">Reiniciar ciclo</button>
             </div>
-            <p className="mt-2 text-xs text-slate-400">Clic en una casilla para cambiarla entre N y V. Al guardar un ciclo nuevo, empieza desde la casilla 1.</p>
+            <p className="mt-2 text-xs text-slate-400">Clic en una casilla para cambiarla: N → V → S → N. Al guardar un ciclo nuevo, empieza desde la casilla 1.</p>
           </section>
 
           {/* Resumen del día */}
@@ -183,10 +190,11 @@ export default function BolsaLeads() {
                 <button type="button" onClick={cargar} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50">Actualizar</button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {[
                 ['NOVONET', res.novonet, total ? `${Math.round((res.novonet * 100) / total)}%` : '—', 'text-blue-700'],
                 ['VELSA', res.velsa, total ? `${Math.round((res.velsa * 100) / total)}%` : '—', 'text-fuchsia-700'],
+                ['SEMILLERO', res.semillero || 0, total ? `${Math.round(((res.semillero || 0) * 100) / total)}%` : '—', 'text-emerald-700'],
                 ['Errores', res.errores, 'se pueden reintentar', 'text-red-600'],
                 ['Omitidos', res.omitidos, 'bolsa apagada o ya entregados', 'text-slate-600'],
               ].map(([t, v, s, c]) => (
@@ -200,16 +208,16 @@ export default function BolsaLeads() {
             {data.porHora.length > 0 && (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-slate-500"><th className="py-1">Hora</th><th>NOVONET</th><th>VELSA</th></tr></thead>
+                  <thead><tr className="text-left text-slate-500"><th className="py-1">Hora</th><th>NOVONET</th><th>VELSA</th><th>SEMILLERO</th></tr></thead>
                   <tbody>{data.porHora.map((h) => (
-                    <tr key={h.hora} className="border-t"><td className="py-1">{String(h.hora).padStart(2, '0')}:00</td><td>{h.novonet}</td><td>{h.velsa}</td></tr>
+                    <tr key={h.hora} className="border-t"><td className="py-1">{String(h.hora).padStart(2, '0')}:00</td><td>{h.novonet}</td><td>{h.velsa}</td><td>{h.semillero || 0}</td></tr>
                   ))}</tbody>
                 </table>
               </div>
             )}
             <div className="mt-4">
               <button type="button" disabled={busy || !cfg.activo}
-                onClick={() => accion('/pendientes', {}, (r) => r.motivo ? r.motivo : `Pendientes entregados: ${r.novonet} NOVONET, ${r.velsa} VELSA${r.errores ? `, ${r.errores} con error` : ''}.`)}
+                onClick={() => accion('/pendientes', {}, (r) => r.motivo ? r.motivo : `Pendientes entregados: ${r.novonet} NOVONET, ${r.velsa} VELSA, ${r.semillero || 0} SEMILLERO${r.errores ? `, ${r.errores} con error` : ''}.`)}
                 className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40">
                 Entregar los leads que quedaron en Bolsa Leads
               </button>
@@ -222,7 +230,7 @@ export default function BolsaLeads() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-slate-700">Movimientos</h2>
               <div className="flex flex-wrap gap-1">
-                {['todos', 'novonet', 'velsa', 'error', 'omitido'].map((f) => (
+                {['todos', 'novonet', 'velsa', 'semillero', 'error', 'omitido'].map((f) => (
                   <button key={f} type="button" onClick={() => setFiltro(f)}
                     className={`rounded-full border px-3 py-1 text-xs capitalize ${filtro === f ? 'border-slate-800 bg-slate-800 text-white' : 'text-slate-600'}`}>{f}</button>
                 ))}
@@ -236,7 +244,7 @@ export default function BolsaLeads() {
                     <tr key={m.id} className="border-t align-top">
                       <td className="py-1.5 whitespace-nowrap">{hora(m.creado_en)}</td>
                       <td className="font-mono">{m.bitrix_deal_id}</td>
-                      <td>{m.empresa ? <span className={`rounded border px-2 py-0.5 text-xs ${EMP[m.empresa].suave}`}>{EMP[m.empresa].label}</span> : '—'}</td>
+                      <td>{m.empresa && EMP[m.empresa] ? <span className={`rounded border px-2 py-0.5 text-xs ${EMP[m.empresa].suave}`}>{EMP[m.empresa].label}</span> : '—'}</td>
                       <td>{m.casilla ?? (m.estado === 'entregado' ? 'directo' : '—')}</td>
                       <td><span className={`rounded border px-2 py-0.5 text-xs ${ESTADO[m.estado] || ''}`}>{m.estado}</span></td>
                       <td className="max-w-xs text-xs text-slate-600">{m.detalle}</td>

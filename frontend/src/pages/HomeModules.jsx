@@ -139,7 +139,7 @@ export default function HomeModules() {
       desc: "El mismo reparto automático por turnos, para los asesores de VELSA: cupos, % ATC, estación y reporte por hora.",
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
     { title: "Bolsa Leads", path: "/bolsa-leads", icon: ClipboardList, accent: "azul", cat: "equipo",
-      desc: "Reparte la pauta entre NOVONET y VELSA por ciclos (ej. 60/40), con encendido/apagado y reporte de entregas.",
+      desc: "Reparte la pauta entre NOVONET, VELSA y SEMILLERO por ciclos (ej. 7/4/1), con encendido/apagado y reporte de entregas.",
       rolesPermitidos: ['ADMINISTRADOR'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",

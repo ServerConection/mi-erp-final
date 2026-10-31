@@ -1,66 +1,71 @@
 /**
  * BOLSA LEADS — patrón de entrega entre empresas.
  *
- * El patrón es un texto de letras: N = NOVONET, V = VELSA. Cada lead que entra
- * a "Bolsa Leads" toma la letra de la posición actual y avanza una. Al llegar
- * al final del patrón vuelve a empezar.
- *   Ejemplo 60/40 en ciclos de 10: N V N V N N V N V N
+ * El patrón es un texto de letras: N = NOVONET, V = VELSA, S = SEMILLERO.
+ * Cada lead que entra a "Bolsa Leads" toma la letra de la posición actual y
+ * avanza una. Al llegar al final del patrón vuelve a empezar.
+ *   Por defecto (12 casillas: 7 N / 4 V / 1 S): N V N N V N S N V N N V
  */
-const LETRA_A_EMPRESA = { N: 'novonet', V: 'velsa' };
-const PATRON_DEFECTO = 'NVNVNNVNVN';
+const LETRAS = { N: 'novonet', V: 'velsa', S: 'semillero' };
+const EMPRESAS_BOLSA = Object.values(LETRAS);
+const LETRA_DE = Object.fromEntries(Object.entries(LETRAS).map(([l, e]) => [e, l]));
+const PATRON_DEFECTO = 'NVNNVNSNVNNV';
+const PATRON_ANTERIOR = 'NVNVNNVNVN'; // 60/40 de 10 casillas (versión inicial)
 
-const limpiarPatron = (p) => String(p || '').toUpperCase().replace(/[^NV]/g, '');
+const limpiarPatron = (p) => String(p || '').toUpperCase().replace(/[^NVS]/g, '');
 
-// Patrón válido: 1 a 50 letras, solo N y V.
+// Patrón válido: 1 a 50 letras, solo N, V y S.
 const patronValido = (p) => {
   const l = limpiarPatron(p);
   return l.length >= 1 && l.length <= 50 && l === String(p || '').toUpperCase().replace(/[\s,]/g, '');
 };
 
 /**
- * Arma un patrón repartido lo más parejo posible.
- * generarPatron(60, 10) → 'NVNVNNVNVN'
+ * Arma un patrón repartido lo más parejo posible (round robin ponderado suave).
+ * generarPatron({ novonet: 7, velsa: 4, semillero: 1 }) → 12 casillas
+ * generarPatron({ novonet: 6, velsa: 4 })               → 'NVNVNNVNVN'
  */
-const generarPatron = (pctNovonet, tamano = 10) => {
-  const n = Math.max(1, Math.min(50, Math.round(Number(tamano) || 10)));
-  const pct = Math.max(0, Math.min(100, Number(pctNovonet)));
-  const cantN = Math.round((n * pct) / 100);
-  const cantV = n - cantN;
-  if (cantV === 0) return 'N'.repeat(n);
-  if (cantN === 0) return 'V'.repeat(n);
-  // La empresa con menos leads se intercala de forma pareja entre la otra
-  const [menor, mayor, m] = cantV <= cantN ? ['V', 'N', cantV] : ['N', 'V', cantN];
+const generarPatron = (cantidades = {}) => {
+  const pesos = EMPRESAS_BOLSA
+    .map((e) => ({ e, w: Math.max(0, Math.round(Number(cantidades[e]) || 0)), act: 0 }))
+    .filter((x) => x.w > 0);
+  const total = pesos.reduce((s, x) => s + x.w, 0);
+  if (!total || total > 50) return '';
   let out = '';
-  for (let i = 1; i <= n; i++) {
-    const toca = Math.floor((i * m) / n + 0.5) > Math.floor(((i - 1) * m) / n + 0.5);
-    out += toca ? menor : mayor;
+  for (let i = 0; i < total; i++) {
+    for (const x of pesos) x.act += x.w;
+    const elegido = pesos.reduce((a, b) => (b.act > a.act ? b : a));
+    elegido.act -= total;
+    out += LETRA_DE[elegido.e];
   }
   return out;
 };
 
-// Cuántos de cada empresa tiene el patrón, y su %.
+// Cuántas casillas tiene cada empresa y su %.
 const resumenPatron = (p) => {
   const l = limpiarPatron(p);
-  const novonet = [...l].filter((c) => c === 'N').length;
-  const velsa = l.length - novonet;
-  return {
-    tamano: l.length, novonet, velsa,
-    pct_novonet: l.length ? Math.round((novonet * 100) / l.length) : 0,
-    pct_velsa: l.length ? Math.round((velsa * 100) / l.length) : 0,
-  };
+  const r = { tamano: l.length };
+  for (const [letra, e] of Object.entries(LETRAS)) {
+    r[e] = [...l].filter((c) => c === letra).length;
+    r[`pct_${e}`] = l.length ? Math.round((r[e] * 100) / l.length) : 0;
+  }
+  return r;
 };
 
 /**
  * A qué empresa va el próximo lead y cuál es la siguiente posición.
- * modo: 'proporcion' (usa el patrón) | 'solo_novonet' | 'solo_velsa'
+ * modo: 'proporcion' (usa el patrón) | 'solo_novonet' | 'solo_velsa' | 'solo_semillero'
  * En "solo una empresa" el ciclo no avanza (al volver a proporción sigue donde iba).
  */
 const siguienteEntrega = ({ patron, posicion, modo }) => {
-  if (modo === 'solo_novonet') return { empresa: 'novonet', slot: null, siguiente: posicion };
-  if (modo === 'solo_velsa') return { empresa: 'velsa', slot: null, siguiente: posicion };
+  const solo = /^solo_(.+)$/.exec(modo || '');
+  if (solo && EMPRESAS_BOLSA.includes(solo[1])) return { empresa: solo[1], slot: null, siguiente: posicion };
   const l = limpiarPatron(patron) || PATRON_DEFECTO;
   const pos = ((Number(posicion) || 0) % l.length + l.length) % l.length;
-  return { empresa: LETRA_A_EMPRESA[l[pos]], slot: pos + 1, siguiente: (pos + 1) % l.length };
+  return { empresa: LETRAS[l[pos]], slot: pos + 1, siguiente: (pos + 1) % l.length };
 };
 
-module.exports = { PATRON_DEFECTO, limpiarPatron, patronValido, generarPatron, resumenPatron, siguienteEntrega };
+module.exports = {
+  LETRAS, EMPRESAS_BOLSA, PATRON_DEFECTO, PATRON_ANTERIOR,
+  limpiarPatron, patronValido, generarPatron, resumenPatron, siguienteEntrega,
+};

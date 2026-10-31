@@ -35,8 +35,12 @@ let fallarMovimiento = false;
 mock('services/bitrix.service.js', {
   bitrixCallNovonet: async (method, params) => {
     if (method === 'crm.deal.get') return { result: deals[params.id] || null };
-    if (method === 'crm.category.list') return { result: { categories: [{ id: 43, name: 'Bolsa Leads' }, { id: 7, name: 'NETLIFE NUEVO' }, { id: 51, name: 'VELSA' }] } };
-    if (method === 'crm.dealcategory.stage.list') return { result: [{ NAME: 'Contacto nuevo', STATUS_ID: `C${params.id}:NEW` }] };
+    if (method === 'crm.category.list') return { result: { categories: [{ id: 43, name: 'Bolsa Leads' }, { id: 7, name: 'NETLIFE NUEVO' }, { id: 51, name: 'VELSA' }, { id: 41, name: 'SEMILLERO' }] } };
+    if (method === 'crm.dealcategory.stage.list') {
+      // Semillero simulado sin etapa "Contacto nuevo": se usa la primera por SORT
+      if (String(params.id) === '41') return { result: [{ NAME: 'Seguimiento', STATUS_ID: 'C41:PREPARATION', SORT: 20 }, { NAME: 'Nuevo', STATUS_ID: 'C41:NEW', SORT: 10 }] };
+      return { result: [{ NAME: 'Contacto nuevo', STATUS_ID: `C${params.id}:NEW` }] };
+    }
     if (method === 'crm.item.update') {
       if (fallarMovimiento) throw new Error('Bitrix caído');
       Object.assign(deals[params.id], { CATEGORY_ID: String(params.fields.categoryId), STAGE_ID: params.fields.stageId });
@@ -98,4 +102,21 @@ test('apagada no toca el lead; modo solo Velsa entrega todo a Velsa', async () =
   reset({ modo: 'solo_velsa', posicion: 4 });
   for (const id of [301, 302, 303]) { nuevoDeal(id); assert.equal((await distribuir(String(id))).empresa, 'velsa'); }
   assert.equal(db.config.posicion, 4);
+});
+
+test('ciclo de 12 con SEMILLERO: 7 / 4 / 1, y Semillero no pasa por el repartidor', async () => {
+  reset({ patron: 'NVNNVNSNVNNV' }); alRepartidor.length = 0;
+  const cuenta = { novonet: 0, velsa: 0, semillero: 0 };
+  for (let i = 400; i < 412; i++) {
+    nuevoDeal(i);
+    const r = await distribuir(String(i));
+    assert.equal(r.estado, 'entregado');
+    cuenta[r.empresa]++;
+  }
+  assert.deepEqual(cuenta, { novonet: 7, velsa: 4, semillero: 1 });
+  assert.equal(deals[406].CATEGORY_ID, '41');          // casilla 7 = S
+  assert.equal(deals[406].STAGE_ID, 'C41:NEW');
+  assert.equal(alRepartidor.length, 11);                // los 11 de Novonet/Velsa
+  assert.match(db.entregas.find((e) => e.deal === '406').reparto, /Sin repartidor/);
+  assert.equal(db.config.posicion, 0);                  // volvió a la casilla 1
 });

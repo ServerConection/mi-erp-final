@@ -19,7 +19,7 @@ const query = async (sql, p = []) => {
   if (/UPDATE bolsa_leads_config SET posicion/.test(sql)) { db.config.posicion = p[0]; return { rows: [] }; }
   if (/INSERT INTO bolsa_leads_entregas/.test(sql)) {
     const estado = /'entregado'/.test(sql) ? 'entregado' : p[4];
-    const e = { id: db.entregas.length + 1, deal: p[0], empresa: p[1], casilla: p[2], estado };
+    const e = { id: db.entregas.length + 1, deal: p[0], empresa: p[1], casilla: p[2], estado, detalle: p[4] };
     db.entregas.push(e); return { rows: [{ id: e.id }] };
   }
   if (/UPDATE bolsa_leads_entregas SET reparto_resultado/.test(sql)) {
@@ -52,6 +52,10 @@ mock('services/bitrix.service.js', {
 const alRepartidor = [];
 mock('controllers/gestionablesWebhook.controller.js', {
   reparto: (empresa) => ({ recibirGestionable: async (req, res) => { alRepartidor.push([empresa, req.query.id]); res.status(200).send('OK'); } }),
+});
+let conectadosSim = null;   // null = Bitrix Live sin respuesta (no redirige)
+mock('shared/bolsaLeadsConectados.js', {
+  conectadosPorEmpresa: async () => conectadosSim && Object.fromEntries(Object.entries(conectadosSim).map(([e, n]) => [e, { conectados: n, nombres: [] }])),
 });
 process.env.GESTIONABLES_CATEGORY_ID = '';
 const { distribuir } = require('../src/controllers/bolsaLeads.controller');
@@ -119,4 +123,25 @@ test('ciclo de 12 con SEMILLERO: 7 / 4 / 1, y Semillero no pasa por el repartido
   assert.equal(alRepartidor.length, 11);                // los 11 de Novonet/Velsa
   assert.match(db.entregas.find((e) => e.deal === '406').reparto, /Sin repartidor/);
   assert.equal(db.config.posicion, 0);                  // volvió a la casilla 1
+});
+
+test('nadie conectado en SEMILLERO: su casilla pasa a NOVONET y queda anotado', async () => {
+  reset({ patron: 'NVNNVNSNVNNV', posicion: 6 });
+  conectadosSim = { novonet: 4, velsa: 2, semillero: 0 };
+  nuevoDeal(500);
+  const r = await distribuir('500');
+  conectadosSim = null;
+  assert.deepEqual([r.empresa, r.casilla], ['novonet', 8]);
+  assert.equal(deals[500].CATEGORY_ID, '7');
+  assert.equal(db.config.posicion, 8);
+  assert.match(db.entregas.at(-1).detalle, /casilla 7 era SEMILLERO sin asesores conectados/);
+});
+
+test('opción de redirigir apagada: respeta la casilla aunque no haya nadie', async () => {
+  reset({ patron: 'NVNNVNSNVNNV', posicion: 6, redirigir_sin_conectados: false });
+  conectadosSim = { novonet: 4, velsa: 2, semillero: 0 };
+  nuevoDeal(501);
+  const r = await distribuir('501');
+  conectadosSim = null;
+  assert.equal(r.empresa, 'semillero');
 });

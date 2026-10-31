@@ -65,9 +65,9 @@ export default function BolsaLeads() {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [mensaje, setMensaje] = useState('');
   const [filtro, setFiltro] = useState('todos');
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
     try {
-      const r = await api(`/estado?fecha=${fecha}`);
+      const r = await api(`/estado?fecha=${fecha}${forzar === true ? '&forzar=1' : ''}`);
       setData(r); setError('');
       setBorrador((b) => b || r.config.patron);
     } catch (e) { setError(e.message); }
@@ -75,7 +75,7 @@ export default function BolsaLeads() {
   useEffect(() => { if (permitido) cargar(); }, [cargar, permitido]);
   useEffect(() => {
     if (!permitido) return undefined;
-    const t = setInterval(cargar, 30000);
+    const t = setInterval(() => cargar(), 30000);
     return () => clearInterval(t);
   }, [cargar, permitido]);
 
@@ -91,6 +91,8 @@ export default function BolsaLeads() {
   };
 
   const cfg = data?.config;
+  const conectados = data?.conectados || null;   // null = Bitrix Live no respondió
+  const nCon = (e) => conectados?.[e]?.conectados ?? null;
   const cambioPatron = cfg && borrador !== cfg.patron;
   const resumenBorrador = useMemo(() => Object.fromEntries(LISTA.map((e) => {
     const c = [...borrador].filter((l) => l === EMP[e].letra).length;
@@ -126,6 +128,33 @@ export default function BolsaLeads() {
 
       {cfg && (
         <>
+          {/* Asesores conectados ahora */}
+          <section className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-slate-700">Asesores conectados ahora (Bitrix, jornada abierta)</h2>
+              <button type="button" onClick={() => cargar(true)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50">Actualizar conexión</button>
+            </div>
+            {!conectados && <div className="text-sm text-amber-700">Bitrix Live no respondió: mientras tanto se entrega según el ciclo, sin redirigir.</div>}
+            {conectados && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {LISTA.map((e) => (
+                  <div key={e} className={`rounded-xl border p-3 ${nCon(e) ? EMP[e].suave : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    <div className="text-xs font-semibold">{EMP[e].label}</div>
+                    <div className="text-2xl font-bold">{nCon(e)}</div>
+                    <div className="truncate text-xs opacity-80" title={(conectados[e]?.nombres || []).join(', ')}>
+                      {nCon(e) ? (conectados[e].nombres || []).slice(0, 3).join(', ') + (nCon(e) > 3 ? '…' : '') : 'Nadie conectado: sus casillas pasan a la siguiente empresa'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="mt-4 flex items-center gap-3 text-sm text-slate-700">
+              <Switch on={cfg.redirigir_sin_conectados !== false} disabled={busy}
+                onClick={() => guardar({ redirigir_sin_conectados: cfg.redirigir_sin_conectados === false }, 'Guardado.')} />
+              Si una empresa no tiene asesores conectados, entregar a la siguiente casilla que sí tenga (solo mide conexión, no cupos)
+            </label>
+          </section>
+
           {/* Modo de entrega */}
           <section className="rounded-2xl border bg-white p-4 shadow-sm">
             <h2 className="mb-3 font-semibold text-slate-700">¿A quién se entrega?</h2>
@@ -154,10 +183,11 @@ export default function BolsaLeads() {
               {[...borrador].map((c, i) => {
                 const e = EMP[DE_LETRA[c]] || EMP.novonet;
                 const toca = !cambioPatron && cfg.modo === 'proporcion' && i === cfg.posicion % borrador.length;
+                const sinGente = conectados && cfg.redirigir_sin_conectados !== false && nCon(DE_LETRA[c]) === 0;
                 return (
                   <button key={i} type="button" title="Clic para cambiar de empresa"
                     onClick={() => setBorrador(borrador.slice(0, i) + (SIGUIENTE_LETRA[c] || 'N') + borrador.slice(i + 1))}
-                    className={`flex h-16 w-14 flex-col items-center justify-center rounded-xl text-xs font-semibold ${e.chip} ${toca ? 'ring-4 ring-amber-400 ring-offset-2' : ''}`}>
+                    className={`flex h-16 w-14 flex-col items-center justify-center rounded-xl text-xs font-semibold ${e.chip} ${toca ? 'ring-4 ring-amber-400 ring-offset-2' : ''} ${sinGente ? 'opacity-40 line-through' : ''}`}>
                     <span className="text-[10px] opacity-80">#{i + 1}</span>
                     <span className="text-lg leading-none">{c}</span>
                     {toca && <span className="mt-0.5 text-[9px]">PRÓXIMO</span>}
@@ -178,7 +208,7 @@ export default function BolsaLeads() {
               <button type="button" disabled={busy || cambioPatron} onClick={() => guardar({ reiniciar_ciclo: true }, 'Ciclo reiniciado en la casilla 1.')}
                 className="rounded-lg border px-3 py-2 hover:bg-slate-50 disabled:opacity-40">Reiniciar ciclo</button>
             </div>
-            <p className="mt-2 text-xs text-slate-400">Clic en una casilla para cambiarla: N → V → S → N. Al guardar un ciclo nuevo, empieza desde la casilla 1.</p>
+            <p className="mt-2 text-xs text-slate-400">Clic en una casilla para cambiarla: N → V → S → N. Las casillas tachadas son de una empresa sin asesores conectados: se saltan. Al guardar un ciclo nuevo, empieza desde la casilla 1.</p>
           </section>
 
           {/* Resumen del día */}
@@ -187,7 +217,7 @@ export default function BolsaLeads() {
               <h2 className="font-semibold text-slate-700">Entregas del día</h2>
               <div className="flex items-center gap-2">
                 <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm" />
-                <button type="button" onClick={cargar} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50">Actualizar</button>
+                <button type="button" onClick={() => cargar()} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50">Actualizar</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

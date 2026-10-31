@@ -13,12 +13,17 @@
  * - Bolsa APAGADA → no se toca el lead (se queda en Bolsa Leads).
  * - El ciclo solo avanza cuando la entrega a Bitrix salió bien.
  * - Un mismo lead nunca se entrega dos veces.
+ * - Si la empresa de la casilla no tiene a NADIE conectado en Bitrix (jornada
+ *   abierta), el lead pasa a la siguiente casilla cuya empresa sí tenga gente
+ *   (opción "redirigir_sin_conectados", encendida por defecto). Solo mide
+ *   conexión, no cupos: los cupos los sigue manejando el repartidor.
  */
 const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { EMPRESAS } = require('../shared/repartoEmpresas');
 const { normalizarNombre } = require('../shared/repartoGestionables');
-const { siguienteEntrega, resumenPatron, PATRON_DEFECTO } = require('../shared/bolsaLeadsPatron');
+const { elegirEntrega, resumenPatron, PATRON_DEFECTO } = require('../shared/bolsaLeadsPatron');
+const { conectadosPorEmpresa } = require('../shared/bolsaLeadsConectados');
 
 // Pipelines destino. NOVONET y VELSA usan la misma configuración que su
 // repartidor de asesores (shared/repartoEmpresas.js). SEMILLERO es el pipeline
@@ -39,7 +44,7 @@ const DESTINOS = {
 
 const DEFAULT = {
   activo: false, modo: 'proporcion', patron: PATRON_DEFECTO, posicion: 0,
-  encadenar_reparto: true, categoria_origen: 43, actualizado_por: null, actualizado_en: null,
+  encadenar_reparto: true, redirigir_sin_conectados: true, categoria_origen: 43, actualizado_por: null, actualizado_en: null,
 };
 
 // Bitrix saturado (QUERY_LIMIT_EXCEEDED): se espera y se reintenta
@@ -139,6 +144,13 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
     return { estado: 'omitido', detalle: `Ya no está en Bolsa Leads (pipeline ${deal.CATEGORY_ID})` };
   }
 
+  // ¿Quién está conectado? (solo en modo ciclo y con la opción encendida)
+  let conectados = null;
+  if (cfg0.modo === 'proporcion' && cfg0.redirigir_sin_conectados !== false) {
+    const c = await conectadosPorEmpresa();
+    if (c) conectados = { novonet: c.novonet.conectados, velsa: c.velsa.conectados, semillero: c.semillero.conectados };
+  }
+
   const client = await poolErp.connect();
   let r;
   try {
@@ -153,7 +165,10 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
       return { estado: 'omitido', empresa: ya.rows[0].empresa, detalle: 'Ya fue entregado antes' };
     }
 
-    const sig = siguienteEntrega({ patron: cfg.patron, posicion: cfg.posicion, modo: cfg.modo });
+    const sig = elegirEntrega({
+      patron: cfg.patron, posicion: cfg.posicion, modo: cfg.modo,
+      conectados, redirigir: cfg.redirigir_sin_conectados !== false,
+    });
     const destino = await resolverDestino(sig.empresa);
     // crm.deal.update no permite cambiar de pipeline; crm.item.update sí
     const upd = await bx('crm.item.update', {
@@ -165,10 +180,15 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
     }
 
     await client.query('UPDATE bolsa_leads_config SET posicion = $1 WHERE id = 1', [sig.siguiente]);
+    const salto = sig.saltadas.length
+      ? ` — casilla ${sig.casillaOriginal} era ${DESTINOS[sig.saltadas[0].empresa].etiqueta} sin asesores conectados`
+        + (sig.saltadas.length > 1 ? ` (se saltaron ${sig.saltadas.length} casillas)` : '')
+      : (sig.sinConectados ? ' — ninguna empresa tenía asesores conectados' : '');
     const ins = await client.query(
-      `INSERT INTO bolsa_leads_entregas (bitrix_deal_id, empresa, casilla, modo, estado, detalle, origen)
-       VALUES ($1,$2,$3,$4,'entregado',$5,$6) RETURNING id`,
-      [String(dealId), sig.empresa, sig.slot, cfg.modo, `Movido a ${destino.pipeline} (${destino.etapa})`, origen]
+      `INSERT INTO bolsa_leads_entregas (bitrix_deal_id, empresa, casilla, modo, estado, detalle, origen, conectados)
+       VALUES ($1,$2,$3,$4,'entregado',$5,$6,$7) RETURNING id`,
+      [String(dealId), sig.empresa, sig.slot, cfg.modo, `Movido a ${destino.pipeline} (${destino.etapa})${salto}`, origen,
+        conectados ? JSON.stringify(conectados) : null]
     );
     await client.query('COMMIT');
     r = { estado: 'entregado', empresa: sig.empresa, casilla: sig.slot, id: ins.rows[0].id, encadenar: cfg.encadenar_reparto, repartidor: destino.repartidor };
@@ -236,4 +256,4 @@ const recibirBolsaLead = async (req, res) => {
   }
 };
 
-module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, resumenPatron, DESTINOS };
+module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, resumenPatron, DESTINOS, conectadosPorEmpresa };

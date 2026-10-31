@@ -9,7 +9,7 @@ const router = require('express').Router();
 const erp = require('../config/dbErp');
 const { verificarToken } = require('../middleware/auth');
 const { perfilGestionables } = require('../shared/accesoGestionables');
-const { leerConfig, distribuir, distribuirPendientes } = require('../controllers/bolsaLeads.controller');
+const { leerConfig, distribuir, distribuirPendientes, conectadosPorEmpresa } = require('../controllers/bolsaLeads.controller');
 const { patronValido, limpiarPatron, resumenPatron } = require('../shared/bolsaLeadsPatron');
 
 const MODOS = ['proporcion', 'solo_novonet', 'solo_velsa', 'solo_semillero'];
@@ -30,7 +30,8 @@ router.get('/estado', async (req, res) => {
     const params = fecha ? [fecha] : [];
     const filtroDia = `(creado_en AT TIME ZONE 'America/Guayaquil')::date = ${DIA}`;
     const cfg = await leerConfig();
-    const [resumen, porHora, movimientos, eventos] = await Promise.all([
+    const [conectados, resumen, porHora, movimientos, eventos] = await Promise.all([
+      conectadosPorEmpresa({ forzar: req.query.forzar === '1' }),
       erp.query(
         `SELECT COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'novonet')::int AS novonet,
                 COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'velsa')::int   AS velsa,
@@ -52,7 +53,7 @@ router.get('/estado', async (req, res) => {
       erp.query('SELECT campo, valor, usuario, creado_en FROM bolsa_leads_eventos ORDER BY creado_en DESC LIMIT 15'),
     ]);
     res.json({
-      success: true, config: cfg, patron: resumenPatron(cfg.patron),
+      success: true, config: cfg, patron: resumenPatron(cfg.patron), conectados,
       resumen: resumen.rows[0], porHora: porHora.rows, movimientos: movimientos.rows, eventos: eventos.rows,
     });
   } catch (e) {
@@ -66,6 +67,7 @@ router.put('/config', async (req, res) => {
   const cambios = {};
   if (typeof b.activo === 'boolean') cambios.activo = b.activo;
   if (typeof b.encadenar_reparto === 'boolean') cambios.encadenar_reparto = b.encadenar_reparto;
+  if (typeof b.redirigir_sin_conectados === 'boolean') cambios.redirigir_sin_conectados = b.redirigir_sin_conectados;
   if (b.modo !== undefined) {
     if (!MODOS.includes(b.modo)) return res.status(400).json({ success: false, error: 'Modo inválido' });
     cambios.modo = b.modo;

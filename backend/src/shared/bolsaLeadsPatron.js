@@ -65,7 +65,32 @@ const siguienteEntrega = ({ patron, posicion, modo }) => {
   return { empresa: LETRAS[l[pos]], slot: pos + 1, siguiente: (pos + 1) % l.length };
 };
 
+/**
+ * Igual que siguienteEntrega, pero si la empresa de la casilla no tiene a
+ * NADIE conectado, el lead pasa a la siguiente casilla del ciclo cuya empresa
+ * sí tenga gente conectada (y el ciclo sigue desde ahí).
+ *   conectados: { novonet: n, velsa: n, semillero: n } | null (Bitrix Live sin respuesta)
+ * No redirige si: la opción está apagada, el modo es "solo una empresa",
+ * no hay datos de conexión, o ninguna empresa tiene a alguien conectado
+ * (en ese caso se entrega a la casilla normal y la empresa lo maneja).
+ * Devuelve además `saltadas`: las casillas que se saltaron por falta de conectados.
+ */
+const elegirEntrega = ({ patron, posicion, modo, conectados, redirigir = true }) => {
+  const base = siguienteEntrega({ patron, posicion, modo });
+  const n = (e) => Number(conectados?.[e]) || 0;
+  if (!redirigir || !conectados || base.slot === null || n(base.empresa) > 0) return { ...base, saltadas: [] };
+  const l = limpiarPatron(patron) || PATRON_DEFECTO;
+  const saltadas = [{ slot: base.slot, empresa: base.empresa }];
+  for (let paso = 1; paso < l.length; paso++) {
+    const pos = (base.slot - 1 + paso) % l.length;
+    const empresa = LETRAS[l[pos]];
+    if (n(empresa) > 0) return { empresa, slot: pos + 1, siguiente: (pos + 1) % l.length, saltadas, casillaOriginal: base.slot };
+    saltadas.push({ slot: pos + 1, empresa });
+  }
+  return { ...base, saltadas: [], sinConectados: true }; // nadie conectado en ninguna empresa
+};
+
 module.exports = {
   LETRAS, EMPRESAS_BOLSA, PATRON_DEFECTO, PATRON_ANTERIOR,
-  limpiarPatron, patronValido, generarPatron, resumenPatron, siguienteEntrega,
+  limpiarPatron, patronValido, generarPatron, resumenPatron, siguienteEntrega, elegirEntrega,
 };

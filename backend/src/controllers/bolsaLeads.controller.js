@@ -170,7 +170,7 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
   let conectados = null;
   if (cfg0.modo === 'proporcion' && cfg0.redirigir_sin_conectados !== false) {
     const c = await conectadosPorEmpresa();
-    if (c) conectados = { novonet: c.novonet.conectados, velsa: c.velsa.conectados, semillero: c.semillero.conectados };
+    if (c && !c.sinDatos) conectados = { novonet: c.novonet.conectados, velsa: c.velsa.conectados, semillero: c.semillero.conectados };
   }
 
   const client = await poolErp.connect();

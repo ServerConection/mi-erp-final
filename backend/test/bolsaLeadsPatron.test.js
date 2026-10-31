@@ -92,3 +92,11 @@ test('contar conectados: jornada abierta cuenta, en pausa no; solo asesores de c
   const r = contarConectados(data, asesores);
   assert.deepEqual([r.novonet.conectados, r.velsa.conectados, r.semillero.conectados], [1, 1, 0]);
 });
+
+const { contarDesdeMapa } = require('../src/shared/bolsaLeadsConectados');
+test('contar desde el mapa de gestionables: solo asesores en línea, por empresa', () => {
+  const mapa = new Map([['ANA PEREZ', { enLinea: true }], ['LUIS MORA', { enLinea: false }], ['ROSA VELA', { enLinea: true }]]);
+  const asesores = new Map([['ANA PEREZ', 'novonet'], ['LUIS MORA', 'novonet'], ['ROSA VELA', 'semillero'], ['PEDRO RUIZ', 'velsa']]);
+  const r = contarDesdeMapa(mapa, asesores);
+  assert.deepEqual([r.novonet.conectados, r.velsa.conectados, r.semillero.conectados], [1, 0, 1]);
+});

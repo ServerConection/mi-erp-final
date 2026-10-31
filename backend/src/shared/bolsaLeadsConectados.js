@@ -10,8 +10,9 @@
  *     USUARIO), clasificados por su empresa del ERP: NOVONET, VELSA o SEMILLERO.
  *     Si no se puede leer la tabla de usuarios, se usa la empresa que ya
  *     asigna Bitrix Live a cada persona.
- * Si Bitrix Live no responde, devuelve null y la Bolsa no redirige (entrega
- * según el ciclo, como siempre).
+ * Si Bitrix Live no responde se usa el último estado bueno guardado (igual que
+ * el bot de gestionables). Si nunca hubo uno, la Bolsa no redirige.
+ * Se refresca cada minuto (initConexionBolsaLeads).
  */
 const db = require('../config/db');
 const { normalizarNombre } = require('./repartoGestionables');
@@ -65,17 +66,55 @@ const contarConectados = (data, asesores) => {
   return Object.fromEntries(Object.entries(out).map(([e, nombres]) => [e, { conectados: nombres.length, nombres }]));
 };
 
+// Mismo criterio que el bot de gestionables: leerEnLinea() de repartoEstado
+// (jornada abierta; si el portal no usa jornada, "en línea"). Esa lectura ya
+// guarda el último estado bueno de Bitrix Live y lo usa si Bitrix no responde.
+// Se usa la vista de VELSA porque abarca los dos portales (NOVONET y VELSA).
+const contarDesdeMapa = (mapa, asesores) => {
+  const out = { novonet: [], velsa: [], semillero: [] };
+  for (const [nombre, emp] of asesores) {
+    if (mapa.get(nombre)?.enLinea && !out[emp].includes(nombre)) out[emp].push(nombre);
+  }
+  return Object.fromEntries(Object.entries(out).map(([e, nombres]) => [e, { conectados: nombres.length, nombres }]));
+};
+
+// Último resultado bueno de la Bolsa (por si falla también la lista de asesores)
+let ultimo = null;
+
+/**
+ * { novonet:{conectados,nombres}, velsa:{…}, semillero:{…}, generado, respaldo, motivo? }
+ * o { sinDatos: true, motivo } si nunca se pudo leer.
+ * respaldo = true → es el último estado conocido (Bitrix no respondió ahora).
+ */
 const conectadosPorEmpresa = async ({ forzar = false } = {}) => {
   try {
-    const { recolectar } = require('../controllers/bitrixSesiones.controller');
-    const [data, asesores] = await Promise.all([recolectar({ forzar }), asesoresPorNombre()]);
-    const algunaFuente = Object.values(data?.fuentes || {}).some((f) => f && !f.error && f.usuarios);
-    if (!algunaFuente) return null;
-    return { ...contarConectados(data, asesores), generado: data.generado };
+    const { leerEnLinea } = require('./repartoEstado');
+    const [enLinea, asesores] = await Promise.all([leerEnLinea({ forzar, empresa: 'velsa' }), asesoresPorNombre()]);
+    if (!enLinea) throw new Error('Bitrix Live no respondió y todavía no hay un estado guardado');
+    if (!asesores) throw new Error('No se pudo leer la lista de asesores del ERP');
+    const out = {
+      ...contarDesdeMapa(enLinea.mapa, asesores),
+      generado: enLinea.generado || new Date().toISOString(),
+      criterio: enLinea.criterio,
+      respaldo: !!enLinea.respaldo,
+      motivo: enLinea.respaldo ? enLinea.motivo_respaldo : undefined,
+    };
+    if (!out.respaldo) ultimo = out;
+    return out;
   } catch (e) {
-    console.warn('[bolsaLeads] Bitrix Live no respondió; se entrega según el ciclo:', e.message);
-    return null;
+    console.warn('[bolsaLeads] Conectados:', e.message);
+    if (ultimo) return { ...ultimo, respaldo: true, motivo: e.message };
+    return { sinDatos: true, motivo: e.message };
   }
 };
 
-module.exports = { conectadosPorEmpresa, contarConectados };
+// Cada minuto: mantiene fresco el estado de conexión (y el último estado bueno).
+const initConexionBolsaLeads = () => {
+  if (String(process.env.BOLSA_LEADS_CONEXION_WORKER || 'true').toLowerCase() === 'false') return null;
+  const cron = require('node-cron');
+  return cron.schedule('* * * * *', () => {
+    conectadosPorEmpresa().catch((e) => console.warn('[bolsaLeads] cron conexión:', e.message));
+  }, { timezone: 'America/Guayaquil' });
+};
+
+module.exports = { conectadosPorEmpresa, contarConectados, contarDesdeMapa, initConexionBolsaLeads };

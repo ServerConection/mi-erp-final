@@ -108,6 +108,24 @@ const resolverDestino = async (empresa) => {
   return (destinoCache[empresa] = { categoria, etapa, etiqueta: E.etiqueta, pipeline: E.pipeline, repartidor: E.repartidor });
 };
 
+// ── Etapa de entrada de Bolsa Leads ("LECTOR LEAD") ─────────────────────────
+// Solo se reparte lo que está en esta etapa: las demás etapas del pipeline
+// (BOLSA LEADS ARTS, VIDIKA, VELSA, CONTADOR GESTIONABLES…) no se tocan.
+// BOLSA_LEADS_STAGE_ID fija el ID; si no, se busca por nombre y, si no existe,
+// se usa la primera etapa del pipeline.
+const etapaOrigenCache = {};
+const resolverEtapaOrigen = async (categoria) => {
+  if (env.BOLSA_LEADS_STAGE_ID) return env.BOLSA_LEADS_STAGE_ID;
+  if (etapaOrigenCache[categoria]) return etapaOrigenCache[categoria];
+  const res = await bx('crm.dealcategory.stage.list', { id: categoria });
+  const etapas = res.result || [];
+  const nombre = normalizarNombre(env.BOLSA_LEADS_STAGE_NAME || 'LECTOR LEAD');
+  const st = etapas.find((e) => normalizarNombre(e.NAME) === nombre)
+    || [...etapas].sort((a, b) => Number(a.SORT) - Number(b.SORT))[0];
+  if (!st) throw new Error(`No se encontró la etapa de entrada del pipeline ${categoria}`);
+  return (etapaOrigenCache[categoria] = st.STATUS_ID);
+};
+
 // ── Pasar el lead al repartidor de asesores de la empresa ───────────────────
 const pasarAlRepartidor = async (empresa, dealId) => {
   const { reparto } = require('./gestionablesWebhook.controller');
@@ -142,6 +160,10 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
   }
   if (String(deal.CATEGORY_ID) !== String(cfg0.categoria_origen)) {
     return { estado: 'omitido', detalle: `Ya no está en Bolsa Leads (pipeline ${deal.CATEGORY_ID})` };
+  }
+  const etapaOrigen = await resolverEtapaOrigen(cfg0.categoria_origen);
+  if (deal.STAGE_ID !== etapaOrigen) {
+    return { estado: 'omitido', detalle: `No está en la etapa de entrada (${etapaOrigen}), está en ${deal.STAGE_ID}: no se toca` };
   }
 
   // ¿Quién está conectado? (solo en modo ciclo y con la opción encendida)
@@ -224,7 +246,8 @@ const distribuirPendientes = async ({ limite = 50 } = {}) => {
     const cfg = await leerConfig();
     if (!cfg.activo) return { procesados: 0, motivo: 'Bolsa Leads está apagada' };
     const json = await bx('crm.deal.list', {
-      filter: { CATEGORY_ID: cfg.categoria_origen }, select: ['ID'], order: { DATE_CREATE: 'ASC' },
+      filter: { CATEGORY_ID: cfg.categoria_origen, STAGE_ID: await resolverEtapaOrigen(cfg.categoria_origen) },
+      select: ['ID'], order: { DATE_CREATE: 'ASC' },
     });
     const ids = (json.result || []).slice(0, limite).map((d) => String(d.ID));
     const resumen = { procesados: 0, novonet: 0, velsa: 0, semillero: 0, errores: 0, total_en_bolsa: json.total ?? ids.length };

@@ -38,6 +38,7 @@ mock('services/bitrix.service.js', {
     if (method === 'crm.category.list') return { result: { categories: [{ id: 43, name: 'Bolsa Leads' }, { id: 7, name: 'NETLIFE NUEVO' }, { id: 51, name: 'VELSA' }, { id: 41, name: 'SEMILLERO' }] } };
     if (method === 'crm.dealcategory.stage.list') {
       // Semillero simulado sin etapa "Contacto nuevo": se usa la primera por SORT
+      if (String(params.id) === '43') return { result: [{ NAME: 'BOLSA LEADS ARTS', STATUS_ID: 'C43:PREPARATION', SORT: 20 }, { NAME: 'LECTOR LEAD', STATUS_ID: 'C43:NEW', SORT: 10 }] };
       if (String(params.id) === '41') return { result: [{ NAME: 'Seguimiento', STATUS_ID: 'C41:PREPARATION', SORT: 20 }, { NAME: 'Nuevo', STATUS_ID: 'C41:NEW', SORT: 10 }] };
       return { result: [{ NAME: 'Contacto nuevo', STATUS_ID: `C${params.id}:NEW` }] };
     }
@@ -144,4 +145,13 @@ test('opción de redirigir apagada: respeta la casilla aunque no haya nadie', as
   const r = await distribuir('501');
   conectadosSim = null;
   assert.equal(r.empresa, 'semillero');
+});
+
+test('un lead en otra etapa de Bolsa Leads (ARTS, VIDIKA…) no se toca', async () => {
+  reset();
+  deals[600] = { ID: '600', CATEGORY_ID: '43', STAGE_ID: 'C43:PREPARATION' };
+  const r = await distribuir('600');
+  assert.equal(r.estado, 'omitido');
+  assert.equal(deals[600].CATEGORY_ID, '43');
+  assert.equal(db.config.posicion, 0);
 });

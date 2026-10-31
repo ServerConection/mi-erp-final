@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
-import { puedeAccederGestionables } from '../utils/accesoGestionables';
+import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista } from '../utils/accesoAnalista';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
@@ -140,7 +140,7 @@ export default function HomeModules() {
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'SUPERVISOR'] },
     { title: "Bolsa Leads", path: "/bolsa-leads", icon: ClipboardList, accent: "azul", cat: "equipo",
       desc: "Reparte la pauta entre NOVONET, VELSA y SEMILLERO por ciclos (ej. 7/4/1), con encendido/apagado y reporte de entregas.",
-      rolesPermitidos: ['ADMINISTRADOR'] },
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
@@ -198,7 +198,8 @@ export default function HomeModules() {
         const empresaGestionables = mod.path === '/gestionables-asesores'
           ? 'NOVONET'
           : mod.path === '/gestionables-velsa' ? 'VELSA' : null;
-        if (empresaGestionables ? !puedeAccederGestionables(empresaGestionables) : !allowed) return false;
+        if (mod.path === '/bolsa-leads') { if (!puedeAccederBolsaLeads()) return false; }   // admin + gerencia (GERENTE, GERENCIA X…)
+        else if (empresaGestionables ? !puedeAccederGestionables(empresaGestionables) : !allowed) return false;
       }
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);

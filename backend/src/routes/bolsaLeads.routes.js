@@ -1,5 +1,5 @@
 /**
- * API del módulo "Bolsa Leads" (solo ADMINISTRADOR).
+ * API del módulo "Bolsa Leads" (ADMINISTRADOR y GERENCIA).
  *   GET  /api/bolsa-leads/estado?fecha=YYYY-MM-DD
  *   PUT  /api/bolsa-leads/config      { activo, modo, patron, encadenar_reparto, reiniciar_ciclo }
  *   POST /api/bolsa-leads/reintentar  { deal_id }
@@ -17,8 +17,8 @@ const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(String(f || ''));
 const usuarioDe = (req) => req.user?.nombreCompleto || req.user?.usuario || `ID ${req.user?.id}`;
 
 router.use(verificarToken, (req, res, next) => {
-  if (perfilGestionables(req.user?.perfil || req.user?.rol) !== 'ADMINISTRADOR') {
-    return res.status(403).json({ success: false, error: 'Solo el administrador puede usar Bolsa Leads' });
+  if (!['ADMINISTRADOR', 'GERENCIA'].includes(perfilGestionables(req.user?.perfil || req.user?.rol))) {
+    return res.status(403).json({ success: false, error: 'Solo administración y gerencia pueden usar Bolsa Leads' });
   }
   next();
 });

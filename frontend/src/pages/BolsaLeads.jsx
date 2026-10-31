@@ -105,7 +105,7 @@ export default function BolsaLeads() {
   const totalCant = LISTA.reduce((t, e) => t + (Number(cant[e]) || 0), 0);
   const movimientos = (data?.movimientos || []).filter((m) => filtro === 'todos' || m.estado === filtro || m.empresa === filtro);
 
-  if (!permitido) return <div className="p-8 text-slate-600">Solo el administrador puede usar Bolsa Leads.</div>;
+  if (!permitido) return <div className="p-8 text-slate-600">Solo administración y gerencia pueden usar Bolsa Leads.</div>;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">

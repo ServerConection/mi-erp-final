@@ -4,10 +4,11 @@
  * Toda la pauta entra a "Bolsa Leads". Una automatización de Bitrix llama a
  *   /bitrix_webhook_bolsa_leads.php?token=...&id={{ID}}
  * y aquí se decide a qué empresa va según el patrón del ciclo (por defecto
- * 60/40 en ciclos de 10: N V N V N N V N V N). El deal se mueve al pipeline de
- * esa empresa (NETLIFE NUEVO o VELSA, etapa Contacto nuevo) y, si está
- * activado, se le pasa al repartidor de asesores de esa empresa
- * (gestionablesWebhook.controller.js), que hace su trabajo de siempre.
+ * 12 casillas: N V N N V N S N V N N V → 7 NOVONET / 4 VELSA / 1 SEMILLERO).
+ * El deal se mueve al pipeline de esa empresa (NETLIFE NUEVO, VELSA o
+ * SEMILLERO, etapa de entrada) y, si está activado, se le pasa al repartidor
+ * de asesores de esa empresa (gestionablesWebhook.controller.js). SEMILLERO no
+ * tiene repartidor: el lead queda con el responsable que le ponga Bitrix.
  *
  * - Bolsa APAGADA → no se toca el lead (se queda en Bolsa Leads).
  * - El ciclo solo avanza cuando la entrega a Bitrix salió bien.
@@ -18,6 +19,23 @@ const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { EMPRESAS } = require('../shared/repartoEmpresas');
 const { normalizarNombre } = require('../shared/repartoGestionables');
 const { siguienteEntrega, resumenPatron, PATRON_DEFECTO } = require('../shared/bolsaLeadsPatron');
+
+// Pipelines destino. NOVONET y VELSA usan la misma configuración que su
+// repartidor de asesores (shared/repartoEmpresas.js). SEMILLERO es el pipeline
+// 41 del mismo portal y no tiene repartidor de asesores.
+const env = process.env;
+const DESTINOS = {
+  novonet: { ...EMPRESAS.novonet, repartidor: true },
+  velsa: { ...EMPRESAS.velsa, repartidor: true },
+  semillero: {
+    clave: 'semillero', etiqueta: 'SEMILLERO', pipeline: 'SEMILLERO',
+    categoryId: env.BOLSA_SEMILLERO_CATEGORY_ID || '41',
+    stageId: env.BOLSA_SEMILLERO_STAGE_ID || null,
+    etapa: env.BOLSA_SEMILLERO_STAGE_NAME || 'CONTACTO NUEVO',
+    etapaPrimeraSiNoExiste: true,   // si no hay "Contacto nuevo", la primera etapa del pipeline
+    repartidor: false,
+  },
+};
 
 const DEFAULT = {
   activo: false, modo: 'proporcion', patron: PATRON_DEFECTO, posicion: 0,
@@ -63,7 +81,8 @@ const registrar = async (db, f) => {
 const destinoCache = {};
 const resolverDestino = async (empresa) => {
   if (destinoCache[empresa]) return destinoCache[empresa];
-  const E = EMPRESAS[empresa];
+  const E = DESTINOS[empresa];
+  if (!E) throw new Error(`Empresa destino desconocida: ${empresa}`);
   let categoria = E.categoryId ? String(E.categoryId) : (/^C(\d+):/.exec(E.stageId || '') || [])[1] || null;
   if (!categoria) {
     const res = await bx('crm.category.list', { entityTypeId: 2 });
@@ -75,11 +94,13 @@ const resolverDestino = async (empresa) => {
   let etapa = E.stageId || null;
   if (!etapa) {
     const res = await bx('crm.dealcategory.stage.list', { id: categoria });
-    const st = (res.result || []).find((s) => normalizarNombre(s.NAME) === normalizarNombre(E.etapa || 'CONTACTO NUEVO'));
+    const etapas = res.result || [];
+    let st = etapas.find((s) => normalizarNombre(s.NAME) === normalizarNombre(E.etapa || 'CONTACTO NUEVO'));
+    if (!st && E.etapaPrimeraSiNoExiste) st = [...etapas].sort((a, b) => Number(a.SORT) - Number(b.SORT))[0];
     if (!st) throw new Error(`No se encontró la etapa ${E.etapa} en el pipeline ${E.pipeline}`);
     etapa = st.STATUS_ID;
   }
-  return (destinoCache[empresa] = { categoria, etapa });
+  return (destinoCache[empresa] = { categoria, etapa, etiqueta: E.etiqueta, pipeline: E.pipeline, repartidor: E.repartidor });
 };
 
 // ── Pasar el lead al repartidor de asesores de la empresa ───────────────────
@@ -140,17 +161,17 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
     });
     const item = upd.result?.item;
     if (!item || String(item.categoryId) !== String(destino.categoria)) {
-      throw new Error(`Bitrix no movió el lead al pipeline ${EMPRESAS[sig.empresa].pipeline}`);
+      throw new Error(`Bitrix no movió el lead al pipeline ${destino.pipeline}`);
     }
 
     await client.query('UPDATE bolsa_leads_config SET posicion = $1 WHERE id = 1', [sig.siguiente]);
     const ins = await client.query(
       `INSERT INTO bolsa_leads_entregas (bitrix_deal_id, empresa, casilla, modo, estado, detalle, origen)
        VALUES ($1,$2,$3,$4,'entregado',$5,$6) RETURNING id`,
-      [String(dealId), sig.empresa, sig.slot, cfg.modo, `Movido a ${EMPRESAS[sig.empresa].pipeline} / Contacto nuevo`, origen]
+      [String(dealId), sig.empresa, sig.slot, cfg.modo, `Movido a ${destino.pipeline} (${destino.etapa})`, origen]
     );
     await client.query('COMMIT');
-    r = { estado: 'entregado', empresa: sig.empresa, casilla: sig.slot, id: ins.rows[0].id, encadenar: cfg.encadenar_reparto };
+    r = { estado: 'entregado', empresa: sig.empresa, casilla: sig.slot, id: ins.rows[0].id, encadenar: cfg.encadenar_reparto, repartidor: destino.repartidor };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(`[bolsaLeads] Deal ${dealId} error:`, err.message);
@@ -160,11 +181,14 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
     client.release();
   }
 
-  console.log(`[bolsaLeads] Deal ${dealId} → ${EMPRESAS[r.empresa].etiqueta}${r.casilla ? ` (casilla ${r.casilla})` : ''}`);
+  console.log(`[bolsaLeads] Deal ${dealId} → ${DESTINOS[r.empresa].etiqueta}${r.casilla ? ` (casilla ${r.casilla})` : ''}`);
   if (r.encadenar) {
     let resultado;
-    try { resultado = await pasarAlRepartidor(r.empresa, dealId); }
-    catch (e) { resultado = `Error del repartidor: ${e.message}`; }
+    if (!r.repartidor) resultado = 'Sin repartidor de asesores: queda con su responsable de Bitrix';
+    else {
+      try { resultado = await pasarAlRepartidor(r.empresa, dealId); }
+      catch (e) { resultado = `Error del repartidor: ${e.message}`; }
+    }
     await poolErp.query('UPDATE bolsa_leads_entregas SET reparto_resultado = $2 WHERE id = $1', [r.id, resultado]).catch(() => {});
     r.reparto = resultado;
   }
@@ -183,7 +207,7 @@ const distribuirPendientes = async ({ limite = 50 } = {}) => {
       filter: { CATEGORY_ID: cfg.categoria_origen }, select: ['ID'], order: { DATE_CREATE: 'ASC' },
     });
     const ids = (json.result || []).slice(0, limite).map((d) => String(d.ID));
-    const resumen = { procesados: 0, novonet: 0, velsa: 0, errores: 0, total_en_bolsa: json.total ?? ids.length };
+    const resumen = { procesados: 0, novonet: 0, velsa: 0, semillero: 0, errores: 0, total_en_bolsa: json.total ?? ids.length };
     for (const id of ids) {
       const r = await distribuir(id, { origen: 'pendientes' });
       resumen.procesados++;
@@ -204,7 +228,7 @@ const recibirBolsaLead = async (req, res) => {
   if (!/^\d+$/.test(dealId)) return res.status(400).send('Falta id');
   try {
     const r = await distribuir(dealId);
-    return res.status(200).send(r.estado === 'entregado' ? `OK → ${EMPRESAS[r.empresa].etiqueta}` : `OK (${r.detalle})`);
+    return res.status(200).send(r.estado === 'entregado' ? `OK → ${DESTINOS[r.empresa].etiqueta}` : `OK (${r.detalle})`);
   } catch (err) {
     console.error('[bolsaLeads] webhook error:', err.message);
     await registrar(poolErp, { dealId, estado: 'error', detalle: err.message });
@@ -212,4 +236,4 @@ const recibirBolsaLead = async (req, res) => {
   }
 };
 
-module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, resumenPatron };
+module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, resumenPatron, DESTINOS };

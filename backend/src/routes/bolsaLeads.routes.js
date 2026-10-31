@@ -12,7 +12,7 @@ const { perfilGestionables } = require('../shared/accesoGestionables');
 const { leerConfig, distribuir, distribuirPendientes } = require('../controllers/bolsaLeads.controller');
 const { patronValido, limpiarPatron, resumenPatron } = require('../shared/bolsaLeadsPatron');
 
-const MODOS = ['proporcion', 'solo_novonet', 'solo_velsa'];
+const MODOS = ['proporcion', 'solo_novonet', 'solo_velsa', 'solo_semillero'];
 const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(String(f || ''));
 const usuarioDe = (req) => req.user?.nombreCompleto || req.user?.usuario || `ID ${req.user?.id}`;
 
@@ -34,13 +34,15 @@ router.get('/estado', async (req, res) => {
       erp.query(
         `SELECT COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'novonet')::int AS novonet,
                 COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'velsa')::int   AS velsa,
+                COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'semillero')::int AS semillero,
                 COUNT(*) FILTER (WHERE estado = 'error')::int   AS errores,
                 COUNT(*) FILTER (WHERE estado = 'omitido')::int AS omitidos
            FROM bolsa_leads_entregas WHERE ${filtroDia}`, params),
       erp.query(
         `SELECT EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
                 COUNT(*) FILTER (WHERE empresa = 'novonet')::int AS novonet,
-                COUNT(*) FILTER (WHERE empresa = 'velsa')::int   AS velsa
+                COUNT(*) FILTER (WHERE empresa = 'velsa')::int   AS velsa,
+                COUNT(*) FILTER (WHERE empresa = 'semillero')::int AS semillero
            FROM bolsa_leads_entregas WHERE estado = 'entregado' AND ${filtroDia}
           GROUP BY 1 ORDER BY 1`, params),
       erp.query(
@@ -69,7 +71,7 @@ router.put('/config', async (req, res) => {
     cambios.modo = b.modo;
   }
   if (b.patron !== undefined) {
-    if (!patronValido(b.patron)) return res.status(400).json({ success: false, error: 'El patrón solo puede tener N y V (1 a 50 casillas)' });
+    if (!patronValido(b.patron)) return res.status(400).json({ success: false, error: 'El ciclo solo puede tener N, V y S (1 a 50 casillas)' });
     cambios.patron = limpiarPatron(b.patron);
   }
   const reiniciar = b.reiniciar_ciclo === true || cambios.patron !== undefined; // patrón nuevo = ciclo desde la casilla 1

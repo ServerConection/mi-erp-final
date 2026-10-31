@@ -75,7 +75,7 @@ export default function BolsaLeads() {
   useEffect(() => { if (permitido) cargar(); }, [cargar, permitido]);
   useEffect(() => {
     if (!permitido) return undefined;
-    const t = setInterval(() => cargar(), 30000);
+    const t = setInterval(() => cargar(), 60000);   // cada minuto
     return () => clearInterval(t);
   }, [cargar, permitido]);
 
@@ -91,7 +91,9 @@ export default function BolsaLeads() {
   };
 
   const cfg = data?.config;
-  const conectados = data?.conectados || null;   // null = Bitrix Live no respondió
+  // sinDatos = nunca se pudo leer; respaldo = último estado guardado (Bitrix no respondió ahora)
+  const conectados = data?.conectados && !data.conectados.sinDatos ? data.conectados : null;
+  const motivoConexion = data?.conectados?.motivo || null;
   const nCon = (e) => conectados?.[e]?.conectados ?? null;
   const cambioPatron = cfg && borrador !== cfg.patron;
   const resumenBorrador = useMemo(() => Object.fromEntries(LISTA.map((e) => {
@@ -103,7 +105,7 @@ export default function BolsaLeads() {
   const totalCant = LISTA.reduce((t, e) => t + (Number(cant[e]) || 0), 0);
   const movimientos = (data?.movimientos || []).filter((m) => filtro === 'todos' || m.estado === filtro || m.empresa === filtro);
 
-  if (!permitido) return <div className="p-8 text-slate-600">Solo el administrador puede usar Bolsa Leads.</div>;
+  if (!permitido) return <div className="p-8 text-slate-600">Solo administración y gerencia pueden usar Bolsa Leads.</div>;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
@@ -134,7 +136,13 @@ export default function BolsaLeads() {
               <h2 className="font-semibold text-slate-700">Asesores conectados ahora (Bitrix, jornada abierta)</h2>
               <button type="button" onClick={() => cargar(true)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50">Actualizar conexión</button>
             </div>
-            {!conectados && <div className="text-sm text-amber-700">Bitrix Live no respondió: mientras tanto se entrega según el ciclo, sin redirigir.</div>}
+            {!conectados && <div className="text-sm text-amber-700">Bitrix Live no respondió: mientras tanto se entrega según el ciclo, sin redirigir.{motivoConexion ? ` (${motivoConexion})` : ''}</div>}
+            {conectados && (
+              <div className={`mb-2 text-xs ${conectados.respaldo ? 'text-amber-700' : 'text-slate-400'}`}>
+                {conectados.respaldo ? 'Bitrix no respondió: se usa el último estado guardado de las ' : 'Leído de Bitrix a las '}
+                {conectados.generado ? hora(conectados.generado) : '—'} · se actualiza cada minuto
+              </div>
+            )}
             {conectados && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 {LISTA.map((e) => (

@@ -13,6 +13,10 @@
  * - Bolsa APAGADA → no se toca el lead (se queda en Bolsa Leads).
  * - El ciclo solo avanza cuando la entrega a Bitrix salió bien.
  * - Un mismo lead nunca se entrega dos veces.
+ * - Horario: el MISMO del reparto de gestionables NOVONET (por defecto 08:00:00 a
+ *   22:15:59, se cambia desde ese panel). Fuera de horario el lead se queda en
+ *   LECTOR LEAD y el cron de cada minuto lo reparte desde la hora de inicio,
+ *   del más antiguo al más nuevo.
  * - Si la empresa de la casilla no tiene a NADIE conectado en Bitrix (jornada
  *   abierta), el lead pasa a la siguiente casilla cuya empresa sí tenga gente
  *   (opción "redirigir_sin_conectados", encendida por defecto). Solo mide
@@ -21,7 +25,7 @@
 const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet } = require('../services/bitrix.service');
 const { EMPRESAS } = require('../shared/repartoEmpresas');
-const { normalizarNombre } = require('../shared/repartoGestionables');
+const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
 const { elegirEntrega, resumenPatron, PATRON_DEFECTO } = require('../shared/bolsaLeadsPatron');
 const { conectadosPorEmpresa } = require('../shared/bolsaLeadsConectados');
 
@@ -142,6 +146,15 @@ const pasarAlRepartidor = async (empresa, dealId) => {
   return out.code === 200 ? out.body : `Error del repartidor (${out.code}): ${out.body}`;
 };
 
+// ── Horario: el mismo del reparto de gestionables NOVONET ───────────────────
+const leerHorario = async () => {
+  let cfg = {};
+  try { cfg = await require('../shared/repartoEstado').leerConfig({ empresa: 'novonet' }); } catch { /* por defecto */ }
+  const inicio = cfg.hora_inicio || '08:00:00';
+  const fin = cfg.hora_fin || '22:15:59';
+  return { inicio, fin, dentro: dentroDeHorario(new Date(), inicio, fin) };
+};
+
 // ── Entregar UN lead ─────────────────────────────────────────────────────────
 // Devuelve { estado: 'entregado'|'omitido'|'error', empresa?, casilla?, detalle }
 const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) => {
@@ -150,6 +163,13 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
   if (!cfg0.activo && !forzar) {
     await registrar(poolErp, { dealId, estado: 'omitido', detalle: 'Bolsa Leads apagada: el lead se queda en Bolsa Leads', origen });
     return { estado: 'omitido', detalle: 'Bolsa apagada' };
+  }
+  const horario = await leerHorario();
+  if (!horario.dentro) {
+    if (origen === 'webhook') {
+      await registrar(poolErp, { dealId, estado: 'en_espera', detalle: `Fuera de horario: espera en LECTOR LEAD hasta las ${horario.inicio.slice(0, 5)}`, origen });
+    }
+    return { estado: 'en_espera', detalle: `Fuera de horario (${horario.inicio.slice(0, 5)}–${horario.fin.slice(0, 5)})` };
   }
 
   // ¿Sigue en Bolsa Leads? (Bitrix puede disparar 2 veces o alguien ya lo movió)
@@ -245,6 +265,8 @@ const distribuirPendientes = async ({ limite = 50 } = {}) => {
   try {
     const cfg = await leerConfig();
     if (!cfg.activo) return { procesados: 0, motivo: 'Bolsa Leads está apagada' };
+    const horario = await leerHorario();
+    if (!horario.dentro) return { procesados: 0, motivo: `Fuera de horario: se reparte de ${horario.inicio.slice(0, 5)} a ${horario.fin.slice(0, 5)}` };
     const json = await bx('crm.deal.list', {
       filter: { CATEGORY_ID: cfg.categoria_origen, STAGE_ID: await resolverEtapaOrigen(cfg.categoria_origen) },
       select: ['ID'], order: { DATE_CREATE: 'ASC' },
@@ -279,4 +301,17 @@ const recibirBolsaLead = async (req, res) => {
   }
 };
 
-module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, resumenPatron, DESTINOS, conectadosPorEmpresa };
+// ── Cron cada minuto: entrega lo que espera en LECTOR LEAD ──────────────────
+// (lo que llegó fuera de horario, con la Bolsa apagada o si un webhook falló).
+// distribuirPendientes ya no hace nada si está apagada o fuera de horario.
+const initBolsaLeadsCron = () => {
+  if (String(process.env.BOLSA_LEADS_COLA_WORKER || 'true').toLowerCase() === 'false') return null;
+  const cron = require('node-cron');
+  return cron.schedule('* * * * *', () => {
+    distribuirPendientes({ limite: 30 })
+      .then((r) => { if (r?.procesados) console.log(`[bolsaLeads] Cola: ${r.novonet} NOVONET, ${r.velsa} VELSA, ${r.semillero} SEMILLERO, ${r.errores} errores`); })
+      .catch((e) => console.error('[bolsaLeads] cron cola:', e.message));
+  }, { timezone: 'America/Guayaquil' });
+};
+
+module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, leerHorario, resumenPatron, DESTINOS, conectadosPorEmpresa, initBolsaLeadsCron };

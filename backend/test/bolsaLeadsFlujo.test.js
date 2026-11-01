@@ -58,6 +58,8 @@ let conectadosSim = null;   // null = Bitrix Live sin respuesta (no redirige)
 mock('shared/bolsaLeadsConectados.js', {
   conectadosPorEmpresa: async () => conectadosSim && Object.fromEntries(Object.entries(conectadosSim).map(([e, n]) => [e, { conectados: n, nombres: [] }])),
 });
+let horaSim = { hora_inicio: '00:00:00', hora_fin: '23:59:59' };   // por defecto: siempre en horario
+mock('shared/repartoEstado.js', { leerConfig: async () => horaSim });
 process.env.GESTIONABLES_CATEGORY_ID = '';
 const { distribuir } = require('../src/controllers/bolsaLeads.controller');
 const nuevoDeal = (id) => (deals[id] = { ID: String(id), CATEGORY_ID: '43', STAGE_ID: 'C43:NEW' });
@@ -154,4 +156,18 @@ test('un lead en otra etapa de Bolsa Leads (ARTS, VIDIKA…) no se toca', async 
   assert.equal(r.estado, 'omitido');
   assert.equal(deals[600].CATEGORY_ID, '43');
   assert.equal(db.config.posicion, 0);
+});
+
+test('fuera de horario: el lead se queda en LECTOR LEAD (en espera) y no mueve el ciclo', async () => {
+  reset();
+  horaSim = { hora_inicio: '25:00:00', hora_fin: '25:00:01' };   // nunca en horario
+  nuevoDeal(700);
+  const r = await distribuir('700');
+  horaSim = { hora_inicio: '00:00:00', hora_fin: '23:59:59' };
+  assert.equal(r.estado, 'en_espera');
+  assert.equal(deals[700].CATEGORY_ID, '43');
+  assert.equal(db.config.posicion, 0);
+  assert.equal(db.entregas.at(-1).estado, 'en_espera');
+  // Ya en horario, se entrega normal
+  assert.equal((await distribuir('700')).estado, 'entregado');
 });

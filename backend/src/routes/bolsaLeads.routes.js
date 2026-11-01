@@ -9,7 +9,7 @@ const router = require('express').Router();
 const erp = require('../config/dbErp');
 const { verificarToken } = require('../middleware/auth');
 const { perfilGestionables } = require('../shared/accesoGestionables');
-const { leerConfig, distribuir, distribuirPendientes, conectadosPorEmpresa } = require('../controllers/bolsaLeads.controller');
+const { leerConfig, leerHorario, distribuir, distribuirPendientes, conectadosPorEmpresa } = require('../controllers/bolsaLeads.controller');
 const { patronValido, limpiarPatron, resumenPatron } = require('../shared/bolsaLeadsPatron');
 
 const MODOS = ['proporcion', 'solo_novonet', 'solo_velsa', 'solo_semillero'];
@@ -30,14 +30,16 @@ router.get('/estado', async (req, res) => {
     const params = fecha ? [fecha] : [];
     const filtroDia = `(creado_en AT TIME ZONE 'America/Guayaquil')::date = ${DIA}`;
     const cfg = await leerConfig();
-    const [conectados, resumen, porHora, movimientos, eventos] = await Promise.all([
+    const [horario, conectados, resumen, porHora, movimientos, eventos] = await Promise.all([
+      leerHorario(),
       conectadosPorEmpresa({ forzar: req.query.forzar === '1' }),
       erp.query(
         `SELECT COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'novonet')::int AS novonet,
                 COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'velsa')::int   AS velsa,
                 COUNT(*) FILTER (WHERE estado = 'entregado' AND empresa = 'semillero')::int AS semillero,
                 COUNT(*) FILTER (WHERE estado = 'error')::int   AS errores,
-                COUNT(*) FILTER (WHERE estado = 'omitido')::int AS omitidos
+                COUNT(*) FILTER (WHERE estado = 'omitido')::int AS omitidos,
+                COUNT(*) FILTER (WHERE estado = 'en_espera')::int AS en_espera
            FROM bolsa_leads_entregas WHERE ${filtroDia}`, params),
       erp.query(
         `SELECT EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
@@ -53,7 +55,7 @@ router.get('/estado', async (req, res) => {
       erp.query('SELECT campo, valor, usuario, creado_en FROM bolsa_leads_eventos ORDER BY creado_en DESC LIMIT 15'),
     ]);
     res.json({
-      success: true, config: cfg, patron: resumenPatron(cfg.patron), conectados,
+      success: true, config: cfg, patron: resumenPatron(cfg.patron), conectados, horario,
       resumen: resumen.rows[0], porHora: porHora.rows, movimientos: movimientos.rows, eventos: eventos.rows,
     });
   } catch (e) {

@@ -22,6 +22,7 @@ const ESTADO = {
   entregado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   error: 'bg-red-50 text-red-700 border-red-200',
   omitido: 'bg-slate-100 text-slate-600 border-slate-300',
+  en_espera: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 async function api(path, options = {}) {
@@ -127,6 +128,12 @@ export default function BolsaLeads() {
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
       {mensaje && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{mensaje}</div>}
       {!data && !error && <div className="text-slate-500">Cargando…</div>}
+      {data?.horario && (
+        <div className={`rounded-lg border px-4 py-2 text-sm ${data.horario.dentro ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          Horario de reparto: {data.horario.inicio.slice(0, 5)} a {data.horario.fin.slice(0, 5)} (el mismo de gestionables).{' '}
+          {data.horario.dentro ? 'Ahora está en horario.' : `Fuera de horario: los leads esperan en LECTOR LEAD y se reparten desde las ${data.horario.inicio.slice(0, 5)}, del más antiguo al más nuevo.`}
+        </div>
+      )}
 
       {cfg && (
         <>
@@ -234,7 +241,7 @@ export default function BolsaLeads() {
                 ['VELSA', res.velsa, total ? `${Math.round((res.velsa * 100) / total)}%` : '—', 'text-fuchsia-700'],
                 ['SEMILLERO', res.semillero || 0, total ? `${Math.round(((res.semillero || 0) * 100) / total)}%` : '—', 'text-emerald-700'],
                 ['Errores', res.errores, 'se pueden reintentar', 'text-red-600'],
-                ['Omitidos', res.omitidos, 'bolsa apagada o ya entregados', 'text-slate-600'],
+                ['Omitidos', res.omitidos, `bolsa apagada o ya entregados${res.en_espera ? ` · ${res.en_espera} esperaron por horario` : ''}`, 'text-slate-600'],
               ].map(([t, v, s, c]) => (
                 <div key={t} className="rounded-xl border p-3">
                   <div className="text-xs text-slate-500">{t}</div>
@@ -268,9 +275,9 @@ export default function BolsaLeads() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-slate-700">Movimientos</h2>
               <div className="flex flex-wrap gap-1">
-                {['todos', 'novonet', 'velsa', 'semillero', 'error', 'omitido'].map((f) => (
+                {['todos', 'novonet', 'velsa', 'semillero', 'en_espera', 'error', 'omitido'].map((f) => (
                   <button key={f} type="button" onClick={() => setFiltro(f)}
-                    className={`rounded-full border px-3 py-1 text-xs capitalize ${filtro === f ? 'border-slate-800 bg-slate-800 text-white' : 'text-slate-600'}`}>{f}</button>
+                    className={`rounded-full border px-3 py-1 text-xs capitalize ${filtro === f ? 'border-slate-800 bg-slate-800 text-white' : 'text-slate-600'}`}>{f.replace('_', ' ')}</button>
                 ))}
               </div>
             </div>

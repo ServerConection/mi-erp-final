@@ -15,14 +15,27 @@
  * Se refresca cada minuto (initConexionBolsaLeads).
  */
 const db = require('../config/db');
+const poolErp = require('../config/dbErp');
 const { normalizarNombre } = require('./repartoGestionables');
 
 const EMPRESA_DE = { NOVONET: 'novonet', VELSA: 'velsa', SEMILLERO: 'semillero' };
 const PERFILES_ASESOR = ['ASESOR', 'USUARIO'];
 
 let cacheAsesores = { ts: 0, mapa: null };
+/**
+ * Mapa nombre normalizado → empresa.
+ *  1) PRIMERO, la misma lista que usa el repartidor de gestionables: los asesores
+ *     con cupo cargado (gestionables_asesores = NOVONET, velsa_gestionables_asesores
+ *     = VELSA), en los últimos 7 días. Ese nombre ES el de Bitrix, así que el cruce
+ *     con Bitrix Live es exacto — igual que en el repartidor.
+ *  2) Después, los usuarios activos del ERP (perfil ASESOR/USUARIO) para quien no
+ *     tenga cupo (por ejemplo SEMILLERO, que no tiene repartidor).
+ */
 const asesoresPorNombre = async () => {
-  if (cacheAsesores.mapa && Date.now() - cacheAsesores.ts < 10 * 60 * 1000) return cacheAsesores.mapa;
+  if (cacheAsesores.mapa && Date.now() - cacheAsesores.ts < 2 * 60 * 1000) return cacheAsesores.mapa;
+  const mapa = new Map();
+  let algo = false;
+  // 2) usuarios del ERP (se cargan primero y la lista de cupos los pisa)
   try {
     const { rows } = await db.query(
       `SELECT empresa, usuario, nombres, apellidos FROM public.usuarios
@@ -31,19 +44,35 @@ const asesoresPorNombre = async () => {
           AND UPPER(BTRIM(COALESCE(empresa, ''))) IN ('NOVONET', 'VELSA', 'SEMILLERO')`,
       [PERFILES_ASESOR]
     );
-    const mapa = new Map();
     for (const r of rows) {
       const emp = EMPRESA_DE[String(r.empresa).trim().toUpperCase()];
       const nombre = normalizarNombre(`${r.nombres || ''} ${r.apellidos || ''}`);
       if (nombre) mapa.set(nombre, emp);
       if (r.usuario) mapa.set(normalizarNombre(r.usuario), emp);
     }
-    cacheAsesores = { ts: Date.now(), mapa };
-    return mapa;
+    algo = true;
   } catch (e) {
-    console.warn('[bolsaLeads] No se pudo leer usuarios del ERP; se usa la empresa de Bitrix Live:', e.message);
-    return null;
+    console.warn('[bolsaLeads] No se pudo leer usuarios del ERP:', e.message);
   }
+  // 1) lista de cupos del repartidor (manda sobre la de usuarios)
+  for (const [emp, tabla] of [['novonet', 'gestionables_asesores'], ['velsa', 'velsa_gestionables_asesores']]) {
+    try {
+      const { rows } = await poolErp.query(
+        `SELECT DISTINCT nombre_bitrix_asesor AS nombre FROM ${tabla}
+          WHERE fecha_carga >= (NOW() AT TIME ZONE 'America/Guayaquil')::date - 7`
+      );
+      for (const r of rows) mapa.set(normalizarNombre(r.nombre), emp);
+      algo = true;
+    } catch (e) {
+      console.warn(`[bolsaLeads] No se pudo leer ${tabla}:`, e.message);
+    }
+  }
+  if (!algo) return null;
+  // Las estaciones (donde esperan los leads) no son asesores: no cuentan como conectados
+  const { EMPRESAS } = require('./repartoEmpresas');
+  for (const E of Object.values(EMPRESAS)) if (E.estacion) mapa.delete(normalizarNombre(E.estacion));
+  cacheAsesores = { ts: Date.now(), mapa };
+  return mapa;
 };
 
 /**
@@ -117,4 +146,4 @@ const initConexionBolsaLeads = () => {
   }, { timezone: 'America/Guayaquil' });
 };
 
-module.exports = { conectadosPorEmpresa, contarConectados, contarDesdeMapa, initConexionBolsaLeads };
+module.exports = { conectadosPorEmpresa, contarConectados, contarDesdeMapa, initConexionBolsaLeads, asesoresPorNombre };

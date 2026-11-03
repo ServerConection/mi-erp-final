@@ -373,6 +373,9 @@ const ALL_MENU_ITEMS = [
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
 
+  // Mis negociaciones (deals Bitrix): visible para todos; el backend filtra por responsable.
+  { name: "🤝 Mis negociaciones", path: "/mis-negociaciones", icon: "🤝", accessCheck: () => true },
+
   // ── Vista Asesor ─────────────────────────────────────────────────────────
   { name: "Vista Asesor", path: null, icon: "👤", isGroup: true, groupId: "vista-asesor" },
   { name: "Vista Asesor NOVONET", path: "/vista-asesor",       icon: "👤", permiso: "VistaAsesor",      isChild: true, group: "vista-asesor" },

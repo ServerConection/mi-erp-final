@@ -271,6 +271,7 @@ app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));
+app.use('/api/mis-negociaciones', require('./routes/misNegociaciones.routes'));
 app.use('/api/bolsa-leads', require('./routes/bolsaLeads.routes'));
 app.use('/api/tareas',   tareasRoutes);
 app.use('/api/hojas',    hojasRoutes);

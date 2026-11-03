@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 
 /**
@@ -113,7 +114,7 @@ export default function BolsaLeads() {
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Bolsa Leads</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Bolsa Leads <Link to="/bolsa-leads/costos" className="ml-2 align-middle text-sm font-medium text-amber-700 hover:underline">💰 Ver costos del piloto</Link></h1>
           <p className="text-sm text-slate-500">Reparte la pauta del pipeline "Bolsa Leads" entre NOVONET, VELSA y SEMILLERO. Después entra el repartidor de asesores de cada empresa.</p>
         </div>
         {cfg && (

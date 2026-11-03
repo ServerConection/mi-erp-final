@@ -431,6 +431,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederGestionables('VELSA') },
   { name: "Bolsa Leads", path: "/bolsa-leads", icon: "🔀",
     accessCheck: () => puedeAccederBolsaLeads() },
+  { name: "Costos Bolsa Leads", path: "/bolsa-leads/costos", icon: "💰",
+    accessCheck: () => puedeAccederBolsaLeads() },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",

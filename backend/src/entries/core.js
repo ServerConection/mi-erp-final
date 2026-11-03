@@ -18,6 +18,7 @@ app.use(express.static(publicPath));
 app.use('/api/semillero', require('../routes/semillero.routes'));
 app.use('/api/ventaenlinea', require('../routes/ventaenlinea.routes'));
 app.use('/api/gestionables-asesores', require('../routes/gestionables.routes'));
+app.use('/api/mis-negociaciones', require('../routes/misNegociaciones.routes'));
 require('../routes/bitrixConnector.mount').mountBitrixConnector(app);
 
 // ── Auth / usuarios ──────────────────────────────────────────

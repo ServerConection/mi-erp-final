@@ -16,6 +16,7 @@ const EMP = {
   semillero: { label: 'SEMILLERO', color: '#059669', suave: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
 };
 const LISTA = ['novonet', 'velsa', 'semillero'];
+const PROBLEMA = ['SIN ORIGEN', 'SIN AGENCIA'];
 const usd = (n) => (n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const num = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('es-EC'));
 const pct = (n) => (n === null || n === undefined ? '—' : `${n}%`);
@@ -52,6 +53,7 @@ export default function BolsaLeadsCostos() {
   const [data, setData] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [tab, setTab] = useState('origen');
   const [filtroEmp, setFiltroEmp] = useState('todas'), [soloVenta, setSoloVenta] = useState(false), [pagina, setPagina] = useState(0);
+  const [filtroAgencia, setFiltroAgencia] = useState('todas');   // 'todas' | 'revisar' | nombre de agencia
 
   const cargar = useCallback(async (d = desde, h = hasta) => {
     setBusy(true); setError('');
@@ -66,7 +68,16 @@ export default function BolsaLeadsCostos() {
   useEffect(() => { if (permitido) cargar('', ''); }, [permitido]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const detalle = useMemo(() => (data?.detalle || [])
-    .filter((d) => (filtroEmp === 'todas' || d.empresa === filtroEmp) && (!soloVenta || d.ventas > 0)), [data, filtroEmp, soloVenta]);
+    .filter((d) => (filtroEmp === 'todas' || d.empresa === filtroEmp) && (!soloVenta || d.ventas > 0)
+      && (filtroAgencia === 'todas' || (filtroAgencia === 'revisar' ? PROBLEMA.includes(d.agencia) : d.agencia === filtroAgencia))),
+  [data, filtroEmp, soloVenta, filtroAgencia]);
+  // Leads sin origen o con un origen que no está en el catálogo de Redes
+  const revisar = useMemo(() => {
+    const filas = (data?.porAgencia || []).filter((a) => PROBLEMA.includes(a.agencia));
+    const origenes = (data?.porOrigen || []).filter((o) => o.agencia === 'SIN AGENCIA');
+    return { filas, origenes, total: filas.reduce((n, a) => n + a.total, 0) };
+  }, [data]);
+  const verLeads = (agencia, empresa = 'todas') => { setTab('lead'); setFiltroAgencia(agencia); setFiltroEmp(empresa); setSoloVenta(false); setPagina(0); };
   const POR_PAGINA = 100;
 
   if (!permitido) return <div className="p-8 text-slate-600">Solo administración y gerencia pueden ver este reporte.</div>;
@@ -173,6 +184,51 @@ export default function BolsaLeadsCostos() {
             </section>
           )}
 
+          {/* Leads por revisar */}
+          {revisar.total > 0 && (
+            <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-semibold text-amber-900">⚠ {num(revisar.total)} leads por revisar ({t.leads ? `${Math.round((revisar.total * 1000) / t.leads) / 10}%` : '—'} del total)</h2>
+                <button type="button" onClick={() => verLeads('revisar')} className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm text-amber-900 hover:bg-amber-100">Ver todos los leads</button>
+              </div>
+              <ul className="mb-3 list-disc pl-5 text-xs text-amber-900">
+                <li><b>SIN ORIGEN</b>: Bitrix no mandó el origen del lead al ERP. Revisa el lead en Bitrix: no tiene "Origen" o no pasó por el webhook.</li>
+                <li><b>SIN AGENCIA</b>: el lead tiene origen, pero ese origen no está en el catálogo de Redes. Agrégalo en Redes (NOVONET o VELSA) con su agencia y se corrige solo.</li>
+              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-amber-800"><th className="py-1">Motivo</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th></tr></thead>
+                  <tbody>{revisar.filas.map((a) => (
+                    <tr key={a.agencia} className="border-t border-amber-200">
+                      <td className="py-1.5 font-semibold">{a.agencia}</td>
+                      {LISTA.map((e) => (
+                        <td key={e}>{a[e] ? <button type="button" onClick={() => verLeads(a.agencia, e)} className="underline">{num(a[e])}</button> : '0'}</td>
+                      ))}
+                      <td className="font-semibold">{num(a.total)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              {revisar.origenes.length > 0 && (
+                <div className="mt-3">
+                  <div className="mb-1 text-xs font-semibold text-amber-900">Orígenes que faltan en el catálogo de Redes:</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-amber-800"><th className="py-1">Origen</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th></tr></thead>
+                      <tbody>{revisar.origenes.map((o) => (
+                        <tr key={o.origen} className="border-t border-amber-200">
+                          <td className="py-1.5 font-mono text-xs">{o.origen}</td>
+                          {LISTA.map((e) => <td key={e}>{num(o[e])}</td>)}
+                          <td className="font-semibold">{num(o.total)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Gráfico */}
           {data.porDia.length > 0 && (
             <section className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -255,6 +311,11 @@ export default function BolsaLeadsCostos() {
                     <button key={e} type="button" onClick={() => { setFiltroEmp(e); setPagina(0); }}
                       className={`rounded-full border px-3 py-1 text-xs ${filtroEmp === e ? 'border-slate-800 bg-slate-800 text-white' : 'text-slate-600'}`}>{e === 'todas' ? 'Todas' : EMP[e].label}</button>
                   ))}
+                  <select value={filtroAgencia} onChange={(e) => { setFiltroAgencia(e.target.value); setPagina(0); }} className="rounded-lg border px-2 py-1 text-xs">
+                    <option value="todas">Todas las agencias</option>
+                    <option value="revisar">⚠ Sin origen / sin agencia</option>
+                    {(data.porAgencia || []).map((a) => <option key={a.agencia} value={a.agencia}>{a.agencia}</option>)}
+                  </select>
                   <label className="ml-2 flex items-center gap-1 text-xs text-slate-600">
                     <input type="checkbox" checked={soloVenta} onChange={(e) => { setSoloVenta(e.target.checked); setPagina(0); }} /> Solo con venta
                   </label>

@@ -141,6 +141,9 @@ export default function HomeModules() {
     { title: "Bolsa Leads", path: "/bolsa-leads", icon: ClipboardList, accent: "azul", cat: "equipo",
       desc: "Reparte la pauta entre NOVONET, VELSA y SEMILLERO por ciclos (ej. 7/4/1), con encendido/apagado y reporte de entregas.",
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
+    { title: "Costos Bolsa Leads", path: "/bolsa-leads/costos", icon: Coins, accent: "naranja", cat: "equipo",
+      desc: "Reporte gerencial del piloto: cuánto costó la pauta a NOVONET, VELSA y SEMILLERO, ventas, costo por venta y detalle por lead.",
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
       rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
@@ -198,7 +201,7 @@ export default function HomeModules() {
         const empresaGestionables = mod.path === '/gestionables-asesores'
           ? 'NOVONET'
           : mod.path === '/gestionables-velsa' ? 'VELSA' : null;
-        if (mod.path === '/bolsa-leads') { if (!puedeAccederBolsaLeads()) return false; }   // admin + gerencia (GERENTE, GERENCIA X…)
+        if (String(mod.path || '').startsWith('/bolsa-leads')) { if (!puedeAccederBolsaLeads()) return false; }   // admin + gerencia (GERENTE, GERENCIA X…)
         else if (empresaGestionables ? !puedeAccederGestionables(empresaGestionables) : !allowed) return false;
       }
       if (!q) return true;

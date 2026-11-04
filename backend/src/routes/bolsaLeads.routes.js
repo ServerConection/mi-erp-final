@@ -4,6 +4,7 @@
  *   PUT  /api/bolsa-leads/config      { activo, modo, patron, encadenar_reparto, reiniciar_ciclo }
  *   POST /api/bolsa-leads/reintentar  { deal_id }
  *   POST /api/bolsa-leads/pendientes  → entrega lo que quedó en Bolsa Leads
+ *   GET  /api/bolsa-leads/costos?desde&hasta → costo de la pauta por empresa y eficiencia
  */
 const router = require('express').Router();
 const erp = require('../config/dbErp');
@@ -102,6 +103,76 @@ router.put('/config', async (req, res) => {
     res.status(500).json({ success: false, error: 'No se pudo guardar. ¿Se corrió la migración 20261029_bolsa_leads.sql?' });
   } finally {
     client.release();
+  }
+});
+
+// ── Reporte de costos: cuánto le costó la pauta a cada empresa ──────────────
+//   GET /api/bolsa-leads/costos?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+//   Por defecto: desde el primer lead que repartió la Bolsa hasta hoy.
+const ESTADO_ACTIVO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.netlife_estatus_real, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '[^A-Z]', '', 'g') = 'ACTIVO'`;
+router.get('/costos', async (req, res) => {
+  try {
+    const db = require('../config/db');   // bddgeneral: inversión y ventas
+    const { calcularCostos } = require('../shared/bolsaLeadsCostos');
+    const hoy = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
+    const rango = await erp.query(
+      `SELECT to_char(MIN((creado_en AT TIME ZONE 'America/Guayaquil')::date), 'YYYY-MM-DD') AS desde,
+              to_char(${hoy}, 'YYYY-MM-DD') AS hoy
+         FROM bolsa_leads_entregas WHERE estado = 'entregado'`
+    );
+    const desde = fechaValida(req.query.desde) ? req.query.desde : (rango.rows[0].desde || rango.rows[0].hoy);
+    const hasta = fechaValida(req.query.hasta) ? req.query.hasta : rango.rows[0].hoy;
+    if (desde > hasta) return res.status(400).json({ success: false, error: 'La fecha "desde" es mayor que "hasta"' });
+
+    const entregas = (await erp.query(
+      `SELECT bitrix_deal_id AS deal, empresa,
+              to_char((creado_en AT TIME ZONE 'America/Guayaquil')::date, 'YYYY-MM-DD') AS fecha
+         FROM bolsa_leads_entregas
+        WHERE estado = 'entregado'
+          AND (creado_en AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+        ORDER BY creado_en`, [desde, hasta]
+    )).rows;
+
+    const inversion = [];
+    const avisos = [];
+    for (const [tabla, sql] of [
+      ['novonet', `SELECT to_char(fecha::date, 'YYYY-MM-DD') AS fecha, origen, SUM(monto_usd)::float AS monto
+                     FROM public.novonet_inversion_redes WHERE fecha::date BETWEEN $1::date AND $2::date GROUP BY 1, 2`],
+      ['velsa', `SELECT to_char(fecha::date, 'YYYY-MM-DD') AS fecha, canal_publicidad AS origen, SUM(monto_usd)::float AS monto
+                   FROM public.velsa_inversion_redes WHERE fecha::date BETWEEN $1::date AND $2::date GROUP BY 1, 2`],
+    ]) {
+      try {
+        for (const r of (await db.query(sql, [desde, hasta])).rows) inversion.push({ ...r, tabla });
+      } catch (e) {
+        console.error(`[bolsaLeads] costos: inversión ${tabla}:`, e.message);
+        avisos.push(`No se pudo leer la inversión de ${tabla.toUpperCase()}`);
+      }
+    }
+
+    const ventas = new Map();
+    const ids = [...new Set(entregas.map((x) => String(x.deal)))];
+    if (ids.length) {
+      try {
+        const { rows } = await db.query(
+          `SELECT NULLIF(BTRIM(e.id_bitrix::text), '') AS deal,
+                  COUNT(*)::int AS ventas,
+                  COUNT(*) FILTER (WHERE ${ESTADO_ACTIVO})::int AS activas
+             FROM public.envios_ventas e
+            WHERE NULLIF(BTRIM(e.id_bitrix::text), '') = ANY($1::text[])
+              AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'
+            GROUP BY 1`, [ids]
+        );
+        for (const r of rows) ventas.set(String(r.deal), { ventas: r.ventas, activas: r.activas });
+      } catch (e) {
+        console.error('[bolsaLeads] costos: ventas:', e.message);
+        avisos.push('No se pudieron leer las ventas (envios_ventas)');
+      }
+    }
+
+    res.json({ success: true, desde, hasta, avisos, ...calcularCostos({ entregas, inversion, ventas }) });
+  } catch (e) {
+    console.error('[bolsaLeads] costos:', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo armar el reporte de costos' });
   }
 });
 

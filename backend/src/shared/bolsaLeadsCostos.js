@@ -1,0 +1,111 @@
+/**
+ * COSTOS BOLSA LEADS — cuánto le costó la pauta a cada empresa.
+ *
+ * Toda la pauta (ARTS, Vidika, Velsa) entra a Bolsa Leads y la Bolsa la reparte.
+ * El costo se asigna POR DÍA:
+ *   CPL del día   = inversión del día (todas las agencias) / leads que repartió la Bolsa ese día
+ *   costo empresa = Σ días (CPL del día × leads que recibió esa empresa ese día)
+ * Así, si un día la pauta salió más cara, ese día pesa más para quien recibió más.
+ * La inversión de días sin leads repartidos queda aparte ("sin asignar").
+ *
+ * Eficiencia: ventas ingresadas y activas de los leads que recibió cada empresa
+ * (envios_ventas cruzado por ID de Bitrix) → CPA = costo / ventas.
+ * Funciones puras (sin base de datos) para poder probarlas.
+ */
+const EMPRESAS = ['novonet', 'velsa', 'semillero'];
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const div = (a, b) => (b > 0 ? r2(a / b) : null);           // null = no calculable (nunca un 0 falso)
+const pct = (a, b) => (b > 0 ? Math.round((a * 1000) / b) / 10 : null);
+
+// Nombre legible de la fuente de inversión
+const nombreFuente = (tabla, origen) => {
+  const o = String(origen || '').toUpperCase();
+  if (o.includes('WINTRACKER_ARTS')) return 'ARTS';
+  if (o.includes('WINTRACKER_VIDIKA')) return 'VIDIKA';
+  if (o.includes('WINTRACKER_VELSA')) return 'VELSA';
+  return `${tabla === 'velsa' ? 'VELSA' : 'NOVONET'} · ${String(origen || 'SIN ORIGEN').trim()}`;
+};
+
+/**
+ * entregas:  [{ deal, empresa, fecha:'YYYY-MM-DD' }]   (solo estado 'entregado')
+ * inversion: [{ fecha:'YYYY-MM-DD', tabla:'novonet'|'velsa', origen, monto }]
+ * ventas:    Map deal → { ventas, activas }
+ */
+const calcularCostos = ({ entregas = [], inversion = [], ventas = new Map() }) => {
+  const dias = new Map();
+  const dia = (f) => {
+    if (!dias.has(f)) dias.set(f, { fecha: f, inversion: 0, leads: 0, ...Object.fromEntries(EMPRESAS.map((e) => [e, 0])) });
+    return dias.get(f);
+  };
+  const fuentes = new Map();
+  for (const i of inversion) {
+    const m = Number(i.monto) || 0;
+    dia(i.fecha).inversion += m;
+    const f = nombreFuente(i.tabla, i.origen);
+    fuentes.set(f, (fuentes.get(f) || 0) + m);
+  }
+  for (const e of entregas) {
+    const d = dia(e.fecha);
+    d.leads++;
+    if (EMPRESAS.includes(e.empresa)) d[e.empresa]++;
+  }
+
+  const porDia = [...dias.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)).map((d) => {
+    const cpl = d.leads ? d.inversion / d.leads : null;
+    const fila = { ...d, inversion: r2(d.inversion), cpl: cpl === null ? null : r2(cpl) };
+    for (const e of EMPRESAS) fila[`costo_${e}`] = cpl === null ? 0 : r2(cpl * d[e]);
+    fila.sin_asignar = d.leads ? 0 : r2(d.inversion);
+    return fila;
+  });
+  const cplDe = new Map(porDia.map((d) => [d.fecha, d.leads ? dias.get(d.fecha).inversion / d.leads : 0]));
+
+  const emp = Object.fromEntries(EMPRESAS.map((e) => [e, { empresa: e, leads: 0, costo: 0, ventas: 0, activas: 0, leads_con_venta: 0 }]));
+  const detalle = entregas.map((e) => {
+    const v = ventas.get(String(e.deal)) || { ventas: 0, activas: 0 };
+    const costo = cplDe.get(e.fecha) || 0;
+    const x = emp[e.empresa];
+    if (x) {
+      x.leads++; x.costo += costo; x.ventas += v.ventas; x.activas += v.activas;
+      if (v.ventas > 0) x.leads_con_venta++;
+    }
+    return { deal: String(e.deal), empresa: e.empresa, fecha: e.fecha, costo: r2(costo), ventas: v.ventas, activas: v.activas };
+  });
+
+  const inversionTotal = porDia.reduce((s, d) => s + d.inversion, 0);
+  const sinAsignar = porDia.reduce((s, d) => s + d.sin_asignar, 0);
+  const t = Object.values(emp).reduce((a, x) => ({
+    leads: a.leads + x.leads, costo: a.costo + x.costo, ventas: a.ventas + x.ventas,
+    activas: a.activas + x.activas, leads_con_venta: a.leads_con_venta + x.leads_con_venta,
+  }), { leads: 0, costo: 0, ventas: 0, activas: 0, leads_con_venta: 0 });
+
+  const porEmpresa = Object.values(emp).map((x) => ({
+    ...x,
+    costo: r2(x.costo),
+    pct_leads: pct(x.leads, t.leads),
+    pct_costo: pct(x.costo, t.costo),
+    cpl: div(x.costo, x.leads),
+    cpa: div(x.costo, x.ventas),                 // costo por venta ingresada
+    cpa_activa: div(x.costo, x.activas),         // costo por venta activa
+    conversion: pct(x.leads_con_venta, x.leads), // % de leads que tuvieron al menos 1 venta
+  }));
+
+  // Ranking de eficiencia: menor costo por venta = más eficiente (sin ventas va al final)
+  const ranking = [...porEmpresa].filter((x) => x.leads > 0)
+    .sort((a, b) => (a.cpa ?? Infinity) - (b.cpa ?? Infinity))
+    .map((x, i) => ({ puesto: i + 1, empresa: x.empresa, cpa: x.cpa, conversion: x.conversion }));
+
+  return {
+    totales: {
+      inversion: r2(inversionTotal), inversion_asignada: r2(t.costo), inversion_sin_asignar: r2(sinAsignar),
+      leads: t.leads, ventas: t.ventas, activas: t.activas, leads_con_venta: t.leads_con_venta,
+      cpl: div(t.costo, t.leads), cpa: div(t.costo, t.ventas), cpa_activa: div(t.costo, t.activas),
+      conversion: pct(t.leads_con_venta, t.leads),
+      dias: porDia.length, dias_con_leads: porDia.filter((d) => d.leads > 0).length,
+    },
+    porEmpresa, ranking, porDia,
+    porFuente: [...fuentes.entries()].map(([fuente, monto]) => ({ fuente, monto: r2(monto) })).sort((a, b) => b.monto - a.monto),
+    detalle,
+  };
+};
+
+module.exports = { calcularCostos, nombreFuente, EMPRESAS };

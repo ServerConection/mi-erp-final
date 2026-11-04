@@ -54,6 +54,13 @@ const ESPERADAS = [
 assert.deepStrictEqual(novonet, ESPERADAS, `Columnas distintas a las pedidas:\n  ${novonet.join(', ')}`);
 console.log(`✓ Las ${novonet.length} columnas pedidas, en el orden pedido`);
 
+assert.match(
+  sqlCols,
+  /to_char\(\s*public\.parse_fecha_flex\(mb\.fecha_ingreso_telcos::text\),\s*'DD\/MM\/YYYY'\s*\)\s+AS "INGRESO_TELCOS"/,
+  'INGRESO_TELCOS debe salir en formato DD/MM/YYYY para pantalla y Excel',
+);
+console.log('✓ INGRESO_TELCOS usa formato DD/MM/YYYY');
+
 for (const emp of ['novonet', 'velsa']) {
   const f = fuenteDetalleJotform(emp, 'mb');
   assert.ok(f.includes('FROM public.envios_ventas e'), 'la fuente debe ser envios_ventas');

@@ -16,6 +16,7 @@ export function empresaGestionables(valor) {
   const empresa = normalizar(valor);
   if (empresa === 'NOVONET' || empresa.startsWith('NOVONET ')) return 'NOVONET';
   if (empresa === 'VELSA' || empresa.startsWith('VELSA ')) return 'VELSA';
+  if (empresa === 'SEMILLERO' || empresa.startsWith('SEMILLERO ')) return 'SEMILLERO';
   return null;
 }
 

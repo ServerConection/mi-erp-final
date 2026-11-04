@@ -55,7 +55,7 @@ const asesoresPorNombre = async () => {
     console.warn('[bolsaLeads] No se pudo leer usuarios del ERP:', e.message);
   }
   // 1) lista de cupos del repartidor (manda sobre la de usuarios)
-  for (const [emp, tabla] of [['novonet', 'gestionables_asesores'], ['velsa', 'velsa_gestionables_asesores']]) {
+  for (const [emp, tabla] of [['semillero', 'semillero_gestionables_asesores'], ['novonet', 'gestionables_asesores'], ['velsa', 'velsa_gestionables_asesores']]) {
     try {
       const { rows } = await poolErp.query(
         `SELECT DISTINCT nombre_bitrix_asesor AS nombre FROM ${tabla}

@@ -36,13 +36,15 @@ const env = process.env;
 const DESTINOS = {
   novonet: { ...EMPRESAS.novonet, repartidor: true },
   velsa: { ...EMPRESAS.velsa, repartidor: true },
+  // SEMILLERO (pipeline 41) ya tiene repartidor de asesores; mientras esté
+  // APAGADO en su panel, el lead queda con su responsable, igual que antes.
   semillero: {
-    clave: 'semillero', etiqueta: 'SEMILLERO', pipeline: 'SEMILLERO',
-    categoryId: env.BOLSA_SEMILLERO_CATEGORY_ID || '41',
-    stageId: env.BOLSA_SEMILLERO_STAGE_ID || null,
-    etapa: env.BOLSA_SEMILLERO_STAGE_NAME || 'CONTACTO NUEVO',
+    ...EMPRESAS.semillero,
+    categoryId: env.BOLSA_SEMILLERO_CATEGORY_ID || EMPRESAS.semillero.categoryId,
+    stageId: env.BOLSA_SEMILLERO_STAGE_ID || EMPRESAS.semillero.stageId,
+    etapa: env.BOLSA_SEMILLERO_STAGE_NAME || EMPRESAS.semillero.etapa,
     etapaPrimeraSiNoExiste: true,   // si no hay "Contacto nuevo", la primera etapa del pipeline
-    repartidor: false,
+    repartidor: true,
   },
 };
 

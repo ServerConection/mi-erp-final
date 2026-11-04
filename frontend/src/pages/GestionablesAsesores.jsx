@@ -19,9 +19,9 @@ async function request(path = '', options = {}, empresa) {
   if (!response.ok || !result.success) throw new Error(result.error || 'No se pudo completar la operación');
   return result;
 }
-// empresa = 'novonet' (módulo original) | 'velsa' (Reparto de Gestionables Velsa)
+// empresa = 'novonet' (módulo original) | 'velsa' | 'semillero'
 export default function GestionablesAsesores({ empresa = 'novonet' }) {
-  const nombreEmpresa = empresa === 'velsa' ? 'VELSA' : 'NOVONET';
+  const nombreEmpresa = empresa === 'velsa' ? 'VELSA' : empresa === 'semillero' ? 'SEMILLERO' : 'NOVONET';
   const [tab, setTab] = useState('vivo'), [fecha, setFecha] = useState(hoy);
   const [rows, setRows] = useState([]), [ultimo, setUltimo] = useState(null);
   const [busqueda, setBusqueda] = useState(''), [estado, setEstado] = useState('todos');
@@ -66,7 +66,7 @@ export default function GestionablesAsesores({ empresa = 'novonet' }) {
   }
   if (!permitido) return <p className="p-6">No tiene acceso a este módulo.</p>;
   return <div className="space-y-5">
-    <div><h1 className="text-3xl font-bold text-slate-800">Reparto de Gestionables{empresa === 'velsa' ? ' Velsa' : ''}</h1><p className="text-slate-500">Reparto automático de leads por turnos, reporte por hora y cuotas diarias de {nombreEmpresa}.</p></div>
+    <div><h1 className="text-3xl font-bold text-slate-800">Reparto de Gestionables{empresa === 'velsa' ? ' Velsa' : empresa === 'semillero' ? ' Semillero' : ''}</h1><p className="text-slate-500">Reparto automático de leads por turnos, reporte por hora y cuotas diarias de {nombreEmpresa}.</p></div>
     <div className="flex gap-2">{[['vivo', 'Reparto en vivo'], ['reporte', 'Reporte por hora'], ['cuotas', 'Cuotas por fecha'], ['carga', 'Cargar TXT']].map(([key, label]) => <button key={key} disabled={busy} onClick={() => setTab(key)} aria-pressed={tab === key} className={`px-4 py-2 rounded-xl font-bold ${tab === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{label}</button>)}</div>
     {tab === 'vivo' && <RepartoEnVivo empresa={empresa} />}
     {tab === 'reporte' && <ReporteReparto empresa={empresa} />}

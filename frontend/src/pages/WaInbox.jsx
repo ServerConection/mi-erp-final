@@ -179,6 +179,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [returningToBot, setReturningToBot] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [internalImage, setInternalImage] = useState(null);
   const [internalImagePreview, setInternalImagePreview] = useState("");
@@ -641,9 +642,19 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   };
 
   const returnToBot = async () => {
-    await fetch(`${API}/conversations/${selected.id}/return-to-bot`, { method: "POST", headers: authH(false) });
-    setSelected(s => ({ ...s, status: "active" }));
-    setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "active" } : c));
+    if (!selected?.id || returningToBot) return;
+    setReturningToBot(true);
+    try {
+      const response = await fetch(`${API}/conversations/${selected.id}/return-to-bot`, { method: "POST", headers: authH(false) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) throw new Error(payload.error || "No se pudo regresar al bot");
+      setSelected(s => ({ ...s, status: "active" }));
+      setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, status: "active" } : c));
+    } catch (error) {
+      alert(`${error.message}. La conversación continúa bajo control humano.`);
+    } finally {
+      setReturningToBot(false);
+    }
   };
 
   // Eliminar chat (solo Administrador). Borra la conversación y sus mensajes.
@@ -772,9 +783,10 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   👤 Tomar control
                 </button>
               ) : (
-                <button onClick={returnToBot}
-                  className="text-xs bg-purple-50 border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
-                  🤖 Regresar a bot
+                <button onClick={returnToBot} disabled={returningToBot}
+                  title="Nexo IA analizará el chat, responderá y luego devolverá el control al bot"
+                  className="text-xs bg-purple-50 border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors disabled:opacity-60 disabled:cursor-wait">
+                  {returningToBot ? "✨ Nexo IA analizando…" : "🤖 Regresar a bot"}
                 </button>
               )}
               {IS_ADMIN && (

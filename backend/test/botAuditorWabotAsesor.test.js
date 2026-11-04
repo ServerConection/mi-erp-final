@@ -68,6 +68,21 @@ test('filtro de asesor y búsqueda usan el nombre enriquecido', async () => {
   ]);
 });
 
+test('gerencia VELSA queda limitada a auditorias del pipeline VELSA', async () => {
+  const { controlador, consultas } = cargarControlador([
+    { rows: [{ total: 0 }] },
+    { rows: [] },
+  ]);
+  const req = { query: {}, user: { perfil: 'GERENCIA', empresa: 'VELSA' } };
+  const res = respuesta();
+
+  await controlador.listarAuditorias(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.match(consultas[0].sql, /UPPER\(empresa\) = UPPER\(\$2\)/);
+  assert.equal(consultas[0].params[1], 'VELSA');
+});
+
 test('detalle aplica el mismo enriquecimiento conservador', async () => {
   const { controlador, consultas } = cargarControlador([
     { rows: [{ id: 7, asesor: 'Desconocido', asesor_resuelto: 'Erick Enríquez', stage_id: 'C19:LOSE' }] },

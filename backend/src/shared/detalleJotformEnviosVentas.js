@@ -173,7 +173,10 @@ function columnasDetalleJotform(alias, { asesorExpr, supervisorExpr }) {
     COALESCE(${a}.asesor_usuario, ujot.asesor_usuario) AS "ASESOR_USUARIO",
     ${a}.netlife_login                               AS "LOGIN",
     COALESCE(NULLIF(TRIM(${a}.netlife_estatus_real), ''), 'SIN ESTADO') AS "ESTADO_NETLIFE",
-    ${a}.fecha_ingreso_telcos                        AS "INGRESO_TELCOS",
+    to_char(
+      public.parse_fecha_flex(${a}.fecha_ingreso_telcos::text),
+      'DD/MM/YYYY'
+    )                                                AS "INGRESO_TELCOS",
     ${a}.estatus_regularizacion                      AS "ESTADO_REGULARIZACION",
     ${a}.detalle_regularizacion                      AS "OBSERV_REGULARIZACION",
     ${a}.novedades_atc                               AS "NOVEDADES_ATC",

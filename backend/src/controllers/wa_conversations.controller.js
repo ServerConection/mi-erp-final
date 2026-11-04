@@ -6,6 +6,7 @@ const { getInboxBitrixNotes, companyOf } = require('../services/inboxBitrixNotes
 const { getWabotBitrixLookup, normalizePhoneEC } = require('../services/wabotBitrixLookup.service')
 const { protectedNumbers, isAdminOnlyNumber, privateOwners, isPrivateOwner, isAuditor, AUDITOR_EMPRESAS } = require('../services/waPrivacy')
 const { esMandoWabot, empresaVisibleWabot, empresasVisiblesWabot } = require('../shared/waAccesoEmpresa')
+const returnToBotAi = require('../services/returnToBotAi.service')
 
 // ── Bitrix: una credencial por empresa (mismo patrón que bitrix.controller.js) ──
 const BITRIX_WEBHOOKS = {
@@ -807,15 +808,34 @@ async function returnToBot(req, res) {
     const owned = await findOwnedConversation(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'No encontrada' })
 
+    if (!['human', 'human_takeover'].includes(owned.status)) {
+      return res.status(409).json({ success: false, error: 'La conversacion ya esta bajo control del bot' })
+    }
+    const bm = req.app.get('baileysManager')
+    if (!bm) return res.status(503).json({ success: false, error: 'El servicio de WhatsApp no esta disponible' })
+
+    // La empresa sale del propietario de la linea, nunca del usuario que pulsa
+    // el boton. Asi un administrador puede operar VELSA/SEMILLERO sin mezclar
+    // el prompt ni la configuracion de NOVONET.
+    const ai = await returnToBotAi.generarRespuesta({
+      conversationId: id,
+      empresa: owned.line_empresa,
+      bitrixId: owned.bitrix_deal_id,
+    })
+    await bm.sendText(owned.line_id, owned.wa_number, ai.texto)
+
+    // Solo se devuelve el control despues de que WhatsApp confirma el envio.
+    // Si Nexo o la linea fallan, el catch deja intacto el takeover humano.
     await query(
       `UPDATE contacts SET metadata = metadata - 'human_agent' - 'bot_reactivate_at'
        WHERE wa_number=$1 AND line_id=$2`,
       [owned.wa_number, owned.line_id]
     )
     await query(`UPDATE conversations SET status='active' WHERE id=$1`, [id])
-    res.json({ success: true })
+    res.json({ success: true, data: { status: 'active', ai_message: ai.texto, empresa: ai.empresa } })
   } catch (err) {
-    res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
+    console.error('[conversations.returnToBot]', err)
+    res.status(err.status || 502).json({ success: false, error: err.message || 'No se pudo devolver la conversacion al bot' })
   }
 }
 

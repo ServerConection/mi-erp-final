@@ -69,7 +69,8 @@ export default function BolsaLeadsCostos() {
 
   const detalle = useMemo(() => (data?.detalle || [])
     .filter((d) => (filtroEmp === 'todas' || d.empresa === filtroEmp) && (!soloVenta || d.ventas > 0)
-      && (filtroAgencia === 'todas' || (filtroAgencia === 'revisar' ? PROBLEMA.includes(d.agencia) : d.agencia === filtroAgencia))),
+      && (filtroAgencia === 'todas' || (filtroAgencia === 'revisar' ? PROBLEMA.includes(d.agencia)
+        : filtroAgencia.startsWith('s|') ? d.subagencia === filtroAgencia.slice(2) : d.agencia === filtroAgencia))),
   [data, filtroEmp, soloVenta, filtroAgencia]);
   // Leads sin origen o con un origen que no está en el catálogo de Redes
   const revisar = useMemo(() => {
@@ -99,7 +100,7 @@ export default function BolsaLeadsCostos() {
           <label className="flex flex-col gap-1">Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border px-2 py-1.5" /></label>
           <button type="button" disabled={busy} onClick={() => cargar()} className="rounded-lg bg-slate-800 px-4 py-2 font-medium text-white disabled:opacity-40">{busy ? 'Cargando…' : 'Ver'}</button>
           <button type="button" disabled={!data?.detalle?.length} onClick={() => descargarCsv(`bolsa_leads_costos_${desde}_${hasta}.csv`, data.detalle.map((d) => ({
-            id_bitrix: d.deal, empresa: EMP[d.empresa]?.label || d.empresa, fecha: d.fecha, agencia: d.agencia || '', origen: d.origen || '',
+            id_bitrix: d.deal, empresa: EMP[d.empresa]?.label || d.empresa, fecha: d.fecha, agencia: d.agencia || '', subagencia: d.subagencia || '', origen: d.origen || '',
             costo_usd: d.costo, ventas: d.ventas, activas: d.activas,
           })))} className="rounded-lg border px-3 py-2 hover:bg-slate-50 disabled:opacity-40">Descargar detalle</button>
         </div>
@@ -163,24 +164,54 @@ export default function BolsaLeadsCostos() {
             ))}
           </div>
 
-          {/* Leads por agencia y empresa */}
+          {/* Por agencia: inversión, leads y costo por empresa (con sub-agencias) */}
           {data.porAgencia?.length > 0 && (
             <section className="rounded-2xl border bg-white p-4 shadow-sm">
-              <h2 className="mb-1 font-semibold text-slate-700">Leads por agencia y empresa</h2>
-              <p className="mb-3 text-xs text-slate-400">La agencia sale del origen (campaña) de cada lead, con el mismo catálogo del módulo Redes. Entre paréntesis: ventas.</p>
+              <h2 className="mb-1 font-semibold text-slate-700">Por agencia: cuánto costó y a quién le llegó</h2>
+              <p className="mb-3 text-xs text-slate-400">
+                Inversión de cada agencia ÷ sus leads = costo por lead (CPL). Cada empresa paga ese CPL por cada lead de esa agencia que recibió.
+                Las sub-agencias (VELSA 1, VELSA 2, ARTS GOOGLE…) usan el CPL de su agencia, porque la inversión llega por agencia.
+                En cada empresa: leads · costo · ventas.
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-slate-500"><th className="py-1">Agencia</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th><th>% de leads</th></tr></thead>
-                  <tbody>{data.porAgencia.map((a) => (
-                    <tr key={a.agencia} className="border-t">
-                      <td className="py-1.5 font-semibold">{a.agencia}</td>
-                      {LISTA.map((e) => <td key={e}>{num(a[e])} <span className="text-xs text-slate-400">({num(a[`ventas_${e}`])})</span></td>)}
-                      <td className="font-semibold">{num(a.total)} <span className="text-xs font-normal text-slate-400">({num(a.ventas)})</span></td>
-                      <td>{t.leads ? `${Math.round((a.total * 1000) / t.leads) / 10}%` : '—'}</td>
-                    </tr>
-                  ))}</tbody>
+                  <thead><tr className="text-left text-slate-500">
+                    <th className="py-1">Agencia</th><th>Inversión</th><th>Leads</th><th>CPL</th>
+                    {LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Ventas</th><th>Costo por venta</th>
+                  </tr></thead>
+                  <tbody>{data.porAgencia.map((a) => {
+                    const subs = (data.porSubagencia || []).filter((x) => x.agencia === a.agencia && x.subagencia !== a.agencia);
+                    const celda = (x, e) => (
+                      <td key={e} className="whitespace-nowrap">
+                        {num(x[e])} · <span className="text-slate-500">{usd(x[`costo_${e}`])}</span> · <span className="text-emerald-700">{num(x[`ventas_${e}`])}</span>
+                      </td>
+                    );
+                    return [
+                      <tr key={a.agencia} className={`border-t ${PROBLEMA.includes(a.agencia) ? 'bg-amber-50' : 'bg-slate-50'}`}>
+                        <td className="py-1.5 font-bold">{a.agencia}</td>
+                        <td className="font-semibold">{usd(a.inversion)}</td>
+                        <td className="font-semibold">{num(a.total)}</td>
+                        <td>{usd(a.cpl)}</td>
+                        {LISTA.map((e) => celda(a, e))}
+                        <td className="font-semibold">{num(a.ventas)}</td>
+                        <td className="font-semibold">{usd(a.cpa)}</td>
+                      </tr>,
+                      ...subs.map((x) => (
+                        <tr key={`${a.agencia}|${x.subagencia}`} className="border-t text-slate-600">
+                          <td className="py-1 pl-5">↳ {x.subagencia}</td>
+                          <td className="text-xs text-slate-400">—</td>
+                          <td>{num(x.total)}</td>
+                          <td>{usd(x.cpl)}</td>
+                          {LISTA.map((e) => celda(x, e))}
+                          <td>{num(x.ventas)}</td>
+                          <td>{usd(x.cpa)}</td>
+                        </tr>
+                      )),
+                    ];
+                  })}</tbody>
                 </table>
               </div>
+              <p className="mt-2 text-xs text-slate-400">Una agencia con inversión y 0 leads invirtió en el rango, pero sus leads no pasaron por la Bolsa (o no tienen origen). Las filas SIN ORIGEN / SIN AGENCIA no tienen costo porque no se sabe de qué pauta vienen.</p>
             </section>
           )}
 
@@ -279,15 +310,15 @@ export default function BolsaLeadsCostos() {
             {tab === 'origen' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-slate-500"><th className="py-1">Agencia</th><th>Origen (campaña)</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th><th>Ventas</th></tr></thead>
+                  <thead><tr className="text-left text-slate-500"><th className="py-1">Agencia</th><th>Sub-agencia</th><th>Origen (campaña)</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th><th>Ventas</th></tr></thead>
                   <tbody>{(data.porOrigen || []).map((o) => (
-                    <tr key={`${o.agencia}|${o.origen}`} className="border-t">
-                      <td className="py-1.5 text-xs font-semibold text-slate-500">{o.agencia}</td><td>{o.origen}</td>
+                    <tr key={`${o.agencia}|${o.subagencia}|${o.origen}`} className="border-t">
+                      <td className="py-1.5 text-xs font-semibold text-slate-500">{o.agencia}</td><td className="text-xs">{o.subagencia}</td><td>{o.origen}</td>
                       {LISTA.map((e) => <td key={e}>{num(o[e])}</td>)}
                       <td className="font-semibold">{num(o.total)}</td><td>{num(o.ventas)}</td>
                     </tr>
                   ))}
-                  {!data.porOrigen?.length && <tr><td colSpan={7} className="py-6 text-center text-slate-400">Sin leads</td></tr>}
+                  {!data.porOrigen?.length && <tr><td colSpan={8} className="py-6 text-center text-slate-400">Sin leads</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -314,7 +345,8 @@ export default function BolsaLeadsCostos() {
                   <select value={filtroAgencia} onChange={(e) => { setFiltroAgencia(e.target.value); setPagina(0); }} className="rounded-lg border px-2 py-1 text-xs">
                     <option value="todas">Todas las agencias</option>
                     <option value="revisar">⚠ Sin origen / sin agencia</option>
-                    {(data.porAgencia || []).map((a) => <option key={a.agencia} value={a.agencia}>{a.agencia}</option>)}
+                    {(data.porAgencia || []).filter((a) => a.total > 0).map((a) => <option key={a.agencia} value={a.agencia}>{a.agencia}</option>)}
+                    {(data.porSubagencia || []).filter((x) => x.subagencia !== x.agencia).map((x) => <option key={`s|${x.subagencia}`} value={`s|${x.subagencia}`}>↳ {x.subagencia}</option>)}
                   </select>
                   <label className="ml-2 flex items-center gap-1 text-xs text-slate-600">
                     <input type="checkbox" checked={soloVenta} onChange={(e) => { setSoloVenta(e.target.checked); setPagina(0); }} /> Solo con venta
@@ -327,7 +359,7 @@ export default function BolsaLeadsCostos() {
                     <tbody>{detalle.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA).map((d) => (
                       <tr key={d.deal} className="border-t">
                         <td className="py-1.5 font-mono">{d.deal}</td><td>{EMP[d.empresa]?.label || d.empresa}</td><td>{d.fecha}</td>
-                        <td className="text-xs">{d.agencia || '—'}</td><td className="text-xs">{d.origen || '—'}</td>
+                        <td className="text-xs">{d.subagencia && d.subagencia !== d.agencia ? `${d.agencia} · ${d.subagencia}` : (d.agencia || '—')}</td><td className="text-xs">{d.origen || '—'}</td>
                         <td>{usd(d.costo)}</td><td>{d.ventas || '—'}</td><td>{d.activas || '—'}</td>
                       </tr>
                     ))}

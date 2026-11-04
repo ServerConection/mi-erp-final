@@ -125,24 +125,38 @@ const agenciaCanonica = (valor) => {
  * catalogo: Map origenNormalizado → agencia (de las tablas *_lineas_canal)
  * historico: objeto origenNormalizado → canal (ORIGEN_A_CANAL)
  */
-const resolverAgencia = (origen, catalogo = new Map(), historico = {}) => {
+const resolverAgencia = (origen, catalogo = new Map(), historico = {}) => resolverOrigen(origen, catalogo, historico).agencia;
+
+/**
+ * { agencia, subagencia } de un origen.
+ *   agencia    = grupo que paga la pauta (ARTS / VIDIKA / VELSA / otro)
+ *   subagencia = el valor tal cual del catálogo (VELSA 1, VELSA 2, ARTS GOOGLE…)
+ */
+const resolverOrigen = (origen, catalogo = new Map(), historico = {}) => {
   const o = normalizarOrigen(origen);
-  if (!o) return 'SIN ORIGEN';
-  return agenciaCanonica(catalogo.get(o)) || agenciaCanonica(historico[o]) || 'SIN AGENCIA';
+  if (!o) return { agencia: 'SIN ORIGEN', subagencia: 'SIN ORIGEN' };
+  const crudo = normalizarOrigen(catalogo.get(o)) || normalizarOrigen(historico[o]);
+  if (!crudo) return { agencia: 'SIN AGENCIA', subagencia: 'SIN AGENCIA' };
+  const agencia = agenciaCanonica(crudo);
+  return { agencia, subagencia: crudo === 'ARST' ? 'ARTS' : crudo.replace(/^ARST\b/, 'ARTS') };
 };
 
 /**
- * Leads por empresa según origen y agencia.
+ * Leads por empresa según agencia, sub-agencia y origen.
  * detalle: [{ deal, empresa, ventas }]   origenes: Map deal → origen
  */
 const agruparPorOrigen = ({ detalle = [], origenes = new Map(), catalogo = new Map(), historico = {} }) => {
   const nuevo = () => ({ total: 0, ventas: 0, ...Object.fromEntries(EMPRESAS.flatMap((e) => [[e, 0], [`ventas_${e}`, 0]])) });
-  const ag = new Map(), og = new Map();
+  const ag = new Map(), sub = new Map(), og = new Map();
   for (const d of detalle) {
     const origen = normalizarOrigen(origenes.get(String(d.deal))) || 'SIN ORIGEN';
-    const agencia = resolverAgencia(origen === 'SIN ORIGEN' ? '' : origen, catalogo, historico);
-    d.origen = origen; d.agencia = agencia;
-    for (const [mapa, clave, base] of [[ag, agencia, { agencia }], [og, `${agencia}|${origen}`, { agencia, origen }]]) {
+    const { agencia, subagencia } = resolverOrigen(origen === 'SIN ORIGEN' ? '' : origen, catalogo, historico);
+    d.origen = origen; d.agencia = agencia; d.subagencia = subagencia;
+    for (const [mapa, clave, base] of [
+      [ag, agencia, { agencia }],
+      [sub, `${agencia}|${subagencia}`, { agencia, subagencia }],
+      [og, `${agencia}|${subagencia}|${origen}`, { agencia, subagencia, origen }],
+    ]) {
       if (!mapa.has(clave)) mapa.set(clave, { ...base, ...nuevo() });
       const x = mapa.get(clave);
       x.total++; x.ventas += d.ventas || 0;
@@ -150,7 +164,55 @@ const agruparPorOrigen = ({ detalle = [], origenes = new Map(), catalogo = new M
     }
   }
   const orden = (a, b) => b.total - a.total;
-  return { porAgencia: [...ag.values()].sort(orden), porOrigen: [...og.values()].sort((a, b) => a.agencia.localeCompare(b.agencia) || orden(a, b)) };
+  return {
+    porAgencia: [...ag.values()].sort(orden),
+    porSubagencia: [...sub.values()].sort((a, b) => a.agencia.localeCompare(b.agencia) || orden(a, b)),
+    porOrigen: [...og.values()].sort((a, b) => a.agencia.localeCompare(b.agencia) || a.subagencia.localeCompare(b.subagencia) || orden(a, b)),
+  };
 };
 
-module.exports = { calcularCostos, nombreFuente, EMPRESAS, normalizarOrigen, resolverAgencia, agruparPorOrigen };
+/**
+ * Cuánto costó cada agencia y cuánto le tocó a cada empresa.
+ *   inversión de la agencia (ARTS / VIDIKA / VELSA, de las tablas de inversión)
+ *   CPL agencia   = inversión / leads de esa agencia que repartió la Bolsa
+ *   costo empresa = CPL agencia × leads de esa agencia que recibió la empresa
+ * Las sub-agencias (VELSA 1, VELSA 2…) usan el CPL de su agencia: la inversión
+ * llega por agencia, no por sub-agencia.
+ */
+const grupoDeFuente = (fuente) => agenciaCanonica(String(fuente || '').replace(/^(NOVONET|VELSA) · /, '')) || 'SIN AGENCIA';
+const costosPorAgencia = ({ porAgencia = [], porSubagencia = [], porFuente = [] }) => {
+  const inv = new Map();
+  for (const f of porFuente) {
+    const g = grupoDeFuente(f.fuente);
+    inv.set(g, (inv.get(g) || 0) + (Number(f.monto) || 0));
+  }
+  const conCosto = (x, cpl) => {
+    const out = { ...x, cpl: cpl === null ? null : r2(cpl) };
+    let costo = 0;
+    for (const e of EMPRESAS) { out[`costo_${e}`] = cpl === null ? null : r2(cpl * x[e]); costo += cpl === null ? 0 : cpl * x[e]; }
+    out.costo = cpl === null ? null : r2(costo);
+    out.cpa = cpl === null ? null : div(costo, x.ventas);
+    out.conversion_ventas = pct(x.ventas, x.total);
+    return out;
+  };
+  const cplDe = new Map();
+  const agencias = porAgencia.map((a) => {
+    const inversion = inv.has(a.agencia) ? r2(inv.get(a.agencia)) : null;
+    const cpl = inversion !== null && a.total ? inversion / a.total : null;
+    cplDe.set(a.agencia, cpl);
+    return { ...conCosto(a, cpl), inversion };
+  });
+  // Agencias con inversión pero sin leads en la Bolsa
+  for (const [g, monto] of inv) {
+    if (!porAgencia.some((a) => a.agencia === g)) {
+      agencias.push({ agencia: g, inversion: r2(monto), total: 0, ventas: 0, cpl: null, costo: null, cpa: null,
+        ...Object.fromEntries(EMPRESAS.flatMap((e) => [[e, 0], [`ventas_${e}`, 0], [`costo_${e}`, null]])) });
+    }
+  }
+  return {
+    porAgencia: agencias,
+    porSubagencia: porSubagencia.map((x) => conCosto(x, cplDe.get(x.agencia) ?? null)),
+  };
+};
+
+module.exports = { calcularCostos, nombreFuente, EMPRESAS, normalizarOrigen, resolverAgencia, resolverOrigen, agruparPorOrigen, costosPorAgencia };

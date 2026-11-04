@@ -381,10 +381,25 @@ const OPCIONES_BANCO = [
   "COOP. TULCÁN", "COOP. MANABÍ", "COOP. SOLIDARIA",
   "COOP. DE AHORRO Y CRÉDITO ANDALUCÍA", "COOP. DE AHORRO Y CRÉDITO JEP",
 ];
-const OPCIONES_TIPO_CUENTA = [
+// Catálogo unificado para el detalle de Backoffice (general, Auditoría y
+// Welcome) y para la edición en tabla. Conserva los valores históricos y suma
+// las denominaciones utilizadas por Netlife.
+const OPCIONES_TARJETA = [
   "VISA", "MASTERCARD", "DINERS CLUB", "AMERICAN EXPRESS", "DISCOVER", "VISTA TITANIUM",
-  "CUENTA CORRIENTE", "CUENTA AHORROS",
+  "TARJETA MASTERCARD",
+  "TARJETA AMERICAN",
+  "TARJETA DINERS",
+  "TARJETA VISA",
+  "TARJETA DISCOVER",
+  "TARJETA CUOTAFACIL / ALIAS SOLIDARIO",
+  "TARJETA MASTERCARD TITANIUM",
+  "TARJETA UNION PAY - BANKARD",
 ];
+const OPCIONES_CUENTA_BANCARIA = [
+  "CUENTA CORRIENTE", "CUENTA AHORROS",
+  "CORRIENTE", "AHORRO",
+];
+const OPCIONES_TIPO_CUENTA = [...OPCIONES_TARJETA, ...OPCIONES_CUENTA_BANCARIA];
 const OPCIONES_CICLO_FACTURACION = [
   "CICLO (I) DEL 1 AL 30 - 31 DE CADA MES",
   "CICLO (II) DEL 8 AL 7 DE CADA MES",
@@ -3797,10 +3812,10 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   forma_pago: OPCIONES_FORMA_PAGO,
                                   banco: OPCIONES_BANCO,
                                   tipo_cuenta: detail?.forma_pago === "TARJETA DE CRÉDITO"
-                                    ? OPCIONES_TIPO_CUENTA.slice(0, 6)
+                                    ? OPCIONES_TARJETA
                                     : detail?.forma_pago === "EFECTIVO"
                                       ? []
-                                      : OPCIONES_TIPO_CUENTA.slice(6),
+                                      : OPCIONES_CUENTA_BANCARIA,
                                   ciclo_facturacion: OPCIONES_CICLO_FACTURACION,
                                   auditado_por: OPCIONES_AUDITOR,
                                   clausulas: OPCIONES_CLAUSULAS,

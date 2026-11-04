@@ -20,6 +20,10 @@ mock('config/db.js', { query: async (sql, p) => {
   sqls.push(sql);
   if (/novonet_inversion_redes/.test(sql)) return { rows: [{ fecha: '2026-11-01', origen: '__WINTRACKER_ARTS__', monto: 40 }] };
   if (/velsa_inversion_redes/.test(sql)) return { rows: [{ fecha: '2026-11-01', origen: '__WINTRACKER_VELSA__', monto: 20 }] };
+  if (/FROM public.bitrix_webhook_leads\b/.test(sql) && !/historial/.test(sql)) return { rows: [{ deal: '10', origen: 'Base 593-111' }] };
+  if (/historial/.test(sql)) { assert.deepEqual(p[0], ['11']); return { rows: [{ deal: '11', origen: 'Formulario Velsa 1' }] }; }
+  if (/novonet_lineas_canal/.test(sql)) return { rows: [{ origen: 'BASE 593-111', agencia: 'ARST' }] };
+  if (/velsa_lineas_canal/.test(sql)) return { rows: [{ origen: 'formulario velsa 1', agencia: 'VELSA' }] };
   if (/envios_ventas/.test(sql)) { assert.deepEqual(p[0], ['10', '11']); return { rows: [{ deal: '11', ventas: 1, activas: 1 }] }; }
   return { rows: [] };
 } });
@@ -42,6 +46,11 @@ test('GET /costos arma el reporte con inversión de las 2 tablas y ventas por ID
   assert.equal(e.velsa.cpa, 30);
   assert.equal(e.novonet.cpa, null);
   assert.deepEqual(body.avisos, []);
+  const ag = Object.fromEntries(body.porAgencia.map((x) => [x.agencia, x]));
+  assert.equal(ag.ARTS.novonet, 1);
+  assert.equal(ag.VELSA.velsa, 1);
+  assert.equal(ag.VELSA.ventas_velsa, 1);
+  assert.equal(body.detalle.find((d) => d.deal === '10').origen, 'BASE 593-111');
 });
 
 test('GET /costos rechaza un rango al revés', async () => {

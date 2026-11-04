@@ -52,3 +52,33 @@ test('sin datos no rompe', () => {
   assert.equal(r.totales.leads, 0);
   assert.equal(r.totales.cpl, null);
 });
+
+const { resolverAgencia, agruparPorOrigen } = require('../src/shared/bolsaLeadsCostos');
+test('agencia del origen: catálogo primero, luego histórico; ARST → ARTS', () => {
+  const catalogo = new Map([['BASE 593-111', 'ARST'], ['FORMULARIO VELSA 1', 'VELSA'], ['LANDING NUEVA', 'Vidica']]);
+  const historico = { 'LLAMADA LANDING 4': 'VIDIKA GOOGLE', 'BASE 593-995211968': 'ARTS FACEBOOK', 'BASE 593-958993371': 'REMARKETING' };
+  assert.equal(resolverAgencia('  base 593-111 ', catalogo, historico), 'ARTS');
+  assert.equal(resolverAgencia('Formulario Velsa 1', catalogo, historico), 'VELSA');
+  assert.equal(resolverAgencia('LANDING NUEVA', catalogo, historico), 'VIDIKA');
+  assert.equal(resolverAgencia('Llamada Landing 4', catalogo, historico), 'VIDIKA');
+  assert.equal(resolverAgencia('BASE 593-995211968', catalogo, historico), 'ARTS');
+  assert.equal(resolverAgencia('BASE 593-958993371', catalogo, historico), 'REMARKETING');
+  assert.equal(resolverAgencia('ORIGEN RARO', catalogo, historico), 'SIN AGENCIA');
+  assert.equal(resolverAgencia('', catalogo, historico), 'SIN ORIGEN');
+});
+
+test('leads por empresa según agencia y origen', () => {
+  const detalle = [
+    { deal: '1', empresa: 'novonet', ventas: 1 }, { deal: '2', empresa: 'velsa', ventas: 0 },
+    { deal: '3', empresa: 'novonet', ventas: 0 }, { deal: '4', empresa: 'semillero', ventas: 2 }, { deal: '5', empresa: 'velsa', ventas: 0 },
+  ];
+  const origenes = new Map([['1', 'Base 593-111'], ['2', 'Base 593-111'], ['3', 'Llamada Landing 4'], ['4', 'Formulario Velsa 1']]);
+  const catalogo = new Map([['BASE 593-111', 'ARTS'], ['FORMULARIO VELSA 1', 'VELSA']]);
+  const r = agruparPorOrigen({ detalle, origenes, catalogo, historico: { 'LLAMADA LANDING 4': 'VIDIKA GOOGLE' } });
+  const a = Object.fromEntries(r.porAgencia.map((x) => [x.agencia, x]));
+  assert.deepEqual([a.ARTS.total, a.ARTS.novonet, a.ARTS.velsa, a.ARTS.ventas_novonet], [2, 1, 1, 1]);
+  assert.deepEqual([a.VIDIKA.novonet, a.VELSA.semillero, a.VELSA.ventas_semillero], [1, 1, 2]);
+  assert.equal(a['SIN ORIGEN'].velsa, 1);
+  assert.equal(r.porOrigen.find((x) => x.origen === 'BASE 593-111').total, 2);
+  assert.equal(detalle[0].agencia, 'ARTS');   // el detalle por lead también lleva origen y agencia
+});

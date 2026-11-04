@@ -113,7 +113,7 @@ const ESTADO_ACTIVO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.netlife_estatus
 router.get('/costos', async (req, res) => {
   try {
     const db = require('../config/db');   // bddgeneral: inversión y ventas
-    const { calcularCostos } = require('../shared/bolsaLeadsCostos');
+    const { calcularCostos, agruparPorOrigen, normalizarOrigen } = require('../shared/bolsaLeadsCostos');
     const hoy = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
     const rango = await erp.query(
       `SELECT to_char(MIN((creado_en AT TIME ZONE 'America/Guayaquil')::date), 'YYYY-MM-DD') AS desde,
@@ -169,7 +169,43 @@ router.get('/costos', async (req, res) => {
       }
     }
 
-    res.json({ success: true, desde, hasta, avisos, ...calcularCostos({ entregas, inversion, ventas }) });
+    const reporte = calcularCostos({ entregas, inversion, ventas });
+
+    // Origen (campaña) de cada lead y su agencia (ARTS / VIDIKA / VELSA …)
+    const origenes = new Map();
+    const catalogo = new Map();
+    if (ids.length) {
+      try {
+        // 1) estado actual del lead; 2) si ahí no hay origen, el historial del webhook
+        for (const tabla of ['public.bitrix_webhook_leads', 'public.bitrix_webhook_leads_historial']) {
+          const faltan = ids.filter((id) => !origenes.has(id));
+          if (!faltan.length) break;
+          const { rows } = await db.query(
+            `SELECT DISTINCT ON (bitrix_id::text) bitrix_id::text AS deal, NULLIF(BTRIM(source), '') AS origen
+               FROM ${tabla}
+              WHERE bitrix_id::text = ANY($1::text[]) AND NULLIF(BTRIM(source), '') IS NOT NULL
+              ORDER BY bitrix_id::text`, [faltan]
+          );
+          for (const r of rows) origenes.set(String(r.deal), r.origen);
+        }
+      } catch (e) {
+        console.error('[bolsaLeads] costos: orígenes:', e.message);
+        avisos.push('No se pudo leer el origen de los leads (bitrix_webhook_leads)');
+      }
+      // Velsa primero y Novonet después: si un origen está en los dos catálogos, manda el de Novonet
+      for (const tabla of ['public.velsa_lineas_canal', 'public.novonet_lineas_canal']) {
+        try {
+          const { rows } = await db.query(`SELECT origen, agencia FROM ${tabla} WHERE NULLIF(BTRIM(agencia), '') IS NOT NULL`);
+          for (const r of rows) catalogo.set(normalizarOrigen(r.origen), r.agencia);
+        } catch (e) {
+          console.warn(`[bolsaLeads] costos: catálogo ${tabla}:`, e.message);
+        }
+      }
+    }
+    const { ORIGEN_A_CANAL } = require('../shared/origenesRedes');
+    const origen = agruparPorOrigen({ detalle: reporte.detalle, origenes, catalogo, historico: ORIGEN_A_CANAL });
+
+    res.json({ success: true, desde, hasta, avisos, ...reporte, ...origen });
   } catch (e) {
     console.error('[bolsaLeads] costos:', e.message);
     res.status(500).json({ success: false, error: 'No se pudo armar el reporte de costos' });

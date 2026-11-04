@@ -108,4 +108,49 @@ const calcularCostos = ({ entregas = [], inversion = [], ventas = new Map() }) =
   };
 };
 
-module.exports = { calcularCostos, nombreFuente, EMPRESAS };
+// ── Orígenes y agencias ──────────────────────────────────────────────────────
+// El origen del lead (campo "source" de Bitrix) define la campaña. La agencia
+// sale de los catálogos del módulo Redes (novonet_lineas_canal / velsa_lineas_canal)
+// y, si el origen no está ahí, del mapa histórico (ORIGEN_A_CANAL de origenesRedes).
+const normalizarOrigen = (o) => String(o ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+const agenciaCanonica = (valor) => {
+  const v = normalizarOrigen(valor);
+  if (!v) return null;
+  if (/\bARS?TS?\b|^ARST|^ARTS/.test(v)) return 'ARTS';
+  if (/VIDI[KC]A/.test(v)) return 'VIDIKA';
+  if (/VELSA/.test(v)) return 'VELSA';
+  return v;   // otros grupos (REMARKETING, POR RECOMENDACIÓN…) se muestran con su nombre
+};
+/**
+ * catalogo: Map origenNormalizado → agencia (de las tablas *_lineas_canal)
+ * historico: objeto origenNormalizado → canal (ORIGEN_A_CANAL)
+ */
+const resolverAgencia = (origen, catalogo = new Map(), historico = {}) => {
+  const o = normalizarOrigen(origen);
+  if (!o) return 'SIN ORIGEN';
+  return agenciaCanonica(catalogo.get(o)) || agenciaCanonica(historico[o]) || 'SIN AGENCIA';
+};
+
+/**
+ * Leads por empresa según origen y agencia.
+ * detalle: [{ deal, empresa, ventas }]   origenes: Map deal → origen
+ */
+const agruparPorOrigen = ({ detalle = [], origenes = new Map(), catalogo = new Map(), historico = {} }) => {
+  const nuevo = () => ({ total: 0, ventas: 0, ...Object.fromEntries(EMPRESAS.flatMap((e) => [[e, 0], [`ventas_${e}`, 0]])) });
+  const ag = new Map(), og = new Map();
+  for (const d of detalle) {
+    const origen = normalizarOrigen(origenes.get(String(d.deal))) || 'SIN ORIGEN';
+    const agencia = resolverAgencia(origen === 'SIN ORIGEN' ? '' : origen, catalogo, historico);
+    d.origen = origen; d.agencia = agencia;
+    for (const [mapa, clave, base] of [[ag, agencia, { agencia }], [og, `${agencia}|${origen}`, { agencia, origen }]]) {
+      if (!mapa.has(clave)) mapa.set(clave, { ...base, ...nuevo() });
+      const x = mapa.get(clave);
+      x.total++; x.ventas += d.ventas || 0;
+      if (EMPRESAS.includes(d.empresa)) { x[d.empresa]++; x[`ventas_${d.empresa}`] += d.ventas || 0; }
+    }
+  }
+  const orden = (a, b) => b.total - a.total;
+  return { porAgencia: [...ag.values()].sort(orden), porOrigen: [...og.values()].sort((a, b) => a.agencia.localeCompare(b.agencia) || orden(a, b)) };
+};
+
+module.exports = { calcularCostos, nombreFuente, EMPRESAS, normalizarOrigen, resolverAgencia, agruparPorOrigen };

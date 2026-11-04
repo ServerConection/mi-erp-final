@@ -50,7 +50,7 @@ export default function BolsaLeadsCostos() {
   const permitido = puedeAccederBolsaLeads();
   const [desde, setDesde] = useState(''), [hasta, setHasta] = useState('');
   const [data, setData] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [tab, setTab] = useState('dia');
+  const [tab, setTab] = useState('origen');
   const [filtroEmp, setFiltroEmp] = useState('todas'), [soloVenta, setSoloVenta] = useState(false), [pagina, setPagina] = useState(0);
 
   const cargar = useCallback(async (d = desde, h = hasta) => {
@@ -88,7 +88,8 @@ export default function BolsaLeadsCostos() {
           <label className="flex flex-col gap-1">Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border px-2 py-1.5" /></label>
           <button type="button" disabled={busy} onClick={() => cargar()} className="rounded-lg bg-slate-800 px-4 py-2 font-medium text-white disabled:opacity-40">{busy ? 'Cargando…' : 'Ver'}</button>
           <button type="button" disabled={!data?.detalle?.length} onClick={() => descargarCsv(`bolsa_leads_costos_${desde}_${hasta}.csv`, data.detalle.map((d) => ({
-            id_bitrix: d.deal, empresa: EMP[d.empresa]?.label || d.empresa, fecha: d.fecha, costo_usd: d.costo, ventas: d.ventas, activas: d.activas,
+            id_bitrix: d.deal, empresa: EMP[d.empresa]?.label || d.empresa, fecha: d.fecha, agencia: d.agencia || '', origen: d.origen || '',
+            costo_usd: d.costo, ventas: d.ventas, activas: d.activas,
           })))} className="rounded-lg border px-3 py-2 hover:bg-slate-50 disabled:opacity-40">Descargar detalle</button>
         </div>
       </div>
@@ -151,6 +152,27 @@ export default function BolsaLeadsCostos() {
             ))}
           </div>
 
+          {/* Leads por agencia y empresa */}
+          {data.porAgencia?.length > 0 && (
+            <section className="rounded-2xl border bg-white p-4 shadow-sm">
+              <h2 className="mb-1 font-semibold text-slate-700">Leads por agencia y empresa</h2>
+              <p className="mb-3 text-xs text-slate-400">La agencia sale del origen (campaña) de cada lead, con el mismo catálogo del módulo Redes. Entre paréntesis: ventas.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-slate-500"><th className="py-1">Agencia</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th><th>% de leads</th></tr></thead>
+                  <tbody>{data.porAgencia.map((a) => (
+                    <tr key={a.agencia} className="border-t">
+                      <td className="py-1.5 font-semibold">{a.agencia}</td>
+                      {LISTA.map((e) => <td key={e}>{num(a[e])} <span className="text-xs text-slate-400">({num(a[`ventas_${e}`])})</span></td>)}
+                      <td className="font-semibold">{num(a.total)} <span className="text-xs font-normal text-slate-400">({num(a.ventas)})</span></td>
+                      <td>{t.leads ? `${Math.round((a.total * 1000) / t.leads) / 10}%` : '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {/* Gráfico */}
           {data.porDia.length > 0 && (
             <section className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -174,7 +196,7 @@ export default function BolsaLeadsCostos() {
           {/* Detalle */}
           <section className="rounded-2xl border bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap gap-1">
-              {[['dia', 'Por día'], ['fuente', 'Por agencia'], ['lead', 'Por lead']].map(([k, l]) => (
+              {[['origen', 'Por origen'], ['dia', 'Por día'], ['fuente', 'Inversión por agencia'], ['lead', 'Por lead']].map(([k, l]) => (
                 <button key={k} type="button" onClick={() => setTab(k)}
                   className={`rounded-full border px-3 py-1 text-sm ${tab === k ? 'border-slate-800 bg-slate-800 text-white' : 'text-slate-600'}`}>{l}</button>
               ))}
@@ -194,6 +216,23 @@ export default function BolsaLeadsCostos() {
                       <td>{d.sin_asignar ? usd(d.sin_asignar) : '—'}</td>
                     </tr>
                   ))}</tbody>
+                </table>
+              </div>
+            )}
+
+            {tab === 'origen' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-slate-500"><th className="py-1">Agencia</th><th>Origen (campaña)</th>{LISTA.map((e) => <th key={e}>{EMP[e].label}</th>)}<th>Total</th><th>Ventas</th></tr></thead>
+                  <tbody>{(data.porOrigen || []).map((o) => (
+                    <tr key={`${o.agencia}|${o.origen}`} className="border-t">
+                      <td className="py-1.5 text-xs font-semibold text-slate-500">{o.agencia}</td><td>{o.origen}</td>
+                      {LISTA.map((e) => <td key={e}>{num(o[e])}</td>)}
+                      <td className="font-semibold">{num(o.total)}</td><td>{num(o.ventas)}</td>
+                    </tr>
+                  ))}
+                  {!data.porOrigen?.length && <tr><td colSpan={7} className="py-6 text-center text-slate-400">Sin leads</td></tr>}
+                  </tbody>
                 </table>
               </div>
             )}
@@ -223,14 +262,15 @@ export default function BolsaLeadsCostos() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-slate-500"><th className="py-1">ID Bitrix</th><th>Empresa</th><th>Fecha</th><th>Costo</th><th>Ventas</th><th>Activas</th></tr></thead>
+                    <thead><tr className="text-left text-slate-500"><th className="py-1">ID Bitrix</th><th>Empresa</th><th>Fecha</th><th>Agencia</th><th>Origen</th><th>Costo</th><th>Ventas</th><th>Activas</th></tr></thead>
                     <tbody>{detalle.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA).map((d) => (
                       <tr key={d.deal} className="border-t">
                         <td className="py-1.5 font-mono">{d.deal}</td><td>{EMP[d.empresa]?.label || d.empresa}</td><td>{d.fecha}</td>
+                        <td className="text-xs">{d.agencia || '—'}</td><td className="text-xs">{d.origen || '—'}</td>
                         <td>{usd(d.costo)}</td><td>{d.ventas || '—'}</td><td>{d.activas || '—'}</td>
                       </tr>
                     ))}
-                    {!detalle.length && <tr><td colSpan={6} className="py-6 text-center text-slate-400">Sin leads</td></tr>}
+                    {!detalle.length && <tr><td colSpan={8} className="py-6 text-center text-slate-400">Sin leads</td></tr>}
                     </tbody>
                   </table>
                 </div>

@@ -74,6 +74,7 @@ const WaLineasDashboard    = lazy(() => import("./pages/WaLineasDashboard"));
 const WaCampanas           = lazy(() => import("./pages/WaCampanas"));
 const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
 const WaContactos          = lazy(() => import("./pages/WaContactos"));
+const WaPlantillasInbox    = lazy(() => import("./pages/WaPlantillasInbox"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const WaPresentacion       = lazy(() => import("./pages/WaPresentacion"));
@@ -263,6 +264,7 @@ export default function App() {
             <Route path="whatsapp/campanas"         element={<WaCampanas />} />
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
+            <Route path="whatsapp/plantillas"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "GERENTE"]}><WaPlantillasInbox /></RolesAllowedRoute>} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
             <Route path="whatsapp/respaldos"        element={<AdminOnlyRoute><WaRespaldos /></AdminOnlyRoute>} />
             <Route path="whatsapp/presentacion"      element={<WaPresentacion />} />

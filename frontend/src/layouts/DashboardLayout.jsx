@@ -482,6 +482,9 @@ const ALL_MENU_ITEMS = [
   { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // Plantillas del Inbox: las gestionan administración, gerencia y supervisores.
+  { name: "Plantillas",  path: "/whatsapp/plantillas", icon: "🗂️", isChild: true, group: "wabot",
+    accessCheck: (p) => { const x = (p || '').toUpperCase(); return ['ADMINISTRADOR', 'SUPERVISOR', 'GERENCIA', 'GERENTE'].includes(x) || /^GEREN(CIA|TE)[ _-]/.test(x); } },
   { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot",
     accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   { name: "Presentación", path: "/whatsapp/presentacion", icon: "🪪", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },

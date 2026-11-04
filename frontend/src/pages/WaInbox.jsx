@@ -3,6 +3,7 @@
  */
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import InboxAudioRecorder from "../components/InboxAudioRecorder";
+import InboxPlantillasPicker, { rellenarPlantilla } from "../components/InboxPlantillasPicker";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waInboxFilters";
@@ -179,6 +180,8 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [verPlantillas, setVerPlantillas] = useState(false);
+  const [enviandoPlantilla, setEnviandoPlantilla] = useState(false);
   const [returningToBot, setReturningToBot] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [internalImage, setInternalImage] = useState(null);
@@ -575,6 +578,29 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
       console.error("[WaInbox] Error enviando archivo:", e);
       alert("Error enviando el archivo");
     } finally { setUploading(false); }
+  };
+
+  // Plantillas predeterminadas (cargadas por supervisión): se envían tal cual,
+  // con {{nombre}} reemplazado por el nombre del contacto.
+  const enviarPlantillaPredeterminada = async (p) => {
+    if (!selected || enviandoPlantilla) return;
+    setEnviandoPlantilla(true);
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}/send`, {
+        method: "POST", headers: authH(),
+        body: JSON.stringify({
+          text: rellenarPlantilla(p.texto, selected.contact_name),
+          ...(p.media_url ? { media_url: p.media_url, media_type: p.media_type || "image", media_filename: p.media_filename } : {}),
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error || "No se pudo enviar la plantilla"); return; }
+      setVerPlantillas(false);
+      loadMessages(selected.id);
+    } catch (e) {
+      console.error("[WaInbox] Error enviando plantilla:", e);
+      alert("Error enviando la plantilla");
+    } finally { setEnviandoPlantilla(false); }
   };
 
   // WhatsApp/Baileys no expone una API soportada para originar llamadas.
@@ -1074,6 +1100,17 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
               className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#54656f] px-3 py-1.5 rounded-full transition-colors text-xs font-medium">
               🔒 Oculto
             </button>
+            <button type="button" onClick={() => setVerPlantillas(true)} disabled={sending || uploading}
+              title="Plantillas predeterminadas de tu equipo (texto e imagen)"
+              className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#008069] px-3 py-1.5 rounded-full transition-colors text-xs font-semibold">
+              🗂️ Plantillas
+            </button>
+            {verPlantillas && (
+              <InboxPlantillasPicker contacto={selected.contact_name} enviando={enviandoPlantilla}
+                onClose={() => setVerPlantillas(false)}
+                onEnviar={enviarPlantillaPredeterminada}
+                onUsarTexto={(p) => { setNewMsg(rellenarPlantilla(p.texto, selected.contact_name)); setVerPlantillas(false); }} />
+            )}
             <button onClick={sendPlantilla} disabled={sending || uploading || !newMsg.trim()}
               title="Escribe el nombre de la plantilla (ej. ATC) y pulsa para enviarla al cliente"
               className="bg-white hover:bg-[#e9edef] disabled:opacity-40 text-[#54656f] px-3 py-1.5 rounded-full transition-colors text-xs font-medium">

@@ -113,7 +113,7 @@ const ESTADO_ACTIVO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.netlife_estatus
 router.get('/costos', async (req, res) => {
   try {
     const db = require('../config/db');   // bddgeneral: inversión y ventas
-    const { calcularCostos, agruparPorOrigen, normalizarOrigen } = require('../shared/bolsaLeadsCostos');
+    const { calcularCostos, agruparPorOrigen, costosPorAgencia, normalizarOrigen } = require('../shared/bolsaLeadsCostos');
     const hoy = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
     const rango = await erp.query(
       `SELECT to_char(MIN((creado_en AT TIME ZONE 'America/Guayaquil')::date), 'YYYY-MM-DD') AS desde,
@@ -204,8 +204,9 @@ router.get('/costos', async (req, res) => {
     }
     const { ORIGEN_A_CANAL } = require('../shared/origenesRedes');
     const origen = agruparPorOrigen({ detalle: reporte.detalle, origenes, catalogo, historico: ORIGEN_A_CANAL });
+    const costosAgencia = costosPorAgencia({ ...origen, porFuente: reporte.porFuente });
 
-    res.json({ success: true, desde, hasta, avisos, ...reporte, ...origen });
+    res.json({ success: true, desde, hasta, avisos, ...reporte, ...origen, ...costosAgencia });
   } catch (e) {
     console.error('[bolsaLeads] costos:', e.message);
     res.status(500).json({ success: false, error: 'No se pudo armar el reporte de costos' });

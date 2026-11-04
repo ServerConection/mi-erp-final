@@ -82,3 +82,30 @@ test('leads por empresa según agencia y origen', () => {
   assert.equal(r.porOrigen.find((x) => x.origen === 'BASE 593-111').total, 2);
   assert.equal(detalle[0].agencia, 'ARTS');   // el detalle por lead también lleva origen y agencia
 });
+
+const { resolverOrigen, costosPorAgencia } = require('../src/shared/bolsaLeadsCostos');
+test('VELSA 1 y VELSA 2 quedan como sub-agencias de VELSA', () => {
+  const catalogo = new Map([['FORM V1', 'Velsa 1'], ['FORM V2', 'VELSA 2'], ['BASE A', 'ARST GOOGLE']]);
+  assert.deepEqual(resolverOrigen('form v1', catalogo), { agencia: 'VELSA', subagencia: 'VELSA 1' });
+  assert.deepEqual(resolverOrigen('FORM V2', catalogo), { agencia: 'VELSA', subagencia: 'VELSA 2' });
+  assert.deepEqual(resolverOrigen('BASE A', catalogo), { agencia: 'ARTS', subagencia: 'ARTS GOOGLE' });
+});
+
+test('costo por agencia y por empresa; sub-agencias con el CPL de su agencia', () => {
+  const detalle = [
+    { deal: '1', empresa: 'novonet', ventas: 1 }, { deal: '2', empresa: 'velsa', ventas: 1 },
+    { deal: '3', empresa: 'velsa', ventas: 0 }, { deal: '4', empresa: 'novonet', ventas: 0 },
+  ];
+  const origenes = new Map([['1', 'FORM V1'], ['2', 'FORM V1'], ['3', 'FORM V2'], ['4', 'BASE A']]);
+  const catalogo = new Map([['FORM V1', 'VELSA 1'], ['FORM V2', 'VELSA 2'], ['BASE A', 'ARTS']]);
+  const o = agruparPorOrigen({ detalle, origenes, catalogo });
+  const porFuente = [{ fuente: 'VELSA', monto: 90 }, { fuente: 'ARTS', monto: 40 }, { fuente: 'VIDIKA', monto: 10 }];
+  const r = costosPorAgencia({ ...o, porFuente });
+  const a = Object.fromEntries(r.porAgencia.map((x) => [x.agencia, x]));
+  assert.deepEqual([a.VELSA.inversion, a.VELSA.total, a.VELSA.cpl], [90, 3, 30]);
+  assert.deepEqual([a.VELSA.costo_novonet, a.VELSA.costo_velsa, a.VELSA.cpa], [30, 60, 45]);
+  assert.equal(a.ARTS.costo_novonet, 40);
+  assert.deepEqual([a.VIDIKA.total, a.VIDIKA.inversion, a.VIDIKA.cpl], [0, 10, null]);  // invirtió pero no llegaron leads
+  const v1 = r.porSubagencia.find((x) => x.subagencia === 'VELSA 1');
+  assert.deepEqual([v1.total, v1.novonet, v1.velsa, v1.costo], [2, 1, 1, 60]);
+});

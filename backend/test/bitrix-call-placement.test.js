@@ -34,12 +34,16 @@ test('action token encrypts the Bitrix session and rejects tampering or expiry',
   assert.throws(() => verifyCallActionToken(token, 'a-test-secret-that-is-longer-than-thirty-two-characters', { now: 61_001 }), /expir/i)
 })
 
-test('resolveDealPhone uses the authenticated Bitrix user context and never returns raw data', async () => {
+test('resolveDealPhone validates the deal as the advisor and reads the phone with the app token and never returns raw data', async () => {
   const calls = []
   const bitrixApp = {
     llamarConAuthId: async (method, params, authId) => {
       calls.push({ method, params, authId })
       if (method === 'crm.deal.get') return { ID: '662241', TITLE: 'Ma Augusta Larrea', CONTACT_ID: '44' }
+      throw new Error(`unexpected method ${method}`)
+    },
+    llamar: async (method, params) => {
+      calls.push({ method, params, authId: 'app' })
       if (method === 'crm.contact.get') return { ID: '44', NAME: 'Ma Augusta', LAST_NAME: 'Larrea', PHONE: [{ VALUE: '099 857 1562' }] }
       throw new Error(`unexpected method ${method}`)
     },
@@ -50,7 +54,7 @@ test('resolveDealPhone uses the authenticated Bitrix user context and never retu
   assert.deepEqual(result, { phone: '593998571562', contactName: 'Ma Augusta Larrea', dealTitle: 'Ma Augusta Larrea' })
   assert.deepEqual(calls, [
     { method: 'crm.deal.get', params: { id: '662241' }, authId: 'sensitive-auth' },
-    { method: 'crm.contact.get', params: { id: '44' }, authId: 'sensitive-auth' },
+    { method: 'crm.contact.get', params: { id: '44' }, authId: 'app' },
   ])
   assert.equal(Object.hasOwn(result, 'phoneRaw'), false)
 })

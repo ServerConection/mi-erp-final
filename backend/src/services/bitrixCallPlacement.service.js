@@ -87,13 +87,16 @@ async function resolveDealPhone(bitrixApp, authId, dealId) {
   let phone = ''
   let contactName = deal.TITLE || `Negociación #${cleanDealId}`
   if (validId(deal.CONTACT_ID)) {
-    const contact = await bitrixApp.llamarConAuthId('crm.contact.get', { id: String(deal.CONTACT_ID) }, authId)
+    // El deal ya se validó con el AUTH_ID del asesor (arriba). El teléfono se lee con el
+    // token de la app porque los asesores no tienen permiso para ver contactos en Bitrix.
+    // El número nunca se devuelve al asesor: solo viaja al automarcador.
+    const contact = await bitrixApp.llamar('crm.contact.get', { id: String(deal.CONTACT_ID) })
     phone = firstValidPhone(contact?.PHONE)
     const name = [contact?.NAME, contact?.LAST_NAME].filter(Boolean).join(' ').trim()
     if (name) contactName = name
   }
   if (!phone && validId(deal.COMPANY_ID)) {
-    const company = await bitrixApp.llamarConAuthId('crm.company.get', { id: String(deal.COMPANY_ID) }, authId)
+    const company = await bitrixApp.llamar('crm.company.get', { id: String(deal.COMPANY_ID) })
     phone = firstValidPhone(company?.PHONE)
     if (company?.TITLE) contactName = company.TITLE
   }

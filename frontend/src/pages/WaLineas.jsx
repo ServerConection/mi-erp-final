@@ -19,6 +19,22 @@ const portalDeLinea = (line) => {
   return empresa === "VELSA" ? "VELSA" : "NOVONET";
 };
 
+// Columna de la pantalla (no confundir con el portal de Bitrix: SEMILLERO y
+// VENTA EN LÍNEA usan el portal de NOVONET pero se muestran aparte).
+const GRUPOS_LINEAS = [
+  { empresa: "NOVONET", titulo: "NOVONET", clase: "border-blue-200 bg-blue-50 text-blue-800" },
+  { empresa: "VELSA", titulo: "VELSA", clase: "border-violet-200 bg-violet-50 text-violet-800" },
+  { empresa: "SEMILLERO", titulo: "SEMILLERO", clase: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  { empresa: "VENTAENLINEA", titulo: "VENTA EN LÍNEA", clase: "border-amber-200 bg-amber-50 text-amber-800" },
+];
+const grupoDeLinea = (line) => {
+  // "Venta en línea", "VENTA_EN_LINEA", "ventaenlinea" → VENTAENLINEA
+  const empresa = normalizarEmpresa(line.owner_empresa || line.empresa || line.line_empresa)
+    .normalize("NFD").replace(/[^A-Z]/g, "");
+  return GRUPOS_LINEAS.some(g => g.empresa === empresa) ? empresa : "NOVONET";
+};
+const sinTildes = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 // /lines/dashboard ya agrupa cada línea por la empresa de su propietario. Se
 // usa como respaldo porque algunas versiones antiguas de /lines no incluían
 // owner_empresa y el frontend terminaba poniendo todo en NOVONET.
@@ -84,6 +100,8 @@ const getSocket = () => getSocketCompartido();
 
 export default function WaLineas() {
   const [lines, setLines]       = useState([]);
+  const [buscar, setBuscar]     = useState("");
+  const [soloProblemas, setSoloProblemas] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [qrModal, setQrModal]   = useState(null); // { lineId, qr }
   const [newName, setNewName]   = useState("");
@@ -300,10 +318,30 @@ export default function WaLineas() {
     </div>
   );
 
-  const lineasPorEmpresa = {
-    NOVONET: lines.filter(line => portalDeLinea(line) === "NOVONET"),
-    VELSA: lines.filter(line => portalDeLinea(line) === "VELSA"),
-  };
+  // Búsqueda por nombre, número, asesor o estado; opción de ver solo las que
+  // no están conectadas.
+  const termino = sinTildes(buscar.trim());
+  const lineasFiltradas = lines.filter(line => {
+    if (soloProblemas && line.status === "connected") return false;
+    if (!termino) return true;
+    const texto = sinTildes(`${line.name} ${line.phone_number || ""} ${line.owner_username || ""} ${STATUS_LABEL[line.status] || line.status}`);
+    const digitosLinea = String(line.phone_number || "").replace(/\D/g, "");
+    return termino.split(/\s+/).every(t => {
+      if (texto.includes(t)) return true;
+      // Número escrito como 09xxxxxxxx o +593 9xxxxxxxx → compara sin prefijos.
+      const d = t.replace(/\D/g, "").replace(/^593/, "").replace(/^0/, "");
+      return d.length >= 3 && digitosLinea.includes(d);
+    });
+  });
+  const lineasPorEmpresa = Object.fromEntries(GRUPOS_LINEAS.map(g =>
+    [g.empresa, lineasFiltradas.filter(line => grupoDeLinea(line) === g.empresa)]));
+  // Columnas visibles: NOVONET y VELSA siempre; SEMILLERO / VENTA EN LÍNEA si tienen líneas.
+  // Con búsqueda/filtro activo solo se muestran las columnas con resultados.
+  const filtrando = Boolean(termino) || soloProblemas;
+  const gruposVisibles = GRUPOS_LINEAS.filter(g => filtrando
+    ? lineasPorEmpresa[g.empresa].length > 0
+    : ["NOVONET", "VELSA"].includes(g.empresa) || lines.some(line => grupoDeLinea(line) === g.empresa));
+  const problemas = lines.filter(line => line.status !== "connected").length;
 
   const renderLinea = (line) => (
     <div key={line.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
@@ -437,14 +475,26 @@ export default function WaLineas() {
           <div className="text-sm mt-1">Crea una línea para empezar</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {[
-            { empresa: "NOVONET", color: "blue" },
-            { empresa: "VELSA", color: "violet" },
-          ].map(({ empresa, color }) => (
+        <>
+        <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+          <input type="search" value={buscar} onChange={e => setBuscar(e.target.value)}
+            placeholder="Buscar línea por nombre, número o asesor…"
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400 bg-white" />
+          <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer select-none ${soloProblemas ? "border-red-300 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-600"}`}>
+            <input type="checkbox" checked={soloProblemas} onChange={e => setSoloProblemas(e.target.checked)} className="accent-red-600" />
+            Solo sin conectar ({problemas})
+          </label>
+        </div>
+        {lineasFiltradas.length === 0 && (
+          <div className="mb-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-400">
+            Ninguna línea coincide con la búsqueda.
+          </div>
+        )}
+        <div className={`grid grid-cols-1 gap-6 items-start ${gruposVisibles.length >= 3 ? "lg:grid-cols-2 2xl:grid-cols-3" : "lg:grid-cols-2"}`}>
+          {gruposVisibles.map(({ empresa, titulo, clase }) => (
             <section key={empresa} className="min-w-0">
-              <div className={`mb-3 flex items-center justify-between rounded-xl border px-4 py-3 ${color === "blue" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-violet-200 bg-violet-50 text-violet-800"}`}>
-                <h2 className="text-sm font-black tracking-wide">{empresa}</h2>
+              <div className={`mb-3 flex items-center justify-between rounded-xl border px-4 py-3 ${clase}`}>
+                <h2 className="text-sm font-black tracking-wide">{titulo}</h2>
                 <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-bold">
                   {lineasPorEmpresa[empresa].length} línea(s)
                 </span>
@@ -452,11 +502,12 @@ export default function WaLineas() {
               <div className="space-y-3">
                 {lineasPorEmpresa[empresa].length > 0
                   ? lineasPorEmpresa[empresa].map(renderLinea)
-                  : <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-400">No hay líneas de {empresa}</div>}
+                  : <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-400">{termino || soloProblemas ? "Sin coincidencias" : `No hay líneas de ${titulo}`}</div>}
               </div>
             </section>
           ))}
         </div>
+        </>
       )}
 
       {/* Modal QR */}

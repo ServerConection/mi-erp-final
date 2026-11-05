@@ -214,13 +214,11 @@ async function obtenerOpciones(user, input = {}, db) {
     params.push(patronesAsesor(user))
     rango += `\n          AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
   }
-  // Estados Netlife disponibles en JotForm para la empresa (y rango).
+  // Estados Netlife disponibles en JotForm para la empresa. NO dependen del
+  // rango: el modal abre con la fecha de hoy y casi nunca hay activaciones
+  // del día, lo que dejaba la lista vacía.
   const paramsNet = [empresa.toUpperCase()]
-  let rangoNet = ''
-  if (fechasOk) {
-    paramsNet.push(from, to)
-    rangoNet = `\n          AND ${FECHA_JOTFORM_SQL} BETWEEN $2::date AND $3::date`
-  }
+  const rangoNet = ''
   const [stageResult, responsibleResult, sourceResult, netlifeResult] = await Promise.all([
     db.query(
       `SELECT etapa AS id,

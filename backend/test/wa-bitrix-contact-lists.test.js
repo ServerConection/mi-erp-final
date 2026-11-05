@@ -64,7 +64,7 @@ test('crear base: elige pipeline por filtro y limita opciones al rango de fechas
   const r = await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'ADMINISTRADOR' }, { empresa: 'Venta en linea', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.equal(r.empresa, 'VENTAENLINEA')
   assert.equal(calls.length, 4) // etapas, responsables, orígenes + estados Netlife
-  assert.deepEqual(calls[3].params, ['VENTAENLINEA', '2026-10-01', '2026-10-07'])
+  assert.deepEqual(calls[3].params, ['VENTAENLINEA']) // estados sin rango de fechas
   assert.match(calls[3].sql, /envios_ventas/)
   for (const c of calls.slice(0, 3)) {
     assert.deepEqual(c.params, ['ventaenlinea', '2026-10-01', '2026-10-07'])

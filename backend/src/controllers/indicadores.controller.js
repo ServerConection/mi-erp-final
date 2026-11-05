@@ -2,6 +2,13 @@ const pool = require('../config/db');
 const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 const { fuenteJotNovonet } = require('../shared/fuenteJotNovonet');
 const filtroOrigenNovonet = (values, origenes = [], alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
+const enPipelineNovonet = (alias = 'mb') => `EXISTS (
+    SELECT 1
+    FROM public.bitrix_webhook_leads pipeline_novonet
+    WHERE pipeline_novonet.empresa = 'novonet'
+      AND BTRIM(pipeline_novonet.bitrix_id::text) = ${dealNovonet(alias)}
+      AND BTRIM(COALESCE(pipeline_novonet.categoria_id, '')) = '19'
+)`;
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1084,7 +1091,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
             FROM public.vw_bitrix_novonet_v2 mb
-            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND ${enPipelineNovonet('mb')} ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;
@@ -1099,7 +1107,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
             FROM public.vw_bitrix_novonet_v2 mb
-            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND ${enPipelineNovonet('mb')} ${filtersNoJoin}
             GROUP BY mb.b_creado_el_fecha, mb.b_etapa_de_la_negociacion
             ORDER BY fecha ASC
         `;
@@ -1113,7 +1122,8 @@ const getIndicadoresDashboard = async (req, res) => {
             LEFT JOIN public.bitrix_webhook_leads origen_tabla
               ON origen_tabla.empresa = 'novonet'
              AND BTRIM(origen_tabla.bitrix_id::text) = ${dealNovonet('mb')}
-            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND ${enPipelineNovonet('mb')} ${filtersNoJoin}
             GROUP BY 1, 2, 3
             ORDER BY 1, 3, 2
         `;
@@ -1796,7 +1806,8 @@ const getReporte180 = async (req, res) => {
                 COALESCE(mb.b_etapa_de_la_negociacion, 'SIN ETAPA') AS etapa,
                 COUNT(DISTINCT mb.b_id)::int AS total
             FROM public.vw_bitrix_novonet_v2 mb
-            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date ${filtersNoJoin}
+            WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+              AND ${enPipelineNovonet('mb')} ${filtersNoJoin}
             GROUP BY mb.b_etapa_de_la_negociacion
             ORDER BY total DESC
         `;

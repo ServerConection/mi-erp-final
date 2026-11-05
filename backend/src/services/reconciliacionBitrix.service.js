@@ -263,7 +263,7 @@ const reconciliarLeads = async ({
            INSERT INTO bitrix_webhook_leads
              (bitrix_id, empresa, etapa, event, etapa_bitrix, raw_query, created_at, categoria_id, pipeline)
            SELECT bitrix_id, $2::text, etapa, LOWER($2::text) || '_sync', etapa_bitrix, raw_query,
-                  COALESCE(fecha, NOW()), $3,
+                  COALESCE(fecha, NOW()), categoria_id,
                   UPPER($2::text)
              FROM cambios
            ON CONFLICT (empresa, bitrix_id) DO UPDATE
@@ -274,7 +274,7 @@ const reconciliarLeads = async ({
                  created_at = EXCLUDED.created_at,
                  raw_query = EXCLUDED.raw_query,
                  updated_at = NOW()`,
-          [JSON.stringify(payload), empresa, String(categoriaObjetivo)]
+          [JSON.stringify(payload), empresa]
         );
         await client.query(
           `WITH cambios AS (
@@ -306,23 +306,37 @@ const reconciliarLeads = async ({
       stage_id: d.STAGE_ID, category_id: d.CATEGORY_ID, date_modify: d.DATE_MODIFY,
     });
     try {
-      await pool.query(
-        `INSERT INTO bitrix_webhook_leads
-           (bitrix_id, empresa, etapa, event, etapa_bitrix, source, repeated, iniciado_el, raw_query, created_at, categoria_id, responsible)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($8::timestamptz, NOW()), $10, $11)
-         ON CONFLICT (empresa, bitrix_id) DO UPDATE
-           SET etapa = EXCLUDED.etapa,
-               etapa_bitrix = EXCLUDED.etapa_bitrix,
-               source = COALESCE(NULLIF(BTRIM(EXCLUDED.source), ''), bitrix_webhook_leads.source),
-               categoria_id = EXCLUDED.categoria_id,
-               responsible = COALESCE(NULLIF(BTRIM(EXCLUDED.responsible), ''), bitrix_webhook_leads.responsible),
-               created_at = COALESCE($8::timestamptz, bitrix_webhook_leads.created_at),
-               raw_query = EXCLUDED.raw_query,
-               updated_at = NOW()`,
-        [id, empresa, etapa, 'reconciliacion', etapaBitrix,
-         origen, d.IS_REPEATED_APPROACH === 'Y' ? 'Y' : 'N',
-         d.DATE_CREATE || null, raw, String(d.CATEGORY_ID ?? ''), userName[String(d.ASSIGNED_BY_ID)] || null]
-      );
+      const parametros = [id, empresa, etapa, etapaBitrix, origen,
+        d.IS_REPEATED_APPROACH === 'Y' ? 'Y' : 'N', d.DATE_CREATE || null,
+        raw, String(d.CATEGORY_ID ?? ''), userName[String(d.ASSIGNED_BY_ID)] || null];
+      if (enTabla.has(id)) {
+        // No usar INSERT ... ON CONFLICT para filas existentes: el trigger
+        // trg_solo_webhook cancela los INSERT de reconciliacion antes de que
+        // PostgreSQL alcance la rama DO UPDATE.
+        await pool.query(
+          `UPDATE bitrix_webhook_leads
+              SET etapa = $3,
+                  etapa_bitrix = $4,
+                  source = COALESCE(NULLIF(BTRIM($5), ''), source),
+                  repeated = $6,
+                  iniciado_el = COALESCE($7::text, iniciado_el),
+                  raw_query = $8,
+                  created_at = COALESCE($7::timestamptz, created_at),
+                  categoria_id = $9,
+                  responsible = COALESCE(NULLIF(BTRIM($10), ''), responsible),
+                  updated_at = NOW()
+            WHERE bitrix_id = $1 AND empresa = $2`,
+          parametros
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO bitrix_webhook_leads
+             (bitrix_id, empresa, etapa, event, etapa_bitrix, source, repeated, iniciado_el, raw_query, created_at, categoria_id, responsible)
+           VALUES ($1,$2,$3,$2 || '_sync',$4,$5,$6,$7::text,$8,COALESCE($7::timestamptz,NOW()),$9,$10)
+           ON CONFLICT (empresa, bitrix_id) DO NOTHING`,
+          parametros
+        );
+      }
       // Historial solo si cambió la etapa: un cambio de origen no es un paso
       // del recorrido y ensuciaría el historial.
       if (cambioEtapa) await pool.query(

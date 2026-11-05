@@ -5,9 +5,9 @@
  * no corre (deal que ya pasó por esa etapa, negociación repetida, movimiento
  * por REST, backend dormido en ese instante...), el lead nunca entra a la
  * tabla y NADIE se entera. Este job vuelve a preguntarle a Bitrix y rellena
- * lo que falte, así el hueco se cierra solo en menos de una hora.
+ * lo que falte, así el hueco se cierra en pocos minutos.
  *
- * Ventana corta y frecuente (últimos 3 días, cada hora) para no castigar el
+ * Ventana corta y frecuente (últimos 3 días, cada 5 minutos por defecto) para no castigar el
  * rate limit de Bitrix. Para rellenar histórico viejo, usar el CLI:
  *   node scripts/reconciliar_bitrix_leads.js --desde=2026-01-01 --aplicar
  *
@@ -18,6 +18,7 @@ const pool = require('../config/db');
 const { reconciliarLeads, asegurarColumnaCategoria } = require('../services/reconciliacionBitrix.service');
 
 const DIAS_VENTANA = Number(process.env.RECONCILIACION_BITRIX_DIAS || 3);
+const CRON_RECONCILIACION = process.env.RECONCILIACION_BITRIX_CRON || '*/5 * * * *';
 
 // El ERP corre en varios procesos (server.js monolito, entries/workers.js, y
 // posibles multi-instancia en Render). Un advisory lock de Postgres garantiza
@@ -38,8 +39,8 @@ const correr = async ({ desde: desdeForzado } = {}) => {
   try {
     const resultados = [];
     const empresas = [
-      { empresa: 'novonet' },
-      { empresa: 'velsa' },
+      { empresa: 'novonet', soloEtapas: true, cursorRapido: true },
+      { empresa: 'velsa', soloEtapas: true, cursorRapido: true },
       {
         empresa: 'semillero',
         categoria: process.env.RECONCILIACION_BITRIX_CATEGORIA_SEMILLERO || '41',
@@ -99,9 +100,10 @@ function initReconciliacionBitrix() {
     console.log('[reconciliacion] apagada (tiempo real vía eventos). Para activarla: RECONCILIACION_BITRIX=on');
     return;
   }
-  // Al minuto 20 de cada hora, para no chocar con los otros jobs en punto.
-  cron.schedule('20 * * * *', correr, { timezone: 'America/Guayaquil' });
-  console.log(`[reconciliacion] activa — cada hora, ventana de ${DIAS_VENTANA} días`);
+  // Frecuencia corta para cerrar huecos de eventos durante despliegues.
+  // Es configurable desde Render sin necesidad de otro cambio de código.
+  cron.schedule(CRON_RECONCILIACION, correr, { timezone: 'America/Guayaquil' });
+  console.log(`[reconciliacion] activa — cron=${CRON_RECONCILIACION}, ventana de ${DIAS_VENTANA} días`);
   // Primera corrida a los 30 s: desde el día 1 del mes en curso, para dejar
   // cuadrado el mes que se reporta en Redes aunque el deal no se haya tocado
   // en los últimos días.

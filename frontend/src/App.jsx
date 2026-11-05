@@ -245,7 +245,7 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="mis-negociaciones"        element={<MisNegociaciones />} />
+            <Route path="mis-negociaciones"        element={<AdminOnlyRoute><MisNegociaciones /></AdminOnlyRoute>} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="conexiones"              element={<ControlAsistencia />} />
             <Route path="configuracion-asistencia" element={<AdminOnlyRoute><ConfiguracionAsistencia /></AdminOnlyRoute>} />

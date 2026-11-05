@@ -168,10 +168,10 @@ function Detalle({ r, reglas, empresa, mes, filtros, onCerrar }) {
       <div className="mt-4 rounded-xl border p-3"><div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Target className="h-4 w-4 text-blue-600" />Meta del asegurado</div><div className="mt-2"><BarraMeta n={r.ventas_tabla} meta={reglas?.meta || 35} /></div><p className={`mt-2 text-xs font-semibold ${hito.tono === 'ambar' ? 'text-amber-700' : hito.tono === 'violeta' ? 'text-violet-700' : 'text-emerald-700'}`}>{hito.texto}</p></div>
       <h3 className="mt-5 text-xs font-black uppercase text-slate-500">Cómo se forma lo disponible</h3>
       <div className="mt-1">
-        {fila('Asegurado', d.asegurado, `Llegó a ${reglas?.meta || 35} ventas a tabla`, 'text-emerald-700')}
+        {fila('Asegurado', d.asegurado, r.asegurado_aplicado ? `Llegó a ${reglas?.meta || 35} · ref. ${dinero(r.asegurado_por_venta)} por venta (${dinero(reglas?.asegurado || 550)} / ${r.ventas_total_tramo} ventas)` : `Llegó a ${reglas?.meta || 35} ventas a tabla`, 'text-emerald-700')}
         {fila(r.asegurado_aplicado ? 'Comisión desde la venta 36' : 'Comisión por ventas a tabla', d.tabla, r.asegurado_aplicado ? `Tramo ${r.tramo}` : 'Tabla “hasta 41” por venta')}
         {fila('Planes de comisión', d.directa, 'No cuentan para el asegurado')}
-        {fila('PYME como bono', d.pyme, 'Llegó a 35 sin contar PYME')}
+        {fila('PYME como bono', d.pyme, `Llegó a 35 sin PYME · cuentan para el tramo (total ${r.ventas_total_tramo ?? r.ventas_tabla})`)}
         <div className="flex justify-between py-3 text-base font-black text-emerald-700"><span>Disponible</span><span>{dinero(r.valor_disponible)}</span></div>
         {fila('Bono al volumen (aparte, va en el rol)', d.bono, `${r.ventas_volumen ?? r.activas_regularizadas} ventas que cuentan`, 'text-violet-700')}
         {Number(r.valor_total) > Number(r.valor_disponible) && <p className="mt-1 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Si regulariza sus {r.activas_por_regularizar} pendientes llegaría a <b>{dinero(r.valor_total)}</b>.</p>}
@@ -253,7 +253,7 @@ export default function Comisiones() {
     const filasXls = filas.map((r) => { const d = desglose(r, reglas); return {
       Asesor: r.nombre_asesor || r.usuario, Usuario: r.usuario, Codigo: r.codigo_asesor, 'Última activación': r.ultima_fecha_activacion, 'Último ingreso Telcos': r.ultima_fecha_ingreso_telcos,
       'Por regularizar': r.activas_por_regularizar, Regularizadas: r.activas_regularizadas, 'Activas totales': r.activas_totales,
-      'Ventas a tabla': r.ventas_tabla, Tramo: r.tramo, Asegurado: d.asegurado, 'Comisión tabla': Number(d.tabla.toFixed(2)),
+      'Ventas a tabla': r.ventas_tabla, 'Total para tramo (con PYME)': r.ventas_total_tramo ?? r.ventas_tabla, Tramo: r.tramo, Asegurado: d.asegurado, 'Asegurado por venta (ref.)': r.asegurado_por_venta || 0, 'Comisión tabla': Number(d.tabla.toFixed(2)),
       'Planes comisión': d.directa, 'PYME bono': d.pyme, Disponible: r.valor_disponible, 'Bono volumen': d.bono, 'Valor total': r.valor_total,
       'Sin valor': r.sin_valor, '3ra edad sobre 15%': r.te_excedentes, 'No vender': r.no_vender,
     }; });
@@ -281,7 +281,7 @@ export default function Comisiones() {
     </form>}
 
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
-    {t.te_alerta && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">Alerta: tercera edad es el {t.te_pct}% de las ventas regularizadas de {empresa} (tope 15%). A cada asesor no se le pagan las de 3ra edad que pasan su 15%.</div>}
+    {t.te_alerta && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">Alerta: tercera edad es el {t.te_pct_global}% global (NOVONET + VELSA; {empresa}: {t.te_pct}%). Supera el 15%: a cada asesor no se le pagan las de 3ra edad que pasan su 15%.</div>}
 
     {loading && !data.filas?.length ? <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((x) => <div key={x} className="h-[110px] animate-pulse rounded-2xl bg-slate-200" />)}</div> : <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm"><div className="text-[11px] font-bold uppercase text-emerald-700">Disponible a pagar</div><div className="mt-1 text-2xl font-black text-emerald-700 md:text-3xl">{dinero(t.valor_disponible)}</div><div className="text-[11px] text-emerald-700/80">{t.activas_regularizadas || 0} regularizadas</div></div>
@@ -296,8 +296,8 @@ export default function Comisiones() {
         <li>Solo se paga lo <b>REGULARIZADO</b>, por fecha de activación del mes (incluye backlog).</li>
         <li>Menos de {meta} ventas a tabla: cada venta con la tabla “hasta 41”.</li>
         <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra (36–{(reglas.desdeTramo2 || 42) - 1} “hasta 41”, desde la {reglas.desdeTramo2 || 42} “42 en adelante”).</li>
-        <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono.</li>
-        <li>Tercera edad: máximo 15% de sus ventas. Bono al volumen: 40 = $40, 50 = $60, 60 = $80.</li>
+        <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono, pero <b>suman al total para el tramo</b> (ej. 40 + 2 PYME = 42 → “42 en adelante”).</li>
+        <li>Tercera edad: si NOVONET + VELSA superan el 15% global, a cada asesor solo se le paga hasta el 15% de sus ventas. Bono al volumen: 40 = $40, 50 = $60, 60 = $80.</li>
       </ul>
     </details>
 

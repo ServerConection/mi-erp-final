@@ -115,7 +115,10 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
   const directas = pagables.filter((v) => !cuentaParaAsegurado(v.categoria));
 
   const n = tabla.length;
-  const tramo = n >= reglas.desdeTramo2 ? 2 : 1;
+  // Las PYME SIEMPRE suman al total para elegir el tramo (aunque se paguen aparte como bono):
+  // 40 a tabla + 2 PYME = 42 → todo lo que depende del tramo (PYME incluidas) va con la tabla "42 en adelante".
+  const nTotal = pymeComoBono ? n + pymes.length : n;
+  const tramo = nTotal >= reglas.desdeTramo2 ? 2 : 1;
   const valorDe = (v) => Number((tramo === 2 ? (v.t2 ?? v.t1) : v.t1) ?? 0);
   const t1De = (v) => Number(v.t1 ?? 0);
   const t2De = (v) => Number((v.t2 ?? v.t1) ?? 0);
@@ -153,7 +156,9 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
   // Bono al volumen: cuentan todas las ventas pagables (sin "No vender" ni excedentes de 3ra edad)
   const escalon = (reglas.bonoVolumen || []).find(([desde]) => pagables.length >= desde);
   return {
-    n_tabla: n, tramo, asegurado_aplica: aseguradoAplica,
+    n_tabla: n, n_total: nTotal, tramo, asegurado_aplica: aseguradoAplica,
+    // Referencia (contabilidad): $550 repartido entre las ventas que hizo. No cambia el pago.
+    asegurado_por_venta: aseguradoAplica && nTotal ? reglas.asegurado / nTotal : 0,
     valor_tabla: valorTabla, valor_directo: valorDirecto, valor_pyme_bono: valorPymeBono,
     pyme_como_bono: pymeComoBono && pymes.length > 0,
     ventas_volumen: pagables.length, bono_volumen: escalon ? escalon[1] : 0,
@@ -189,6 +194,8 @@ function calcularAsesores(ventas, reglas = REGLAS) {
       activas_regularizadas: regularizadas.length,
       activas_totales: vs.length,
       ventas_tabla: disp.n_tabla,
+      ventas_total_tramo: disp.n_total,
+      asegurado_por_venta: r2(disp.asegurado_por_venta),
       tramo: TRAMO_TXT[disp.tramo],
       asegurado_aplicado: disp.asegurado_aplica,
       asegurado_total_aplicado: total.asegurado_aplica,
@@ -237,7 +244,9 @@ async function mesCatalogo(query) {
 }
 
 const ESTADO_ACTIVO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.netlife_estatus_real, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '[^A-Z]', '', 'g') = 'ACTIVO'`;
-const REG_NORM = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.estatus_regularizacion, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '[^A-Z]', '', 'g')`;
+const REG_LIMPIO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.estatus_regularizacion, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '[^A-Z]', '', 'g')`;
+// VELSA trae "INGRESO REGULARIZADO" (a veces como ["INGRESO REGULARIZADO"]): también se paga.
+const REG_NORM = `CASE WHEN ${REG_LIMPIO} = 'INGRESOREGULARIZADO' THEN 'REGULARIZADO' ELSE ${REG_LIMPIO} END`;
 
 // Cómo se clasifica cada venta para cruzarla con el catálogo.
 const PLAN_TXT = `UPPER(COALESCE(e.plan_contratado, '') || ' ' || COALESCE(e.plan_contratado_final, ''))`;
@@ -261,6 +270,22 @@ const SERVICIOS_VENTA = `CASE WHEN NULLIF(BTRIM(e.servicios_digitales), '') IS N
       ELSE LENGTH(e.servicios_digitales) - LENGTH(REPLACE(e.servicios_digitales, '+', '')) + 1 END`;
 
 const error400 = (mensaje) => { const e = new Error(mensaje); e.status = 400; return e; };
+
+/** % de tercera edad sobre las ventas regularizadas que cuentan (sin "No vender"). */
+function pctTerceraEdad(ventas) {
+  const cuentan = ventas.filter((v) => v.reg === 'REGULARIZADO' && v.categoria !== 'NO_VENDER');
+  return cuentan.length ? (cuentan.filter(esTerceraEdad).length / cuentan.length) * 100 : 0;
+}
+
+/** Reglas del período: el tope del 15% de 3ra edad por asesor solo aplica si
+ *  NOVONET + VELSA juntas superan el 15%. Si no, se paga toda la tercera edad. */
+async function reglasDelPeriodo(query) {
+  const base = { ...query, buscar: '', __soloVentas: true, __sinReglas: true };
+  const [a, b] = await Promise.all(['NOVONET', 'VELSA'].map((empresa) => calcularComisiones({ ...base, empresa })));
+  const pct = pctTerceraEdad([...a.ventas, ...b.ventas]);
+  const aplica = pct > REGLAS.topeTerceraEdad * 100;
+  return { ...REGLAS, topeTerceraEdad: aplica ? REGLAS.topeTerceraEdad : 1, te_pct_global: r2(pct), te_tope_aplica: aplica };
+}
 
 /** Cálculo de comisiones por asesor (lo usan Comisiones, Billetera y Rol de Pagos). */
 async function calcularComisiones(query) {
@@ -336,9 +361,11 @@ async function calcularComisiones(query) {
       LEFT JOIN cat c ON c.tipo = v.tipo AND c.velocidad = v.velocidad
     `, values);
 
-    if (query.__soloVentas === true) return { empresa, ventas, mes_catalogo: mes };
+    if (query.__soloVentas === true && query.__sinReglas === true) return { empresa, ventas, mes_catalogo: mes };
+    const reglas = await reglasDelPeriodo(query);
+    if (query.__soloVentas === true) return { empresa, ventas, mes_catalogo: mes, reglas };
     // Solo REGULARIZADO se paga (disponible); valor total = si todas sus activas se regularizan.
-    const rows = calcularAsesores(ventas);
+    const rows = calcularAsesores(ventas, reglas);
     const suma = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
     const totales = {
       activas_por_regularizar: suma('activas_por_regularizar'),
@@ -353,11 +380,10 @@ async function calcularComisiones(query) {
       te_excedentes: suma('te_excedentes'),
     };
     // Alerta global: % de tercera edad sobre las ventas regularizadas que cuentan (sin "No vender")
-    const regCuentan = ventas.filter((v) => v.reg === 'REGULARIZADO' && v.categoria !== 'NO_VENDER');
-    const regTE = regCuentan.filter(esTerceraEdad).length;
-    totales.te_pct = regCuentan.length ? r2((regTE / regCuentan.length) * 100) : 0;
-    totales.te_alerta = totales.te_pct > REGLAS.topeTerceraEdad * 100;
-    return { empresa, filas: rows, totales, mes_catalogo: mes, reglas: REGLAS, filtros: query };
+    totales.te_pct = r2(pctTerceraEdad(ventas));
+    totales.te_pct_global = reglas.te_pct_global;
+    totales.te_alerta = reglas.te_tope_aplica;
+    return { empresa, filas: rows, totales, mes_catalogo: mes, reglas: { ...REGLAS, ...reglas, topeTerceraEdad: REGLAS.topeTerceraEdad }, filtros: query };
 }
 
 async function listar(req, res) {
@@ -580,9 +606,9 @@ async function detalle(req, res) {
   try {
     const usuario = String(req.query.usuario || '').trim();
     if (!usuario) return res.status(400).json({ success: false, error: 'Falta el asesor.' });
-    const { empresa, ventas, mes_catalogo } = await calcularComisiones({ ...req.query, __soloVentas: true });
+    const { empresa, ventas, mes_catalogo, reglas } = await calcularComisiones({ ...req.query, __soloVentas: true });
     const vs = ventas.filter((v) => v.usuario === usuario);
-    const d = detalleAsesor(vs, usuario);
+    const d = detalleAsesor(vs, usuario, reglas);
     return res.json({ success: true, data: { empresa, usuario, mes_catalogo, ...d } });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ success: false, error: error.message });

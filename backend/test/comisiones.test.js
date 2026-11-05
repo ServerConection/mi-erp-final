@@ -106,6 +106,14 @@ assert.deepEqual([py.ventas_tabla, py.asegurado_aplicado, py.pyme_como_bono, py.
 // PYME: 34 sin PYME → las PYME suman a tabla (36) y aplica asegurado
 const py2 = f2([...vt(34, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
 assert.deepEqual([py2.ventas_tabla, py2.pyme_como_bono, py2.valor_disponible], [36, false, 564.9]);
+// PYME suman al total para el tramo: 40 a tabla + 2 PYME = 42 → PYME con tabla "42 en adelante"
+const pyT = (n) => ({ usuario: 'b', reg: 'REGULARIZADO', t1: 18.35, t2: 20, categoria: 'PYME', tipo: 'PYME', fecha_activacion: `2026-10-2${n}` });
+const py3 = f2([...vt(40, 14.899), pyT(1), pyT(2)]);
+assert.deepEqual([py3.ventas_tabla, py3.ventas_total_tramo, py3.tramo, py3.valor_pyme_bono, py3.asegurado_por_venta], [40, 42, 'DESDE 42', 40, 13.1]);
+// 41 a tabla sin PYME → sigue "hasta 41"
+assert.equal(f2(vt(41, 14.899)).tramo, 'HASTA 41');
+// Asegurado por venta (referencia) = 550 / ventas que hizo
+assert.equal(f2(vt(50, 10)).asegurado_por_venta, 11);
 // Bono al volumen
 assert.equal(f2(vt(39, 10)).bono_volumen, 0);
 assert.equal(f2(vt(40, 10)).bono_volumen, 40);

@@ -15,6 +15,7 @@ const campMsgCtrl  = require('../controllers/wa_campaign_messages.controller');
 const contactsCtrl = require('../controllers/wa_contacts.controller');
 const listsCtrl    = require('../controllers/wa_lists.controller');
 const templatesCtrl = require('../controllers/wa_templates.controller');
+const inboxPlantillasCtrl = require('../controllers/wa_inbox_plantillas.controller');
 const convsCtrl    = require('../controllers/wa_conversations.controller');
 const scheduledCtrl = require('../controllers/wa_scheduled.controller');
 const dashboardCtrl = require('../controllers/wa_dashboard.controller');
@@ -109,6 +110,12 @@ router.get   ('/templates/:id',  templatesCtrl.getOne);
 router.post  ('/templates',      templatesCtrl.create);
 router.put   ('/templates/:id',  templatesCtrl.update);
 router.delete('/templates/:id',  templatesCtrl.remove);
+
+// Plantillas predeterminadas del Inbox (gestionan admin/gerencia/supervisores; usan todos)
+router.get   ('/inbox-plantillas',          inboxPlantillasCtrl.listar);
+router.get   ('/inbox-plantillas/gestion',  inboxPlantillasCtrl.gestion);
+router.post  ('/inbox-plantillas',          inboxPlantillasCtrl.crear);
+router.put   ('/inbox-plantillas/:id',      inboxPlantillasCtrl.actualizar);
 
 // ── CONVERSACIONES / INBOX ────────────────────────────────────
 router.get  ('/conversations',                   convsCtrl.getAll);

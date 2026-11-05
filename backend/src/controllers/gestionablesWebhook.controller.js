@@ -448,7 +448,8 @@ const crearReparto = (empresa) => {
     const categoria = await resolverCategoria();
     const res = await bx('crm.dealcategory.stage.list', { id: categoria });
     const nombre = normalizarNombre(E.etapa || 'CONTACTO NUEVO');
-    const etapa = (res.result || []).find((e) => normalizarNombre(e.NAME) === nombre);
+    let etapa = (res.result || []).find((e) => normalizarNombre(e.NAME) === nombre);
+    if (!etapa && E.etapaPrimeraSiNoExiste) etapa = [...(res.result || [])].sort((a, b) => Number(a.SORT) - Number(b.SORT))[0];
     if (!etapa) throw new Error('No se encontró la etapa CONTACTO NUEVO en el pipeline (defina GESTIONABLES_STAGE_ID)');
     return (etapaCache = etapa.STATUS_ID);
   };

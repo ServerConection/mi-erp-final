@@ -429,6 +429,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
     accessCheck: () => puedeAccederGestionables('VELSA') },
+  { name: "Reparto de Gestionables Semillero", path: "/gestionables-semillero", icon: "🌱",
+    accessCheck: () => puedeAccederGestionables('SEMILLERO') },
   { name: "Bolsa Leads", path: "/bolsa-leads", icon: "🔀",
     accessCheck: () => puedeAccederBolsaLeads() },
   { name: "Costos Bolsa Leads", path: "/bolsa-leads/costos", icon: "💰",

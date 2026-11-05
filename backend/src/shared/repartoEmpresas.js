@@ -63,6 +63,31 @@ const EMPRESAS = {
     lock: 874301,
     plazoVentaHoras: 5,                          // Velsa: 5 horas para pasar a Venta Subida
   },
+  semillero: {
+    clave: 'semillero',
+    etiqueta: 'SEMILLERO',
+    // Pipeline SEMILLERO: mismo portal de Novonet (novonet.bitrix24.es, categoría 41)
+    portal: 'novonet',
+    cuentasLive: ['NOVONET', 'VELSA'],
+    estacion: 'BRYAN PINEDA',                    // se cambia en semillero_gestionables_reparto_config
+    url: () => (env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
+    tablas: {
+      asesores: 'semillero_gestionables_asesores',
+      asignaciones: 'semillero_gestionables_asignaciones',
+      cola: 'semillero_gestionables_cola',
+      config: 'semillero_gestionables_reparto_config',
+      eventos: 'semillero_gestionables_reparto_eventos',
+      log: 'semillero_gestionables_webhook_log',
+    },
+    fieldName: env.SEMILLERO_GESTIONABLES_FIELD_NAME || null,
+    stageId: env.SEMILLERO_GESTIONABLES_STAGE_ID || null,
+    categoryId: env.SEMILLERO_GESTIONABLES_CATEGORY_ID || '41',
+    pipeline: env.SEMILLERO_GESTIONABLES_PIPELINE || 'SEMILLERO',
+    etapa: env.SEMILLERO_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
+    etapaPrimeraSiNoExiste: true,                // sin "Contacto nuevo" → primera etapa del pipeline
+    lock: 874401,
+    plazoVentaHoras: 5,                          // Semillero: 5 horas para pasar a Venta Subida
+  },
 };
 
 const empresaValida = (e) => (EMPRESAS[String(e || '').toLowerCase()] ? String(e).toLowerCase() : null);

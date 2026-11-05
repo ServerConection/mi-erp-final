@@ -221,6 +221,7 @@ export default function App() {
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
+            <Route path="gestionables-semillero" element={<GestionablesRoute empresa="SEMILLERO"><GestionablesAsesores key="semillero" empresa="semillero" /></GestionablesRoute>} />
             <Route path="bolsa-leads" element={puedeAccederBolsaLeads() ? <BolsaLeads /> : <Navigate to="/" replace />} />
             <Route path="bolsa-leads/costos" element={puedeAccederBolsaLeads() ? <BolsaLeadsCostos /> : <Navigate to="/" replace />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />

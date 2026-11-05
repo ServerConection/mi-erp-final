@@ -151,3 +151,20 @@ test('estado Netlife: el asesor sigue limitado a sus negocios', async () => {
   await service.consultar({ empresa: 'VELSA', perfil: 'ASESOR', nombreCompleto: 'Ana Ruiz' },
     { empresa: 'NOVONET', netlife_estados: ['ACTIVO'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
 })
+
+test('orígenes VELSA no se muestran a NOVONET pero sí a VELSA', async () => {
+  const sqls = []
+  const db = { query: async (sql) => { sqls.push(sql); return { rows: [] } } }
+  await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'SUPERVISOR' }, {}, db)
+  assert.match(sqls[2], /NOT UPPER\(BTRIM\(source\)\) LIKE 'VELSA%'/)
+  sqls.length = 0
+  await service.obtenerOpciones({ empresa: 'VELSA', perfil: 'SUPERVISOR' }, {}, db)
+  assert.doesNotMatch(sqls[2], /LIKE 'VELSA%'/)
+})
+
+test('NOVONET no puede consultar un origen VELSA por API', async () => {
+  const db = { query: async () => { throw new Error('no debe consultar') } }
+  const r = await service.consultar({ empresa: 'NOVONET', perfil: 'SUPERVISOR' },
+    { source_ids: ['VELSA 1'], date_from: '2026-11-01', date_to: '2026-11-05' }, db)
+  assert.equal(r.total_deals, 0)
+})

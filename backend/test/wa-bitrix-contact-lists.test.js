@@ -115,7 +115,7 @@ test('crear base: asesor solo ve sus negocios; supervisor ve todos', async () =>
   const calls = []
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
   await service.consultar(asesor, { responsible_ids: ['OTRO ASESOR'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
-  assert.match(calls[0].sql, /LIKE ALL/)
+  assert.match(calls[0].sql, /LEAST\(2, cardinality/)
   assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('%PUC%')))
 })
 
@@ -144,7 +144,7 @@ test('estado Netlife: toma los ID Bitrix de JotForm y la fecha de activación', 
 
 test('estado Netlife: el asesor sigue limitado a sus negocios', async () => {
   const db = { query: async (sql, params) => {
-    assert.match(sql, /LIKE ALL/)
+    assert.match(sql, /LEAST\(2, cardinality/)
     assert.deepEqual(params.slice(0, 5), ['velsa', 'VELSA', ['ACTIVO'], '2026-10-01', '2026-10-07'])
     return { rows: [] }
   } }

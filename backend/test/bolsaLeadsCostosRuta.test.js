@@ -7,10 +7,15 @@ const mock = (p, exports) => { require.cache[src(p)] = { id: src(p), filename: s
 
 const sqls = [];
 mock('middleware/auth.js', { verificarToken: (req, res, next) => { req.user = { perfil: 'GERENCIA' }; next(); } });
-mock('controllers/bolsaLeads.controller.js', {});
+// Bitrix: el lead 11 (VELSA) tiene origen en Bitrix aunque el webhook no lo guardó
+mock('controllers/bolsaLeads.controller.js', { origenesDesdeBitrix: async (ids) => {
+  assert.deepEqual(ids, ['11']);
+  return new Map([['11', { id: '7|OPENLINE', nombre: 'Formulario Velsa 1' }]]);
+} });
 mock('config/dbErp.js', { query: async (sql) => {
   sqls.push(sql);
   if (/MIN\(/.test(sql)) return { rows: [{ desde: '2026-11-01', hoy: '2026-11-03' }] };
+  if (/origen_lead/.test(sql)) return { rows: [{ deal: '10', id: 'CALL', nombre: 'Base 593-111' }] };
   return { rows: [
     { deal: '10', empresa: 'novonet', fecha: '2026-11-01' },
     { deal: '11', empresa: 'velsa', fecha: '2026-11-01' },
@@ -20,8 +25,7 @@ mock('config/db.js', { query: async (sql, p) => {
   sqls.push(sql);
   if (/novonet_inversion_redes/.test(sql)) return { rows: [{ fecha: '2026-11-01', origen: '__WINTRACKER_ARTS__', monto: 40 }] };
   if (/velsa_inversion_redes/.test(sql)) return { rows: [{ fecha: '2026-11-01', origen: '__WINTRACKER_VELSA__', monto: 20 }] };
-  if (/FROM public.bitrix_webhook_leads\b/.test(sql) && !/historial/.test(sql)) return { rows: [{ deal: '10', origen: 'Base 593-111' }] };
-  if (/historial/.test(sql)) { assert.deepEqual(p[0], ['11']); return { rows: [{ deal: '11', origen: 'Formulario Velsa 1' }] }; }
+  if (/bitrix_webhook_leads/.test(sql)) throw new Error('no debería consultar el webhook si Bitrix respondió');
   if (/novonet_lineas_canal/.test(sql)) return { rows: [{ origen: 'BASE 593-111', agencia: 'ARST' }] };
   if (/velsa_lineas_canal/.test(sql)) return { rows: [{ origen: 'formulario velsa 1', agencia: 'VELSA' }] };
   if (/envios_ventas/.test(sql)) { assert.deepEqual(p[0], ['10', '11']); return { rows: [{ deal: '11', ventas: 1, activas: 1 }] }; }

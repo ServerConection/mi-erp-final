@@ -172,11 +172,49 @@ router.get('/costos', async (req, res) => {
     const reporte = calcularCostos({ entregas, inversion, ventas });
 
     // Origen (campaña) de cada lead y su agencia (ARTS / VIDIKA / VELSA …)
+    // Fuente principal: el campo "Origen" del lead en Bitrix (igual para NOVONET,
+    // VELSA y SEMILLERO). Se guarda en bolsa_leads_entregas al entregar; lo que
+    // falte se pide a Bitrix una vez y queda guardado. El webhook es el último recurso.
     const origenes = new Map();
     const catalogo = new Map();
     if (ids.length) {
+      // Velsa primero y Novonet después: si un origen está en los dos catálogos, manda el de Novonet
+      for (const tabla of ['public.velsa_lineas_canal', 'public.novonet_lineas_canal']) {
+        try {
+          const { rows } = await db.query(`SELECT origen, agencia FROM ${tabla} WHERE NULLIF(BTRIM(agencia), '') IS NOT NULL`);
+          for (const r of rows) catalogo.set(normalizarOrigen(r.origen), r.agencia);
+        } catch (e) {
+          console.warn(`[bolsaLeads] costos: catálogo ${tabla}:`, e.message);
+        }
+      }
+      // El catálogo puede tener el nombre del origen o su código de Bitrix: se usa el que exista
+      const elegir = ({ id, nombre }) => (catalogo.has(normalizarOrigen(nombre)) || !catalogo.has(normalizarOrigen(id)) ? nombre : id);
+
+      // 1) lo ya guardado al entregar
       try {
-        // 1) estado actual del lead; 2) si ahí no hay origen, el historial del webhook
+        const { rows } = await erp.query(
+          `SELECT bitrix_deal_id AS deal, origen_lead_id AS id, origen_lead AS nombre FROM bolsa_leads_entregas
+            WHERE estado = 'entregado' AND bitrix_deal_id = ANY($1::text[]) AND origen_lead IS NOT NULL`, [ids]
+        );
+        for (const r of rows) origenes.set(String(r.deal), elegir(r));
+      } catch (e) {
+        if (!/origen_lead/.test(e.message)) console.warn('[bolsaLeads] costos: origen guardado:', e.message);
+        else avisos.push('Falta correr la migración 20261105_bolsa_leads_origen_lead.sql (el origen se consulta a Bitrix cada vez)');
+      }
+      // 2) lo que falte, directo de Bitrix (queda guardado)
+      const faltanBitrix = ids.filter((id) => !origenes.has(id));
+      if (faltanBitrix.length) {
+        try {
+          const { origenesDesdeBitrix } = require('../controllers/bolsaLeads.controller');
+          const deBitrix = await origenesDesdeBitrix(faltanBitrix);
+          for (const [deal, o] of deBitrix) origenes.set(deal, elegir(o));
+        } catch (e) {
+          console.error('[bolsaLeads] costos: origen en Bitrix:', e.message);
+          avisos.push('No se pudo consultar el origen en Bitrix; se usa el del webhook');
+        }
+      }
+      // 3) último recurso: lo que guardó el webhook general
+      try {
         for (const tabla of ['public.bitrix_webhook_leads', 'public.bitrix_webhook_leads_historial']) {
           const faltan = ids.filter((id) => !origenes.has(id));
           if (!faltan.length) break;
@@ -189,17 +227,7 @@ router.get('/costos', async (req, res) => {
           for (const r of rows) origenes.set(String(r.deal), r.origen);
         }
       } catch (e) {
-        console.error('[bolsaLeads] costos: orígenes:', e.message);
-        avisos.push('No se pudo leer el origen de los leads (bitrix_webhook_leads)');
-      }
-      // Velsa primero y Novonet después: si un origen está en los dos catálogos, manda el de Novonet
-      for (const tabla of ['public.velsa_lineas_canal', 'public.novonet_lineas_canal']) {
-        try {
-          const { rows } = await db.query(`SELECT origen, agencia FROM ${tabla} WHERE NULLIF(BTRIM(agencia), '') IS NOT NULL`);
-          for (const r of rows) catalogo.set(normalizarOrigen(r.origen), r.agencia);
-        } catch (e) {
-          console.warn(`[bolsaLeads] costos: catálogo ${tabla}:`, e.message);
-        }
+        console.warn('[bolsaLeads] costos: origen del webhook:', e.message);
       }
     }
     const { ORIGEN_A_CANAL } = require('../shared/origenesRedes');

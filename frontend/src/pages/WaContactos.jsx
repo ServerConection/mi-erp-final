@@ -106,7 +106,7 @@ export default function WaContactos() {
   const [creationDates, setCreationDates] = useState({ desde: "", hasta: "" });
   const [creator, setCreator] = useState("");
   const [bitrixOptions, setBitrixOptions] = useState(null);
-  const [bitrixForm, setBitrixForm] = useState({ empresa: "", stage_ids: [], responsible_ids: [], source_ids: [], date_from: "", date_to: "", name: "" });
+  const [bitrixForm, setBitrixForm] = useState({ empresa: "", netlife_estados: [], stage_ids: [], responsible_ids: [], source_ids: [], date_from: "", date_to: "", name: "" });
   const PUEDE_BASE_BITRIX = useMemo(() => puedeCrearBaseBitrix(), []);
   const bitrixReqRef = useRef(0); // descarta respuestas viejas si cambian filtros rápido
   const [bitrixPreview, setBitrixPreview] = useState(null);
@@ -207,6 +207,8 @@ export default function WaContactos() {
         date_from: filtros.date_from || "",
         date_to: filtros.date_to || "",
       });
+      // Con estados Netlife, las etapas/responsables se limitan a esas ventas.
+      (filtros.netlife_estados || []).forEach(e => qs.append("netlife_estados", e));
       const response = await fetch(`${API}/lists/bitrix/options?${qs}`, {
         headers: authH(false),
         cache: "no-store",
@@ -220,6 +222,7 @@ export default function WaContactos() {
         const etapas = new Set((data.stages || []).map(o => String(o.id)));
         const resp = new Set((data.responsibles || []).map(o => String(o.id)));
         const origenes = new Set((data.sources || []).map(o => String(o.id)));
+        const estadosNet = new Set((data.netlife_estados || []).map(o => String(o.id)));
         const responsablesPermitidos = data.solo_sus_negocios
           ? (data.responsibles || []).map(o => String(o.id))
           : prev.responsible_ids.filter(id => resp.has(String(id)));
@@ -229,6 +232,7 @@ export default function WaContactos() {
           stage_ids: prev.stage_ids.filter(id => etapas.has(String(id))),
           responsible_ids: responsablesPermitidos,
           source_ids: (prev.source_ids || []).filter(id => origenes.has(String(id))),
+          netlife_estados: (prev.netlife_estados || []).filter(id => estadosNet.has(String(id))),
         };
       });
     } catch (error) { if (reqId === bitrixReqRef.current) setBitrixError(error.message); }
@@ -238,7 +242,7 @@ export default function WaContactos() {
   const openBitrix = async () => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
     setModal("bitrix"); setBitrixPreview(null); setBitrixError("");
-    const inicial = { empresa: "", stage_ids: [], responsible_ids: [], source_ids: [], date_from: today, date_to: today, name: "" };
+    const inicial = { empresa: "", netlife_estados: [], stage_ids: [], responsible_ids: [], source_ids: [], date_from: today, date_to: today, name: "" };
     setBitrixForm(inicial);
     // No reutilizar opciones anteriores: se piden de nuevo al abrir.
     setBitrixOptions(null);
@@ -251,19 +255,20 @@ export default function WaContactos() {
     const stage = resumen(current.stage_ids, bitrixOptions?.stages);
     const responsible = resumen(current.responsible_ids, bitrixOptions?.responsibles);
     const source = resumen(current.source_ids || [], bitrixOptions?.sources);
+    const netlife = resumen(current.netlife_estados || [], bitrixOptions?.netlife_estados);
     const date = current.date_from ? current.date_from.split("-").reverse().join("-") : "";
-    return [stage, date, responsible, source].filter(Boolean).join(" - ").toUpperCase();
+    return [netlife && `NETLIFE ${netlife}`, stage, date, responsible, source].filter(Boolean).join(" - ").toUpperCase();
   };
 
   const updateBitrixForm = (field, value) => {
     setBitrixPreview(null); setBitrixError("");
     const next = { ...bitrixForm, [field]: value };
     // Cambiar de pipeline invalida etapas y responsables elegidos.
-    if (field === "empresa") { next.stage_ids = []; next.responsible_ids = []; next.source_ids = []; }
+    if (field === "empresa") { next.stage_ids = []; next.responsible_ids = []; next.source_ids = []; next.netlife_estados = []; }
     if (field !== "name") next.name = generatedBitrixName(next);
     setBitrixForm(next);
     // Empresa o fechas cambian → recargar etapas y responsables de ese rango.
-    if (["empresa", "date_from", "date_to"].includes(field) && next.date_from && next.date_to) {
+    if (["empresa", "date_from", "date_to", "netlife_estados"].includes(field) && next.date_from && next.date_to) {
       loadBitrixOptions(next);
     }
   };
@@ -527,6 +532,14 @@ export default function WaContactos() {
                     {(bitrixOptions?.empresas || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
                 </label>
+                <div className="text-xs font-semibold text-slate-500 md:col-span-2">ESTADO NETLIFE (JOTFORM)
+                  <MultiSelectBuscable options={bitrixOptions?.netlife_estados || []} value={bitrixForm.netlife_estados || []}
+                    onChange={value => updateBitrixForm("netlife_estados", value)} disabled={bitrixBusy || !bitrixOptions}
+                    placeholder="Buscar estado (ACTIVO, PENDIENTE…)" todosLabel="Sin filtro de JotForm" />
+                  {(bitrixForm.netlife_estados || []).length > 0 && (
+                    <p className="mt-1 font-normal text-emerald-700">Toma los ID Bitrix de esas ventas y trae teléfono y responsable desde Bitrix. Las fechas filtran por <b>fecha de activación</b> (o registro en JotForm si no tiene).</p>
+                  )}
+                </div>
                 <div className="text-xs font-semibold text-slate-500">ETAPA
                   <MultiSelectBuscable options={bitrixOptions?.stages || []} value={bitrixForm.stage_ids}
                     onChange={value => updateBitrixForm("stage_ids", value)} disabled={bitrixBusy || !bitrixOptions}
@@ -543,11 +556,11 @@ export default function WaContactos() {
                     onChange={value => updateBitrixForm("source_ids", value)} disabled={bitrixBusy || !bitrixOptions}
                     placeholder="Buscar origen…" todosLabel="Todos los orígenes" />
                 </div>
-                <label className="text-xs font-semibold text-slate-500">FECHA DESDE
+                <label className="text-xs font-semibold text-slate-500">{(bitrixForm.netlife_estados || []).length ? "ACTIVACIÓN DESDE" : "FECHA DESDE"}
                   <input type="date" value={bitrixForm.date_from} onChange={e => updateBitrixForm("date_from", e.target.value)}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                 </label>
-                <label className="text-xs font-semibold text-slate-500">FECHA HASTA
+                <label className="text-xs font-semibold text-slate-500">{(bitrixForm.netlife_estados || []).length ? "ACTIVACIÓN HASTA" : "FECHA HASTA"}
                   <input type="date" value={bitrixForm.date_to} onChange={e => updateBitrixForm("date_to", e.target.value)}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                 </label>

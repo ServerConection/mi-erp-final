@@ -132,6 +132,11 @@ export default function BolsaLeadsAnalisis() {
           <div className="text-xs text-slate-400"><Link to="/bolsa-leads" className="hover:underline">Bolsa Leads</Link> / <Link to="/bolsa-leads/costos" className="hover:underline">Costos</Link> / Análisis</div>
           <h1 className="text-2xl font-bold text-slate-800">Análisis del piloto Bolsa Leads</h1>
           <p className="text-sm text-slate-500">Embudo, asesores, horarios y comparación con los días antes de la Bolsa.</p>
+          {data?.generado && (
+            <p className="text-xs text-slate-400">
+              Datos de Bitrix de las {new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit' }).format(new Date(data.generado))} · se actualizan solos cada 10 min
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-end gap-2 text-sm">
           <label className="flex flex-col gap-1">Desde<input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-lg border px-2 py-1.5" /></label>

@@ -360,6 +360,7 @@ const OPCIONES_ESTATUS_REGULARIZACION = [
   { valor: "REGULARIZADO", etiqueta: "Regularizado" },
   { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
   { valor: "NO REQUIERE REGULARIZAR", etiqueta: "No requiere regularizar" },
+  { valor: "GESTION ATC", etiqueta: "Gestión ATC" },
 ];
 function calcularFranjaAgendamiento(fechaHora) {
   const match = String(fechaHora || "").match(/T(\d{2}):(\d{2})/);
@@ -7563,6 +7564,7 @@ const BLOQUES_VALIDACION = [
   { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
   { id: "NO_REQUIERE", titulo: "No requiere regularizar", color: "#6d28d9", fondo: "#f5f3ff", borde: "#c4b5fd", valorBD: "NO REQUIERE REGULARIZAR" },
   { id: "REGULARIZADO", titulo: "Regularizado", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
+  { id: "GESTION_ATC", titulo: "Gestión ATC", color: "#e11d48", fondo: "#fff1f2", borde: "#fecdd3", valorBD: "GESTION ATC" },
 ];
 
 // Normaliza para comparar: sin tildes, sin espacios sobrantes, en mayúsculas.
@@ -7575,6 +7577,7 @@ function bloqueDeRegistro(row) {
   if (!v) return "SIN_REVISAR";
   if (v.includes("NO NECESITA") || v.includes("NO REQUIERE")) return "NO_REQUIERE";
   if (v.startsWith("REGULARIZAD")) return "REGULARIZADO";
+  if (v.includes("GESTION") && v.includes("ATC")) return "GESTION_ATC";
   if (v.includes("REGULARIZAR")) return "POR_REGULARIZAR";
   return "SIN_REVISAR";
 }

@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  RotateCcw,
   Utensils,
 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -434,6 +435,7 @@ export default function ControlAsistencia() {
   };
   // El resumen de todos los usuarios solo lo ven perfiles administrativos.
   const perfilActual = String(user?.perfil || "").trim().toUpperCase();
+  const esPerfilAtc = /^ATC(?:[ _-]|$)/.test(perfilActual);
   const puedeVerResumen = ["ADMINISTRADOR", "GERENCIA", "GERENTE"].includes(perfilActual)
     || /^GEREN(?:CIA|TE)[ _-]/.test(perfilActual);
   const puedeVerControlIngresos = /^ADMINISTRADOR(?:A)?(?:[ _-]|$)/.test(perfilActual);
@@ -485,6 +487,7 @@ export default function ControlAsistencia() {
   const [misRegistros, setMisRegistros] = useState([]);
   const [cargandoJornada, setCargandoJornada] = useState(false);
   const [jornadaCargada, setJornadaCargada] = useState(false);
+  const [reinicioJornadaMs, setReinicioJornadaMs] = useState(0);
   const [precisionUbicacion, setPrecisionUbicacion] = useState(null);
   const autoSeleccionRef = useRef(false);
 
@@ -940,7 +943,30 @@ export default function ControlAsistencia() {
 
   const hoyEcuador = fechaHoyEcuador();
 
-  // Primera marcación de hoy por actividad (mismo criterio que resumen-dia).
+  const claveReinicioJornada = `control-asistencia:reinicio:${user?.id || "anonimo"}:${hoyEcuador}`;
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const guardado = Number(localStorage.getItem(claveReinicioJornada) || 0);
+    setReinicioJornadaMs(Number.isFinite(guardado) ? guardado : 0);
+  }, [claveReinicioJornada, user?.id]);
+
+  // Si ya existe un segundo INGRESO, este se convierte en el inicio persistente
+  // de la segunda jornada incluso al abrir el sistema desde otra sesión.
+  const segundoIngresoMs = useMemo(() => misRegistros
+    .map((registro) => ({
+      registro,
+      partes: partesEcuador(registro.created_at),
+      ms: new Date(registro.created_at).getTime(),
+    }))
+    .filter(({ registro, partes, ms }) => partes?.fecha === hoyEcuador
+      && String(registro.actividad || "").trim().toUpperCase() === "INGRESO"
+      && Number.isFinite(ms))
+    .sort((a, b) => a.ms - b.ms)[1]?.ms || 0, [misRegistros, hoyEcuador]);
+  const inicioJornadaActualMs = segundoIngresoMs || reinicioJornadaMs;
+  const segundaJornadaActiva = Boolean(inicioJornadaActualMs);
+
+  // Primera marcación por actividad dentro de la jornada actual.
   const jornadaHoy = useMemo(() => {
     const mapa = {};
     for (const registro of misRegistros) {
@@ -948,17 +974,27 @@ export default function ControlAsistencia() {
       if (!partes || partes.fecha !== hoyEcuador) continue;
       const clave = String(registro.actividad || "").trim().toUpperCase();
       const ms = new Date(registro.created_at).getTime();
+      if (inicioJornadaActualMs && ms < inicioJornadaActualMs) continue;
       if (!mapa[clave] || ms < mapa[clave].ms) {
         mapa[clave] = { hora: partes.hora, ms };
       }
     }
     return mapa;
-  }, [misRegistros, hoyEcuador]);
+  }, [misRegistros, hoyEcuador, inicioJornadaActualMs]);
 
   const siguientePaso = jornadaHoy.SALIDA
     ? null
     : PASOS.find((paso) => !jornadaHoy[paso.value]) || null;
   const jornadaCompleta = jornadaCargada && !siguientePaso;
+
+  const resetearJornada = () => {
+    if (!esPerfilAtc || !jornadaCompleta || segundaJornadaActiva) return;
+    const marca = Date.now();
+    localStorage.setItem(claveReinicioJornada, String(marca));
+    setReinicioJornadaMs(marca);
+    setActividad("INGRESO");
+    setMensaje({ type: "success", text: "Jornada reiniciada. Ya puedes registrar tu segundo ingreso." });
+  };
 
   // Al abrir el módulo se preselecciona la siguiente marcación una sola vez.
   // Después de registrar NO se autoselecciona, para evitar marcar dos cosas
@@ -1241,6 +1277,18 @@ export default function ControlAsistencia() {
               </div>
             </div>
             <div className="ca-user">
+              {esPerfilAtc && !segundaJornadaActiva && (
+                <button
+                  type="button"
+                  onClick={resetearJornada}
+                  disabled={loading || !jornadaCompleta}
+                  title={jornadaCompleta ? "Iniciar una segunda jornada hoy" : "Completa la jornada actual para poder reiniciarla"}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 9, border: "1px solid #f59e0b", background: "#fffbeb", color: "#92400e", fontSize: 10, fontWeight: 900, cursor: loading || !jornadaCompleta ? "not-allowed" : "pointer", opacity: jornadaCompleta ? 1 : .55, whiteSpace: "nowrap" }}
+                >
+                  <RotateCcw size={14} />
+                  Resetear jornada
+                </button>
+              )}
               <div className="ca-user-text">
                 <strong title={nombreVisible}>{nombreVisible}</strong>
                 <span>{user?.cargo || "Sin cargo asignado"}</span>

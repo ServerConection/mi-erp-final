@@ -63,6 +63,7 @@ const ESTATUS_REGULARIZACION_BACKOFFICE = [
   'REGULARIZADO',
   'POR REGULARIZAR',
   'NO REQUIERE REGULARIZAR',
+  'GESTION ATC',
 ];
 // Algunos registros históricos llegaron serializados como arreglo JSON, por
 // ejemplo ["POR REGULARIZAR"]. Para filtrar se retira exclusivamente la

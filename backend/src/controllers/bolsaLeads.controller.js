@@ -361,4 +361,101 @@ const initBolsaLeadsCron = () => {
   }, { timezone: 'America/Guayaquil' });
 };
 
-module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, leerHorario, resumenPatron, DESTINOS, conectadosPorEmpresa, initBolsaLeadsCron, origenesDesdeBitrix };
+// ── Para el análisis del piloto: etapa y responsable actuales de cada lead ──
+const etapasCache = new Map();   // categoría → Map STATUS_ID → nombre
+const nombresEtapas = async (categoria) => {
+  if (etapasCache.has(categoria)) return etapasCache.get(categoria);
+  const res = await bx('crm.dealcategory.stage.list', { id: categoria });
+  const m = new Map((res.result || []).map((e) => [String(e.STATUS_ID), String(e.NAME)]));
+  etapasCache.set(categoria, m);
+  return m;
+};
+let usuariosCache = { ts: 0, mapa: new Map() };
+const nombresUsuarios = async (idsBuscados) => {
+  if (Date.now() - usuariosCache.ts > 10 * 60 * 1000) {
+    const mapa = new Map();
+    let start = 0;
+    for (let pagina = 0; pagina < 40; pagina++) {
+      const json = await bx('user.get', { start });
+      for (const u of json.result || []) mapa.set(String(u.ID), `${u.NAME || ''} ${u.LAST_NAME || ''}`.trim() || `ID ${u.ID}`);
+      if (!json.next) break;
+      start = json.next;
+    }
+    usuariosCache = { ts: Date.now(), mapa };
+  }
+  // Usuarios que ya no están activos: se piden uno por uno (pocos)
+  for (const id of idsBuscados) {
+    if (usuariosCache.mapa.has(id)) continue;
+    try {
+      const u = (await bx('user.get', { ID: id })).result?.[0];
+      usuariosCache.mapa.set(id, u ? `${u.NAME || ''} ${u.LAST_NAME || ''}`.trim() || `ID ${id}` : `ID ${id}`);
+    } catch { usuariosCache.mapa.set(id, `ID ${id}`); }
+  }
+  return usuariosCache.mapa;
+};
+
+/** Map deal → { etapa (nombre), asesor (nombre), categoria } — de 50 en 50 */
+const infoDealsBitrix = async (ids, { max = 3000 } = {}) => {
+  const lista = [...new Set(ids.map(String))].slice(0, max);
+  const crudos = [];
+  for (let i = 0; i < lista.length; i += 50) {
+    const json = await bx('crm.deal.list', { filter: { ID: lista.slice(i, i + 50) }, select: ['ID', 'STAGE_ID', 'CATEGORY_ID', 'ASSIGNED_BY_ID'] });
+    crudos.push(...(json.result || []));
+  }
+  const usuarios = await nombresUsuarios([...new Set(crudos.map((d) => String(d.ASSIGNED_BY_ID)).filter(Boolean))]);
+  const out = new Map();
+  for (const d of crudos) {
+    const etapas = await nombresEtapas(String(d.CATEGORY_ID || 0)).catch(() => new Map());
+    out.set(String(d.ID), {
+      etapa: etapas.get(String(d.STAGE_ID)) || String(d.STAGE_ID || ''),
+      asesor: usuarios.get(String(d.ASSIGNED_BY_ID)) || (d.ASSIGNED_BY_ID ? `ID ${d.ASSIGNED_BY_ID}` : null),
+      categoria: String(d.CATEGORY_ID ?? ''),
+    });
+  }
+  return out;
+};
+
+/**
+ * Historial de etapas de Bitrix (crm.stagehistory.list) → Map deal → [{ etapa, categoria, t }]
+ * ordenado por fecha. De 50 leads por consulta, con paginación.
+ */
+const historialEtapas = async (ids, { max = 3000 } = {}) => {
+  const lista = [...new Set(ids.map(String))].slice(0, max);
+  const out = new Map();
+  for (let i = 0; i < lista.length; i += 50) {
+    let start = 0;
+    for (let pagina = 0; pagina < 30; pagina++) {
+      const json = await bx('crm.stagehistory.list', {
+        entityTypeId: 2, filter: { OWNER_ID: lista.slice(i, i + 50) },
+        select: ['OWNER_ID', 'STAGE_ID', 'CATEGORY_ID', 'CREATED_TIME'], order: { ID: 'ASC' }, start,
+      });
+      for (const h of json.result?.items || []) {
+        const cat = String(h.CATEGORY_ID ?? 0);
+        const etapas = await nombresEtapas(cat).catch(() => new Map());
+        const deal = String(h.OWNER_ID);
+        if (!out.has(deal)) out.set(deal, []);
+        out.get(deal).push({ etapa: etapas.get(String(h.STAGE_ID)) || String(h.STAGE_ID), categoria: cat, t: h.CREATED_TIME });
+      }
+      if (!json.next) break;
+      start = json.next;
+    }
+  }
+  for (const h of out.values()) h.sort((a, b) => new Date(a.t) - new Date(b.t));
+  return out;
+};
+
+/** Leads creados en el pipeline de cada empresa entre dos fechas (hora Ecuador) */
+const leadsPorPipeline = async (desde, hasta) => {
+  const out = {};
+  for (const empresa of Object.keys(DESTINOS)) {
+    const { categoria } = await resolverDestino(empresa);
+    const json = await bx('crm.deal.list', {
+      filter: { CATEGORY_ID: categoria, '>=DATE_CREATE': `${desde}T00:00:00-05:00`, '<=DATE_CREATE': `${hasta}T23:59:59-05:00` },
+      select: ['ID'],
+    });
+    out[empresa] = Number(json.total ?? (json.result || []).length) || 0;
+  }
+  return out;
+};
+
+module.exports = { infoDealsBitrix, leadsPorPipeline, historialEtapas, recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, leerHorario, resumenPatron, DESTINOS, conectadosPorEmpresa, initBolsaLeadsCron, origenesDesdeBitrix };

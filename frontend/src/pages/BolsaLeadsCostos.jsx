@@ -92,7 +92,7 @@ export default function BolsaLeadsCostos() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-xs text-slate-400"><Link to="/bolsa-leads" className="hover:underline">Bolsa Leads</Link> / Costos</div>
-          <h1 className="text-2xl font-bold text-slate-800">Costos del piloto Bolsa Leads</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Costos del piloto Bolsa Leads <Link to="/bolsa-leads/analisis" className="ml-2 align-middle text-sm font-medium text-violet-700 hover:underline">🔎 Análisis profundo</Link></h1>
           <p className="text-sm text-slate-500">Cuánto costó la pauta a cada empresa según los leads que recibió, y qué tan eficiente fue.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2 text-sm">

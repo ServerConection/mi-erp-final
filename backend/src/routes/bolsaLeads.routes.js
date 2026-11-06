@@ -259,16 +259,15 @@ router.get('/costos', async (req, res) => {
 //   GET /api/bolsa-leads/analisis?desde&hasta
 //   Embudo por empresa, por asesor, por hora/día y antes vs piloto. Usa Bitrix
 //   (etapa y responsable actuales de cada lead) → se guarda 5 min en memoria.
+// Caché: el cron lo recalcula cada 10 min para el rango por defecto, así la página abre al instante.
 const cacheAnalisis = new Map();
-router.get('/analisis', async (req, res) => {
-  try {
-    const clave = `${req.query.desde || ''}|${req.query.hasta || ''}`;
-    const c = cacheAnalisis.get(clave);
-    if (c && Date.now() - c.ts < 5 * 60 * 1000 && req.query.forzar !== '1') return res.json(c.data);
+const VIGENCIA_ANALISIS = 15 * 60 * 1000;
+const enCurso = new Map();   // si dos personas lo piden a la vez, se calcula una sola vez
 
+const armarAnalisis = async (query) => {
     const { analizarPiloto, compararPeriodos, analizarTiempos } = require('../shared/bolsaLeadsAnalisis');
     const ctrl = require('../controllers/bolsaLeads.controller');
-    const { _entregas: entregas, _db: db, ...costos } = await armarCostos(req.query);
+    const { _entregas: entregas, _db: db, ...costos } = await armarCostos(query);
     const avisos = [...costos.avisos];
     const ids = [...new Set(entregas.map((x) => String(x.deal)))];
 
@@ -284,8 +283,10 @@ router.get('/analisis', async (req, res) => {
     )).rows[0]?.n) || 0;
 
     // Etapa y responsable actuales (Bitrix)
+    // Bitrix en paralelo (cada uno ya va por lotes de 50 consultas)
+    const [infoR, histR] = await Promise.allSettled([ctrl.infoDealsBitrix(ids), ctrl.historialEtapas(ids)]);
     let bitrix = new Map();
-    try { bitrix = await ctrl.infoDealsBitrix(ids); }
+    try { if (infoR.status === 'rejected') throw infoR.reason; bitrix = infoR.value; }
     catch (e) {
       console.error('[bolsaLeads] analisis: Bitrix:', e.message);
       avisos.push('No se pudo leer la etapa y el responsable en Bitrix: el embudo y los asesores salen incompletos');
@@ -295,7 +296,8 @@ router.get('/analisis', async (req, res) => {
     // Tiempos de operación: historial de etapas de Bitrix + primera venta registrada
     let tiempos = null;
     try {
-      const historial = await ctrl.historialEtapas(ids);
+      if (histR.status === 'rejected') throw histR.reason;
+      const historial = histR.value;
       const primeraVenta = new Map();
       try {
         const { rows } = await db.query(
@@ -351,24 +353,51 @@ router.get('/analisis', async (req, res) => {
         }
         return { desde, hasta, dias, inversion: Number(inv.rows[0].total) || 0, leads: await ctrl.leadsPorPipeline(desde, hasta), ventas };
       };
-      comparacion = compararPeriodos(await periodo(antesDesde, antesHasta), await periodo(costos.desde, costos.hasta));
+      const [pAntes, pPiloto] = await Promise.all([periodo(antesDesde, antesHasta), periodo(costos.desde, costos.hasta)]);
+      comparacion = compararPeriodos(pAntes, pPiloto);
     } catch (e) {
       console.error('[bolsaLeads] analisis: antes vs piloto:', e.message);
       avisos.push('No se pudo armar la comparación antes vs piloto');
     }
 
-    const data = {
-      success: true, desde: costos.desde, hasta: costos.hasta, avisos,
+    return {
+      success: true, generado: new Date().toISOString(), desde: costos.desde, hasta: costos.hasta, avisos,
       totales: costos.totales, porEmpresa: costos.porEmpresa, ...analisis, comparacion, tiempos,
     };
-    cacheAnalisis.set(clave, { ts: Date.now(), data });
-    res.json(data);
+};
+
+const analisisConCache = async (query = {}, { forzar = false } = {}) => {
+  const clave = `${query.desde || ''}|${query.hasta || ''}`;
+  const c = cacheAnalisis.get(clave);
+  if (!forzar && c && Date.now() - c.ts < VIGENCIA_ANALISIS) return c.data;
+  if (enCurso.has(clave)) return enCurso.get(clave);
+  const p = armarAnalisis(query)
+    .then((data) => { cacheAnalisis.set(clave, { ts: Date.now(), data }); return data; })
+    .finally(() => enCurso.delete(clave));
+  enCurso.set(clave, p);
+  return p;
+};
+
+router.get('/analisis', async (req, res) => {
+  try {
+    res.json(await analisisConCache({ desde: req.query.desde, hasta: req.query.hasta }, { forzar: req.query.forzar === '1' }));
   } catch (e) {
     if (e.status) return res.status(e.status).json({ success: false, error: e.message });
     console.error('[bolsaLeads] analisis:', e.message);
     res.status(500).json({ success: false, error: 'No se pudo armar el análisis del piloto' });
   }
 });
+
+// Cada 10 min: deja listo el análisis del rango por defecto (BOLSA_LEADS_ANALISIS_WORKER=false lo apaga)
+const initAnalisisBolsaLeads = () => {
+  if (String(process.env.BOLSA_LEADS_ANALISIS_WORKER || 'true').toLowerCase() === 'false') return null;
+  const cron = require('node-cron');
+  const calentar = () => analisisConCache({}, { forzar: true })
+    .then(() => console.log('[bolsaLeads] Análisis del piloto precalculado'))
+    .catch((e) => console.warn('[bolsaLeads] No se pudo precalcular el análisis:', e.message));
+  setTimeout(calentar, 60 * 1000);   // 1 min después de arrancar
+  return cron.schedule('*/10 * * * *', calentar, { timezone: 'America/Guayaquil' });
+};
 
 router.post('/reintentar', async (req, res) => {
   const dealId = String(req.body?.deal_id || '').trim();
@@ -390,4 +419,5 @@ router.post('/pendientes', async (req, res) => {
   }
 });
 
+router.initAnalisisBolsaLeads = initAnalisisBolsaLeads;
 module.exports = router;

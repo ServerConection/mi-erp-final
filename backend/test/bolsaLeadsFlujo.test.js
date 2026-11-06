@@ -22,6 +22,7 @@ const query = async (sql, p = []) => {
     const e = { id: db.entregas.length + 1, deal: p[0], empresa: p[1], casilla: p[2], estado, detalle: p[4] };
     db.entregas.push(e); return { rows: [{ id: e.id }] };
   }
+  if (/UPDATE bolsa_leads_entregas SET origen_lead_id/.test(sql)) { db.origenes = db.origenes || {}; db.origenes[p[0]] = p[2]; return { rows: [] }; }
   if (/UPDATE bolsa_leads_entregas SET reparto_resultado/.test(sql)) {
     db.entregas.find((e) => e.id === p[0]).reparto = p[1]; return { rows: [] };
   }
@@ -31,6 +32,7 @@ mock('config/dbErp.js', { query, connect: async () => ({ query, release() {} }) 
 
 // ── Bitrix falso: pipelines 43 (Bolsa), 7 (NETLIFE NUEVO), 51 (VELSA) ───────
 const deals = {};
+let llamadasLista = 0;
 let fallarMovimiento = false;
 mock('services/bitrix.service.js', {
   bitrixCallNovonet: async (method, params) => {
@@ -47,6 +49,11 @@ mock('services/bitrix.service.js', {
       Object.assign(deals[params.id], { CATEGORY_ID: String(params.fields.categoryId), STAGE_ID: params.fields.stageId });
       return { result: { item: { categoryId: Number(params.fields.categoryId) } } };
     }
+    if (method === 'crm.status.list') return { result: [{ STATUS_ID: '7|OPENLINE', NAME: 'Formulario Velsa 1' }, { STATUS_ID: 'CALL', NAME: 'Llamada' }] };
+    if (method === 'crm.deal.list' && params.filter?.ID) {
+      llamadasLista++;
+      return { result: params.filter.ID.filter((id) => deals[id]?.SOURCE_ID).map((id) => ({ ID: id, SOURCE_ID: deals[id].SOURCE_ID })) };
+    }
     throw new Error('Método no simulado: ' + method);
   },
 });
@@ -61,7 +68,7 @@ mock('shared/bolsaLeadsConectados.js', {
 let horaSim = { hora_inicio: '00:00:00', hora_fin: '23:59:59' };   // por defecto: siempre en horario
 mock('shared/repartoEstado.js', { leerConfig: async () => horaSim });
 process.env.GESTIONABLES_CATEGORY_ID = '';
-const { distribuir } = require('../src/controllers/bolsaLeads.controller');
+const { distribuir, origenesDesdeBitrix } = require('../src/controllers/bolsaLeads.controller');
 const nuevoDeal = (id) => (deals[id] = { ID: String(id), CATEGORY_ID: '43', STAGE_ID: 'C43:NEW' });
 
 test('20 leads: 12 Novonet / 8 Velsa en el orden del patrón, y pasan al repartidor', async () => {
@@ -169,4 +176,22 @@ test('fuera de horario: el lead se queda en LECTOR LEAD (en espera) y no mueve e
   assert.equal(db.entregas.at(-1).estado, 'en_espera');
   // Ya en horario, se entrega normal
   assert.equal((await distribuir('700')).estado, 'entregado');
+});
+
+test('origen de Bitrix: de 50 en 50, con el nombre del origen, y queda guardado', async () => {
+  reset(); llamadasLista = 0; db.origenes = {};
+  const ids = [];
+  for (let i = 800; i < 860; i++) { deals[i] = { ID: String(i), CATEGORY_ID: '51', SOURCE_ID: i % 2 ? '7|OPENLINE' : 'CALL' }; ids.push(String(i)); }
+  const r = await origenesDesdeBitrix(ids);
+  assert.equal(llamadasLista, 2);                                    // 60 leads → 2 consultas
+  assert.deepEqual(r.get('801'), { id: '7|OPENLINE', nombre: 'Formulario Velsa 1' });
+  assert.equal(r.get('800').nombre, 'Llamada');
+  assert.equal(db.origenes['801'], 'Formulario Velsa 1');
+});
+
+test('al entregar se guarda el origen del lead', async () => {
+  reset(); db.origenes = {};
+  deals[900] = { ID: '900', CATEGORY_ID: '43', STAGE_ID: 'C43:NEW', SOURCE_ID: '7|OPENLINE' };
+  assert.equal((await distribuir('900')).estado, 'entregado');
+  assert.equal(db.origenes['900'], 'Formulario Velsa 1');
 });

@@ -41,6 +41,7 @@ const Automarcador         = lazy(() => import("./pages/Automarcador"));
 const GestionablesAsesores = lazy(() => import("./pages/GestionablesAsesores"));
 const BolsaLeads = lazy(() => import("./pages/BolsaLeads"));
 const BolsaLeadsCostos = lazy(() => import("./pages/BolsaLeadsCostos"));
+const BolsaLeadsAnalisis = lazy(() => import("./pages/BolsaLeadsAnalisis"));
 const IndicadoresSemillero = lazy(() => import('./pages/IndicadoresSemilleroNovo'));
 const IndicadoresVentaenlinea = lazy(() => import('./pages/IndicadoresVentaenlinea'));
 const VistaAsesorSemillero = lazy(() => import('./pages/VistaAsesorSemillero'));
@@ -224,6 +225,7 @@ export default function App() {
             <Route path="gestionables-semillero" element={<GestionablesRoute empresa="SEMILLERO"><GestionablesAsesores key="semillero" empresa="semillero" /></GestionablesRoute>} />
             <Route path="bolsa-leads" element={puedeAccederBolsaLeads() ? <BolsaLeads /> : <Navigate to="/" replace />} />
             <Route path="bolsa-leads/costos" element={puedeAccederBolsaLeads() ? <BolsaLeadsCostos /> : <Navigate to="/" replace />} />
+            <Route path="bolsa-leads/analisis" element={puedeAccederBolsaLeads() ? <BolsaLeadsAnalisis /> : <Navigate to="/" replace />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
             <Route path="indicadores-ventaenlinea" element={<IndicadoresVentaenlinea />} />
             <Route path="vista-asesor-semillero" element={<VistaAsesorSemillero />} />

@@ -94,6 +94,11 @@ const guardarConfig = async (cambios, usuario, empresa) => {
 // responde (o deja de devolver la jornada), NO se reparte a ciegas: se usa
 // el último estado conocido de cada asesor hasta que Bitrix se restablezca.
 const ultimoBueno = {};
+// Último estado CONFIRMADO de cada asesor (por empresa). Si Bitrix responde a
+// medias (unos asesores sin dato de jornada o fuera de la lista), esos asesores
+// conservan su último estado conocido en vez de pasar a "Desconectado".
+const ultimoPorAsesor = {};
+const RESPALDO_ASESOR_MAX_MS = 30 * 60 * 1000;   // pasado esto, se acepta el dato nuevo
 
 const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
   const E = getEmpresa(empresa);
@@ -116,12 +121,14 @@ const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
       return respaldo('Bitrix no devolvió la jornada laboral');
     }
     const mapa = new Map();
+    const sinDato = new Set();   // asesores de los que Bitrix no devolvió la jornada
     // Se filtra por el PORTAL de donde vino la persona (portalCuenta). Bitrix Live
     // clasifica `cuenta` por empresa (NOVONET/VELSA) y una asesora de Velsa
     // que trabaja en el portal Novonet quedaría fuera → "nadie en línea".
     // Si la persona está en línea en cualquier cuenta, cuenta como en línea.
     for (const c of validas) {
       for (const u of data.usuarios.filter((x) => (x.portalCuenta || x.cuenta) === c)) {
+        if (criterios[c] === 'jornada' && u.jornadaSinDato) { sinDato.add(normalizarNombre(u.nombre)); continue; }
         const enLinea = criterios[c] === 'jornada' ? u.jornada === 'OPENED' : !!u.online;
         const k = normalizarNombre(u.nombre);
         const prev = mapa.get(k);
@@ -130,7 +137,24 @@ const leerEnLinea = async ({ forzar = false, empresa } = {}) => {
       }
     }
     if (!mapa.size) return respaldo('Bitrix devolvió la lista vacía');
-    const res = { criterio: criterios[validas[0]], mapa, generado: data.generado };
+    // Respuesta parcial: quien no vino (o vino sin jornada) conserva su último
+    // estado confirmado durante un máximo de 30 min.
+    const memo = ultimoPorAsesor[E.clave] || (ultimoPorAsesor[E.clave] = new Map());
+    const ahora = Date.now();
+    let conservados = 0;
+    for (const [k, v] of mapa) memo.set(k, { ...v, ts: ahora });
+    for (const [k, v] of memo) {
+      if (mapa.has(k)) continue;
+      if (ahora - v.ts > RESPALDO_ASESOR_MAX_MS) { memo.delete(k); continue; }
+      const { ts, ...estado } = v;
+      mapa.set(k, { ...estado, respaldo: true });
+      conservados += 1;
+    }
+    // Sin dato y sin estado previo: existe en Bitrix, pero no se sabe si está en
+    // línea → no recibe (lo más seguro) y sigue apareciendo como encontrado.
+    for (const k of sinDato) if (!mapa.has(k)) mapa.set(k, { enLinea: false, online: false, jornada: null, inicio: null, sinDato: true });
+    if (sinDato.size) console.warn(`[reparto ${E.clave}] Bitrix no devolvió la jornada de ${sinDato.size} asesor(es); ${conservados} conservan su último estado`);
+    const res = { criterio: criterios[validas[0]], mapa, generado: data.generado, parcial: conservados > 0 };
     ultimoBueno[E.clave] = res;
     return res;
   } catch (e) {

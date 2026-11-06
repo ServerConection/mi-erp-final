@@ -119,23 +119,38 @@ async function bitrixCall(baseUrl, metodo, params = {}) {
  * Ejecuta N comandos en tandas de 50 usando el método `batch`.
  * Devuelve { result, error } por clave de comando.
  */
-async function bitrixBatch(baseUrl, comandos) {
-  const claves = Object.keys(comandos);
+const esperarMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function bitrixBatch(baseUrl, comandos, { intentos = 3 } = {}) {
   const salida = { result: {}, error: {} };
+  let pendientes = Object.keys(comandos);
 
-  for (let i = 0; i < claves.length; i += BATCH_MAX) {
-    const trozo = claves.slice(i, i + BATCH_MAX);
-    const cmd = {};
-    trozo.forEach(k => { cmd[k] = comandos[k]; });
+  // Bitrix saturado (QUERY_LIMIT_EXCEEDED) hace fallar tandas o comandos sueltos.
+  // Se reintenta SOLO lo que falló, con espera creciente: si no, esos asesores
+  // quedarían "sin jornada" y el reparto los vería desconectados.
+  for (let intento = 1; intento <= intentos && pendientes.length; intento++) {
+    if (intento > 1) await esperarMs(1000 * (intento - 1) + Math.floor(Math.random() * 400));
+    const fallidos = [];
+    for (let i = 0; i < pendientes.length; i += BATCH_MAX) {
+      const trozo = pendientes.slice(i, i + BATCH_MAX);
+      const cmd = {};
+      trozo.forEach(k => { cmd[k] = comandos[k]; });
 
-    try {
-      const res = await bitrixCall(baseUrl, 'batch', { halt: 0, cmd });
-      Object.assign(salida.result, res?.result || {});
-      Object.assign(salida.error,  res?.result_error || {});
-    } catch (e) {
-      // Una tanda que falla no debe tumbar las demás.
-      trozo.forEach(k => { salida.error[k] = e.message; });
+      try {
+        const res = await bitrixCall(baseUrl, 'batch', { halt: 0, cmd });
+        const ok = res?.result || {}, err = res?.result_error || {};
+        for (const k of trozo) {
+          if (ok[k] !== undefined && ok[k] !== null && !err[k]) { salida.result[k] = ok[k]; delete salida.error[k]; }
+          else { salida.error[k] = err[k] || 'sin respuesta'; fallidos.push(k); }
+        }
+      } catch (e) {
+        // Una tanda que falla no debe tumbar las demás. Si Bitrix no contestó a
+        // tiempo no se reintenta (cada intento podría esperar otros 15 s).
+        const sinTiempo = /timeout|aborted/i.test(`${e?.name || ''} ${e?.message || ''}`);
+        trozo.forEach(k => { salida.error[k] = e.message; if (!sinTiempo) fallidos.push(k); });
+      }
     }
+    pendientes = fallidos;
   }
   return salida;
 }
@@ -246,6 +261,8 @@ async function traerCuenta(baseUrl, cuenta, mapaEmpresas) {
       escritorioUltimo: escritorio,
 
       jornada:        estadoJornada,                       // OPENED | PAUSED | CLOSED | EXPIRED | null
+      // Bitrix no devolvió la jornada de ESTA persona (saturado): no es lo mismo que "cerrada"
+      jornadaSinDato: timemanDisponible && !st,
       jornadaInicio:  inicio,
       jornadaFin:     fecha(st?.TIME_FINISH),
       jornadaFinSugerida: fecha(st?.TIME_FINISH_DEFAULT),
@@ -576,5 +593,5 @@ const cerrarJornada = async (req, res) => {
 
 module.exports = {
   getLive, exportar, diagnostico, cerrarJornada, recolectar, BITRIX_APIS,
-  _test: { mapaEmpresasUsuarios },
+  _test: { mapaEmpresasUsuarios, bitrixBatch },
 };

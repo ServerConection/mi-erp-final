@@ -46,6 +46,18 @@ const BANCOS = [
 ];
 const TIPOS_TARJETA_CREDITO = [
   "VISA", "MASTERCARD", "DINERS CLUB", "AMERICAN EXPRESS", "DISCOVER", "VISTA TITANIUM",
+  "TARJETA MASTERCARD",
+  "TARJETA AMERICAN",
+  "TARJETA DINERS",
+  "TARJETA VISA",
+  "TARJETA DISCOVER",
+  "TARJETA CUOTAFACIL / ALIAS SOLIDARIO",
+  "TARJETA MASTERCARD TITANIUM",
+  "TARJETA UNION PAY - BANKARD",
+];
+const TIPOS_CUENTA_BANCARIA = [
+  "CUENTA CORRIENTE", "CUENTA AHORROS",
+  "CORRIENTE", "AHORRO",
 ];
 const PROVINCIAS_ECUADOR = [
   "AZUAY", "BOLÍVAR", "CAÑAR", "CARCHI", "CHIMBORAZO", "COTOPAXI", "EL ORO",
@@ -1032,7 +1044,7 @@ export default function NuevaVenta() {
     } else if (PAGOS_CTA.includes(form.forma_pago)) {
       setForm((actual) => ({
         ...actual,
-        tipo_cuenta: PAGOS_CTA.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
+        tipo_cuenta: TIPOS_CUENTA_BANCARIA.includes(actual.tipo_cuenta) ? actual.tipo_cuenta : "",
         costo_instalacion: COSTO_INSTALACION_BASE,
         descuento_instalacion: `97% - CUENTA BANCARIA; FACTURA DE INSTALACIÓN $5.00${extraSector}`,
       }));
@@ -2142,7 +2154,7 @@ export default function NuevaVenta() {
               <FSel
                 value={form.tipo_cuenta}
                 onChange={set("tipo_cuenta")}
-                options={form.forma_pago === PAGO_TC ? TIPOS_TARJETA_CREDITO : ["CUENTA CORRIENTE", "CUENTA AHORROS"]}
+                options={form.forma_pago === PAGO_TC ? TIPOS_TARJETA_CREDITO : TIPOS_CUENTA_BANCARIA}
                 disabled={form.forma_pago === "EFECTIVO"}
                 placeholder={form.forma_pago === "EFECTIVO" ? "No aplica con efectivo" : form.forma_pago === PAGO_TC ? "Selecciona el tipo de tarjeta" : !form.banco ? "Primero selecciona el banco" : "Selecciona tipo de cuenta"}
               />

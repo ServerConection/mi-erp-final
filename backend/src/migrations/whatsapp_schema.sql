@@ -345,3 +345,23 @@ CREATE TABLE IF NOT EXISTS wa_presentations (
 
 -- Evita reenvíos si en el futuro se reintenta la creación de la conversación.
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS presentation_sent_at TIMESTAMPTZ;
+
+-- Plantillas predeterminadas del Inbox (2026-11-04): las cargan administración,
+-- gerencia y supervisores; los asesores las usan desde el Inbox con un botón.
+-- empresa: NOVONET | VELSA | SEMILLERO | VENTAENLINEA | TODAS
+CREATE TABLE IF NOT EXISTS inbox_plantillas (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  empresa        VARCHAR(20)  NOT NULL DEFAULT 'TODAS',
+  titulo         VARCHAR(120) NOT NULL,
+  texto          TEXT,
+  media_url      VARCHAR(500),
+  media_type     VARCHAR(20),
+  media_filename VARCHAR(255),
+  orden          INT          NOT NULL DEFAULT 0,
+  activo         BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_by     INTEGER,
+  updated_by     INTEGER,
+  created_at     TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ  DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_plantillas_empresa ON inbox_plantillas(empresa) WHERE activo;

@@ -51,11 +51,11 @@ assert.equal(uno(venta(10, 14.899, 16.461)).valor_disponible, 148.99);
 // 36 ventas: $550 del asegurado + la venta 36 a tabla "hasta 41"
 assert.equal(uno(venta(36, 14.899, 16.461)).valor_disponible, 564.9);
 assert.equal(uno(venta(36, 14.899, 16.461)).asegurado_aplicado, true);
-// $550 + ventas 36-41 a "hasta 41" + desde la 42 a "42 en adelante"
-assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 639.39);
-assert.equal(uno(venta(45, 14.899, 16.461)).valor_disponible, 705.24);
-assert.equal(uno(venta(42, 14.899, 16.461)).tramo, 'DESDE 42');
-assert.equal(uno(venta(41, 14.899, 16.461)).tramo, 'HASTA 41');
+// $550 + ventas 36-40 a "hasta 40" + desde la 41 a "41 en adelante"
+assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 640.96);
+assert.equal(uno(venta(45, 14.899, 16.461)).valor_disponible, 706.8);
+assert.equal(uno(venta(41, 14.899, 16.461)).tramo, 'DESDE 41');
+assert.equal(uno(venta(40, 14.899, 16.461)).tramo, 'HASTA 40');
 // los planes de comisión no cuentan para llegar a 35
 const r34 = uno([...venta(34, 14.899, 16.461), ...venta(1, 10.091, 10.291, 'COMISION')]);
 assert.equal(r34.ventas_tabla, 34);
@@ -106,6 +106,15 @@ assert.deepEqual([py.ventas_tabla, py.asegurado_aplicado, py.pyme_como_bono, py.
 // PYME: 34 sin PYME → las PYME suman a tabla (36) y aplica asegurado
 const py2 = f2([...vt(34, 14.899), ...vt(2, 18.35, 'PYME', 'PYME')]);
 assert.deepEqual([py2.ventas_tabla, py2.pyme_como_bono, py2.valor_disponible], [36, false, 564.9]);
+// PYME suman al total para el tramo: 40 a tabla + 2 PYME = 42 → PYME con tabla "41 en adelante"
+const pyT = (n) => ({ usuario: 'b', reg: 'REGULARIZADO', t1: 18.35, t2: 20, categoria: 'PYME', tipo: 'PYME', fecha_activacion: `2026-10-2${n}` });
+const py3 = f2([...vt(40, 14.899), pyT(1), pyT(2)]);
+assert.deepEqual([py3.ventas_tabla, py3.ventas_total_tramo, py3.tramo, py3.valor_pyme_bono, py3.asegurado_por_venta], [40, 42, 'DESDE 41', 40, 13.1]);
+// 41 a tabla sin PYME → sigue "hasta 41"
+assert.equal(f2(vt(40, 14.899)).tramo, 'HASTA 40');
+assert.equal(f2(vt(41, 14.899)).tramo, 'DESDE 41');
+// Asegurado por venta (referencia) = 550 / ventas que hizo
+assert.equal(f2(vt(50, 10)).asegurado_por_venta, 11);
 // Bono al volumen
 assert.equal(f2(vt(39, 10)).bono_volumen, 0);
 assert.equal(f2(vt(40, 10)).bono_volumen, 40);

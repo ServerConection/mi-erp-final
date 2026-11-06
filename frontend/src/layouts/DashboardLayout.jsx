@@ -373,8 +373,8 @@ const ALL_MENU_ITEMS = [
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
     accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
 
-  // Mis negociaciones (deals Bitrix): visible para todos; el backend filtra por responsable.
-  { name: "🤝 Mis negociaciones", path: "/mis-negociaciones", icon: "🤝", accessCheck: () => true },
+  // Mis negociaciones (deals Bitrix): solo administradores.
+  { name: "🤝 Mis negociaciones", path: "/mis-negociaciones", icon: "🤝", accessCheck: (p) => isAdmin(p) },
 
   // ── Vista Asesor ─────────────────────────────────────────────────────────
   { name: "Vista Asesor", path: null, icon: "👤", isGroup: true, groupId: "vista-asesor" },
@@ -429,6 +429,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederGestionables('NOVONET') },
   { name: "Reparto de Gestionables Velsa", path: "/gestionables-velsa", icon: "🟣",
     accessCheck: () => puedeAccederGestionables('VELSA') },
+  { name: "Reparto de Gestionables Semillero", path: "/gestionables-semillero", icon: "🌱",
+    accessCheck: () => puedeAccederGestionables('SEMILLERO') },
   { name: "Bolsa Leads", path: "/bolsa-leads", icon: "🔀",
     accessCheck: () => puedeAccederBolsaLeads() },
   { name: "Costos Bolsa Leads", path: "/bolsa-leads/costos", icon: "💰",
@@ -482,6 +484,9 @@ const ALL_MENU_ITEMS = [
   { name: "Campañas",    path: "/whatsapp/campanas",  icon: "📣", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Chatbots",    path: "/whatsapp/chatbots",  icon: "🤖", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
   { name: "Contactos",   path: "/whatsapp/contactos", icon: "👥", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },
+  // Plantillas del Inbox: las gestionan administración, gerencia y supervisores.
+  { name: "Plantillas",  path: "/whatsapp/plantillas", icon: "🗂️", isChild: true, group: "wabot",
+    accessCheck: (p) => { const x = (p || '').toUpperCase(); return ['ADMINISTRADOR', 'SUPERVISOR', 'GERENCIA', 'GERENTE'].includes(x) || /^GEREN(CIA|TE)[ _-]/.test(x); } },
   { name: "Respaldos",   path: "/whatsapp/respaldos", icon: "🗂️", isChild: true, group: "wabot",
     accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   { name: "Presentación", path: "/whatsapp/presentacion", icon: "🪪", isChild: true, group: "wabot", accessCheck: (p) => p !== 'CONSULTOR' },

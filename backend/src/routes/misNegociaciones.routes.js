@@ -27,6 +27,10 @@ const { claveNombre, mismaPalabra } = require('../services/asesorMatcher.service
 
 const router = express.Router();
 router.use(verificarToken);
+// Solo administradores (pedido 2026-11-03).
+router.use((req, res, next) => (/^ADMINISTRADOR(A)?([ _-]|$)/.test(String(req.user?.perfil || '').trim().toUpperCase())
+  ? next()
+  : res.status(403).json({ success: false, error: 'Módulo solo para administradores.' })));
 
 // ── Perfiles ────────────────────────────────────────────────────────────────
 const norm = (v) => String(v || '').trim().toUpperCase();

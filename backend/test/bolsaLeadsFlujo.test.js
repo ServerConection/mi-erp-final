@@ -118,7 +118,7 @@ test('apagada no toca el lead; modo solo Velsa entrega todo a Velsa', async () =
   assert.equal(db.config.posicion, 4);
 });
 
-test('ciclo de 12 con SEMILLERO: 7 / 4 / 1, y Semillero no pasa por el repartidor', async () => {
+test('ciclo de 12 con SEMILLERO: 7 / 4 / 1, y los 12 pasan por su repartidor', async () => {
   reset({ patron: 'NVNNVNSNVNNV' }); alRepartidor.length = 0;
   const cuenta = { novonet: 0, velsa: 0, semillero: 0 };
   for (let i = 400; i < 412; i++) {
@@ -130,8 +130,7 @@ test('ciclo de 12 con SEMILLERO: 7 / 4 / 1, y Semillero no pasa por el repartido
   assert.deepEqual(cuenta, { novonet: 7, velsa: 4, semillero: 1 });
   assert.equal(deals[406].CATEGORY_ID, '41');          // casilla 7 = S
   assert.equal(deals[406].STAGE_ID, 'C41:NEW');
-  assert.equal(alRepartidor.length, 11);                // los 11 de Novonet/Velsa
-  assert.match(db.entregas.find((e) => e.deal === '406').reparto, /Sin repartidor/);
+  assert.equal(alRepartidor.length, 12);                // Semillero también tiene repartidor (2026-11-04)
   assert.equal(db.config.posicion, 0);                  // volvió a la casilla 1
 });
 

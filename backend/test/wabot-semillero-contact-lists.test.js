@@ -20,8 +20,8 @@ test('las opciones de importación masiva consultan únicamente SEMILLERO', asyn
   const result = await bitrixLists.obtenerOpciones({ empresa: 'SEMILLERO', perfil: 'SUPERVISOR' }, db)
 
   assert.equal(result.empresa, 'SEMILLERO')
-  assert.equal(calls.length, 3)
-  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero'], ['semillero']])
+  assert.equal(calls.length, 4) // + estados Netlife de JotForm
+  assert.deepEqual(calls.map(call => call.params), [['semillero'], ['semillero'], ['semillero'], ['SEMILLERO']])
 })
 
 test('la previsualización masiva de SEMILLERO no mezcla registros de NOVONET', async () => {

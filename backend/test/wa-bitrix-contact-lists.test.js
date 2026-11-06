@@ -11,11 +11,11 @@ test('valida rango de fechas; etapas y responsables son opcionales y múltiples'
   assert.throws(() => service.validarFiltros({ stage_id: 'S', responsible_id: '1', date_from: '2026-10-08', date_to: '2026-10-07' }), /posterior/)
   assert.deepEqual(
     service.validarFiltros({ stage_id: 'S', responsible_id: '1', date_from: '2026-10-01', date_to: '2026-10-07' }),
-    { stageIds: ['S'], responsibleIds: ['1'], sourceIds: [], from: '2026-10-01', to: '2026-10-07' }
+    { stageIds: ['S'], responsibleIds: ['1'], sourceIds: [], netlifeEstados: [], from: '2026-10-01', to: '2026-10-07' }
   )
   assert.deepEqual(
     service.validarFiltros({ stage_ids: ['A', 'B', 'A'], responsible_ids: [], date_from: '2026-10-01', date_to: '2026-10-07' }),
-    { stageIds: ['A', 'B'], responsibleIds: [], sourceIds: [], from: '2026-10-01', to: '2026-10-07' }
+    { stageIds: ['A', 'B'], responsibleIds: [], sourceIds: [], netlifeEstados: [], from: '2026-10-01', to: '2026-10-07' }
   )
 })
 
@@ -63,8 +63,10 @@ test('crear base: elige pipeline por filtro y limita opciones al rango de fechas
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
   const r = await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'ADMINISTRADOR' }, { empresa: 'Venta en linea', date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.equal(r.empresa, 'VENTAENLINEA')
-  assert.equal(calls.length, 3)
-  for (const c of calls) {
+  assert.equal(calls.length, 4) // etapas, responsables, orígenes + estados Netlife
+  assert.deepEqual(calls[3].params, ['VENTAENLINEA']) // estados sin rango de fechas
+  assert.match(calls[3].sql, /envios_ventas/)
+  for (const c of calls.slice(0, 3)) {
     assert.deepEqual(c.params, ['ventaenlinea', '2026-10-01', '2026-10-07'])
     assert.match(c.sql, /BETWEEN \$2::date AND \$3::date/)
   }
@@ -113,7 +115,7 @@ test('crear base: asesor solo ve sus negocios; supervisor ve todos', async () =>
   const calls = []
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
   await service.consultar(asesor, { responsible_ids: ['OTRO ASESOR'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
-  assert.match(calls[0].sql, /LIKE ALL/)
+  assert.match(calls[0].sql, /LEAST\(2, cardinality/)
   assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('%PUC%')))
 })
 
@@ -122,4 +124,47 @@ test('vista previa: solo ID y dos últimos dígitos del teléfono', () => {
   const items = service.itemsVistaPrevia([{ wa_number: '593993189093', name: 'Cliente', variables: { bitrix_id: '687803' } }])
   assert.deepEqual(items, [{ bitrix_id: '687803', name: 'Cliente', telefono: '••••••••••93' }])
   assert.ok(!JSON.stringify(items).includes('5939931890'))
+})
+
+test('estado Netlife: toma los ID Bitrix de JotForm y la fecha de activación', async () => {
+  const db = { query: async (sql, params) => {
+    assert.match(sql, /JOIN \(SELECT DISTINCT ON/)
+    assert.match(sql, /envios_ventas/)
+    assert.doesNotMatch(sql, /created_at AT TIME ZONE 'America\/Guayaquil'\)::date BETWEEN/)
+    assert.deepEqual(params, ['novonet', 'NOVONET', ['ACTIVO'], '2026-10-01', '2026-10-07', 10000])
+    return { rows: [
+      { bitrix_id: '10', phone: '0991112233', etapa: 'x', responsible: 'Ana Ruiz', estado_netlife: 'ACTIVO', created_at: null, contact_name: 'Cliente' },
+    ] }
+  } }
+  const r = await service.consultar({ empresa: 'NOVONET', perfil: 'SUPERVISOR' },
+    { netlife_estados: ['activo'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+  assert.equal(r.items[0].variables.estado_netlife, 'ACTIVO')
+  assert.equal(r.items[0].variables.bitrix_responsible, 'Ana Ruiz')
+})
+
+test('estado Netlife: el asesor sigue limitado a sus negocios', async () => {
+  const db = { query: async (sql, params) => {
+    assert.match(sql, /LEAST\(2, cardinality/)
+    assert.deepEqual(params.slice(0, 5), ['velsa', 'VELSA', ['ACTIVO'], '2026-10-01', '2026-10-07'])
+    return { rows: [] }
+  } }
+  await service.consultar({ empresa: 'VELSA', perfil: 'ASESOR', nombreCompleto: 'Ana Ruiz' },
+    { empresa: 'NOVONET', netlife_estados: ['ACTIVO'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
+})
+
+test('orígenes VELSA no se muestran a NOVONET pero sí a VELSA', async () => {
+  const sqls = []
+  const db = { query: async (sql) => { sqls.push(sql); return { rows: [] } } }
+  await service.obtenerOpciones({ empresa: 'NOVONET', perfil: 'SUPERVISOR' }, {}, db)
+  assert.match(sqls[2], /NOT UPPER\(BTRIM\(source\)\) LIKE 'VELSA%'/)
+  sqls.length = 0
+  await service.obtenerOpciones({ empresa: 'VELSA', perfil: 'SUPERVISOR' }, {}, db)
+  assert.doesNotMatch(sqls[2], /LIKE 'VELSA%'/)
+})
+
+test('NOVONET no puede consultar un origen VELSA por API', async () => {
+  const db = { query: async () => { throw new Error('no debe consultar') } }
+  const r = await service.consultar({ empresa: 'NOVONET', perfil: 'SUPERVISOR' },
+    { source_ids: ['VELSA 1'], date_from: '2026-11-01', date_to: '2026-11-05' }, db)
+  assert.equal(r.total_deals, 0)
 })

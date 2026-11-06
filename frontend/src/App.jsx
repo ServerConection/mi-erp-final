@@ -74,6 +74,7 @@ const WaLineasDashboard    = lazy(() => import("./pages/WaLineasDashboard"));
 const WaCampanas           = lazy(() => import("./pages/WaCampanas"));
 const WaChatbots           = lazy(() => import("./pages/WaChatbots"));
 const WaContactos          = lazy(() => import("./pages/WaContactos"));
+const WaPlantillasInbox    = lazy(() => import("./pages/WaPlantillasInbox"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const WaPresentacion       = lazy(() => import("./pages/WaPresentacion"));
@@ -220,6 +221,7 @@ export default function App() {
             <Route path="automarcador"             element={<Automarcador />} />
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
+            <Route path="gestionables-semillero" element={<GestionablesRoute empresa="SEMILLERO"><GestionablesAsesores key="semillero" empresa="semillero" /></GestionablesRoute>} />
             <Route path="bolsa-leads" element={puedeAccederBolsaLeads() ? <BolsaLeads /> : <Navigate to="/" replace />} />
             <Route path="bolsa-leads/costos" element={puedeAccederBolsaLeads() ? <BolsaLeadsCostos /> : <Navigate to="/" replace />} />
             <Route path="indicadores-semillero" element={<IndicadoresSemillero />} />
@@ -245,7 +247,7 @@ export default function App() {
             <Route path="catalogo-planes"          element={<CatalogoPlanes />} />
             <Route path="carga-metas"              element={<CargaMetasComerciales />} />
             <Route path="mis-ventas-pendientes"    element={<MisVentasPendientes />} />
-            <Route path="mis-negociaciones"        element={<MisNegociaciones />} />
+            <Route path="mis-negociaciones"        element={<AdminOnlyRoute><MisNegociaciones /></AdminOnlyRoute>} />
             <Route path="vista-backoffice"         element={<RolesAllowedRoute allowed={["ADMINISTRADOR","ATC"]}><VistaBackoffice /></RolesAllowedRoute>} />
             <Route path="conexiones"              element={<ControlAsistencia />} />
             <Route path="configuracion-asistencia" element={<AdminOnlyRoute><ConfiguracionAsistencia /></AdminOnlyRoute>} />
@@ -263,6 +265,7 @@ export default function App() {
             <Route path="whatsapp/campanas"         element={<WaCampanas />} />
             <Route path="whatsapp/chatbots"         element={<WaChatbots />} />
             <Route path="whatsapp/contactos"        element={<WaContactos />} />
+            <Route path="whatsapp/plantillas"       element={<RolesAllowedRoute allowed={["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "GERENTE"]}><WaPlantillasInbox /></RolesAllowedRoute>} />
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
             <Route path="whatsapp/respaldos"        element={<AdminOnlyRoute><WaRespaldos /></AdminOnlyRoute>} />
             <Route path="whatsapp/presentacion"      element={<WaPresentacion />} />

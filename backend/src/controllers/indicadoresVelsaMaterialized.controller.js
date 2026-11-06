@@ -951,8 +951,20 @@ LIMIT 6000
     // lo que se guarda/edita en envios_ventas. Si el resto del dashboard esta
     // en cache se reutiliza, pero el detalle se vuelve a consultar en vivo.
     if (cached) {
-      const resNetVivo = await pool.query(qNetlife, valuesMain);
-      return res.json({ ...cached, ...calcularPlanesHasta600(resNetVivo.rows), dataNetlife: resNetVivo.rows });
+      const [resNetVivo, resEmbudoVivo, resEmbudoDiaVivo, resOrigenEtapasVivo] = await Promise.all([
+        pool.query(qNetlife, valuesMain),
+        pool.query(qEmbudo, valuesMain),
+        pool.query(qEmbudoPorDia, valuesMain),
+        pool.query(qOrigenesEtapasDia, valuesMain),
+      ]);
+      return res.json({
+        ...cached,
+        ...calcularPlanesHasta600(resNetVivo.rows),
+        dataNetlife: resNetVivo.rows,
+        graficoEmbudo: resEmbudoVivo.rows,
+        graficoEmbudoPorDia: resEmbudoDiaVivo.rows,
+        origenesEtapasDia: resOrigenEtapasVivo.rows,
+      });
     }
 
     const [

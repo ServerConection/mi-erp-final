@@ -6648,6 +6648,8 @@ const ESTADOS_PRESERVICIOS = [
   { id: "PREPLANIFICADO", titulo: "Preplanificados", color: "#2563eb", fondo: "#eff6ff", borde: "#bfdbfe", match: (v) => v.includes("PREPLANIFIC") },
   { id: "ASIGNADO", titulo: "Asignados", color: "#059669", fondo: "#ecfdf5", borde: "#a7f3d0", match: (v) => v.includes("ASIGNAD") },
   { id: "DETENIDO", titulo: "Detenidos", color: "#dc2626", fondo: "#fef2f2", borde: "#fecaca", match: (v) => v.includes("DETENID") },
+  { id: "NO_INGRESADO", titulo: "No Ingresado", color: "#c2410c", fondo: "#fff7ed", borde: "#fdba74", match: (v) => v.includes("NO INGRESAD") },
+  { id: "EN_VERIFICACION", titulo: "En Verificación", color: "#4f46e5", fondo: "#eef2ff", borde: "#c7d2fe", match: (v) => v.includes("EN VERIFICACION") },
 ];
 
 /** Determina a qué estado pertenece basándose EXCLUSIVAMENTE en netlife_estatus_real */

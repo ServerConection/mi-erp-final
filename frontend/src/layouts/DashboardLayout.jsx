@@ -435,6 +435,8 @@ const ALL_MENU_ITEMS = [
     accessCheck: () => puedeAccederBolsaLeads() },
   { name: "Costos Bolsa Leads", path: "/bolsa-leads/costos", icon: "💰",
     accessCheck: () => puedeAccederBolsaLeads() },
+  { name: "Análisis Bolsa Leads", path: "/bolsa-leads/analisis", icon: "🔎",
+    accessCheck: () => puedeAccederBolsaLeads() },
 
   // ── Administración ───────────────────────────────────────────────────────
   { name: "Administración", path: null, icon: "🗂️", isGroup: true, groupId: "administracion",

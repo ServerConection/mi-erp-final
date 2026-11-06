@@ -5,6 +5,7 @@
  *   POST /api/bolsa-leads/reintentar  { deal_id }
  *   POST /api/bolsa-leads/pendientes  → entrega lo que quedó en Bolsa Leads
  *   GET  /api/bolsa-leads/costos?desde&hasta → costo de la pauta por empresa y eficiencia
+ *   GET  /api/bolsa-leads/analisis?desde&hasta → embudo, asesores, hora/día y antes vs piloto
  */
 const router = require('express').Router();
 const erp = require('../config/dbErp');
@@ -110,8 +111,10 @@ router.put('/config', async (req, res) => {
 //   GET /api/bolsa-leads/costos?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 //   Por defecto: desde el primer lead que repartió la Bolsa hasta hoy.
 const ESTADO_ACTIVO = `REGEXP_REPLACE(TRANSLATE(UPPER(COALESCE(e.netlife_estatus_real, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), '[^A-Z]', '', 'g') = 'ACTIVO'`;
-router.get('/costos', async (req, res) => {
-  try {
+// Arma el reporte de costos (lo usan /costos y /analisis).
+// query: { desde, hasta } — por defecto desde el primer lead que repartió la Bolsa hasta hoy.
+const armarCostos = async (query) => {
+  const req = { query };
     const db = require('../config/db');   // bddgeneral: inversión y ventas
     const { calcularCostos, agruparPorOrigen, costosPorAgencia, normalizarOrigen } = require('../shared/bolsaLeadsCostos');
     const hoy = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -122,11 +125,15 @@ router.get('/costos', async (req, res) => {
     );
     const desde = fechaValida(req.query.desde) ? req.query.desde : (rango.rows[0].desde || rango.rows[0].hoy);
     const hasta = fechaValida(req.query.hasta) ? req.query.hasta : rango.rows[0].hoy;
-    if (desde > hasta) return res.status(400).json({ success: false, error: 'La fecha "desde" es mayor que "hasta"' });
+    if (desde > hasta) throw Object.assign(new Error('La fecha "desde" es mayor que "hasta"'), { status: 400 });
 
     const entregas = (await erp.query(
       `SELECT bitrix_deal_id AS deal, empresa,
-              to_char((creado_en AT TIME ZONE 'America/Guayaquil')::date, 'YYYY-MM-DD') AS fecha
+              to_char((creado_en AT TIME ZONE 'America/Guayaquil')::date, 'YYYY-MM-DD') AS fecha,
+              EXTRACT(HOUR FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS hora,
+              EXTRACT(ISODOW FROM creado_en AT TIME ZONE 'America/Guayaquil')::int AS dow,
+              detalle, origen AS via,
+              to_char(creado_en AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS entregado_en
          FROM bolsa_leads_entregas
         WHERE estado = 'entregado'
           AND (creado_en AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
@@ -172,11 +179,49 @@ router.get('/costos', async (req, res) => {
     const reporte = calcularCostos({ entregas, inversion, ventas });
 
     // Origen (campaña) de cada lead y su agencia (ARTS / VIDIKA / VELSA …)
+    // Fuente principal: el campo "Origen" del lead en Bitrix (igual para NOVONET,
+    // VELSA y SEMILLERO). Se guarda en bolsa_leads_entregas al entregar; lo que
+    // falte se pide a Bitrix una vez y queda guardado. El webhook es el último recurso.
     const origenes = new Map();
     const catalogo = new Map();
     if (ids.length) {
+      // Velsa primero y Novonet después: si un origen está en los dos catálogos, manda el de Novonet
+      for (const tabla of ['public.velsa_lineas_canal', 'public.novonet_lineas_canal']) {
+        try {
+          const { rows } = await db.query(`SELECT origen, agencia FROM ${tabla} WHERE NULLIF(BTRIM(agencia), '') IS NOT NULL`);
+          for (const r of rows) catalogo.set(normalizarOrigen(r.origen), r.agencia);
+        } catch (e) {
+          console.warn(`[bolsaLeads] costos: catálogo ${tabla}:`, e.message);
+        }
+      }
+      // El catálogo puede tener el nombre del origen o su código de Bitrix: se usa el que exista
+      const elegir = ({ id, nombre }) => (catalogo.has(normalizarOrigen(nombre)) || !catalogo.has(normalizarOrigen(id)) ? nombre : id);
+
+      // 1) lo ya guardado al entregar
       try {
-        // 1) estado actual del lead; 2) si ahí no hay origen, el historial del webhook
+        const { rows } = await erp.query(
+          `SELECT bitrix_deal_id AS deal, origen_lead_id AS id, origen_lead AS nombre FROM bolsa_leads_entregas
+            WHERE estado = 'entregado' AND bitrix_deal_id = ANY($1::text[]) AND origen_lead IS NOT NULL`, [ids]
+        );
+        for (const r of rows) origenes.set(String(r.deal), elegir(r));
+      } catch (e) {
+        if (!/origen_lead/.test(e.message)) console.warn('[bolsaLeads] costos: origen guardado:', e.message);
+        else avisos.push('Falta correr la migración 20261105_bolsa_leads_origen_lead.sql (el origen se consulta a Bitrix cada vez)');
+      }
+      // 2) lo que falte, directo de Bitrix (queda guardado)
+      const faltanBitrix = ids.filter((id) => !origenes.has(id));
+      if (faltanBitrix.length) {
+        try {
+          const { origenesDesdeBitrix } = require('../controllers/bolsaLeads.controller');
+          const deBitrix = await origenesDesdeBitrix(faltanBitrix);
+          for (const [deal, o] of deBitrix) origenes.set(deal, elegir(o));
+        } catch (e) {
+          console.error('[bolsaLeads] costos: origen en Bitrix:', e.message);
+          avisos.push('No se pudo consultar el origen en Bitrix; se usa el del webhook');
+        }
+      }
+      // 3) último recurso: lo que guardó el webhook general
+      try {
         for (const tabla of ['public.bitrix_webhook_leads', 'public.bitrix_webhook_leads_historial']) {
           const faltan = ids.filter((id) => !origenes.has(id));
           if (!faltan.length) break;
@@ -189,29 +234,170 @@ router.get('/costos', async (req, res) => {
           for (const r of rows) origenes.set(String(r.deal), r.origen);
         }
       } catch (e) {
-        console.error('[bolsaLeads] costos: orígenes:', e.message);
-        avisos.push('No se pudo leer el origen de los leads (bitrix_webhook_leads)');
-      }
-      // Velsa primero y Novonet después: si un origen está en los dos catálogos, manda el de Novonet
-      for (const tabla of ['public.velsa_lineas_canal', 'public.novonet_lineas_canal']) {
-        try {
-          const { rows } = await db.query(`SELECT origen, agencia FROM ${tabla} WHERE NULLIF(BTRIM(agencia), '') IS NOT NULL`);
-          for (const r of rows) catalogo.set(normalizarOrigen(r.origen), r.agencia);
-        } catch (e) {
-          console.warn(`[bolsaLeads] costos: catálogo ${tabla}:`, e.message);
-        }
+        console.warn('[bolsaLeads] costos: origen del webhook:', e.message);
       }
     }
     const { ORIGEN_A_CANAL } = require('../shared/origenesRedes');
     const origen = agruparPorOrigen({ detalle: reporte.detalle, origenes, catalogo, historico: ORIGEN_A_CANAL });
     const costosAgencia = costosPorAgencia({ ...origen, porFuente: reporte.porFuente });
 
-    res.json({ success: true, desde, hasta, avisos, ...reporte, ...origen, ...costosAgencia });
+    return { success: true, desde, hasta, avisos, ...reporte, ...origen, ...costosAgencia, _entregas: entregas, _db: db };
+};
+
+router.get('/costos', async (req, res) => {
+  try {
+    const { _entregas, _db, ...reporte } = await armarCostos(req.query);
+    res.json(reporte);
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ success: false, error: e.message });
     console.error('[bolsaLeads] costos:', e.message);
     res.status(500).json({ success: false, error: 'No se pudo armar el reporte de costos' });
   }
 });
+
+// ── Análisis profundo del piloto ─────────────────────────────────────────────
+//   GET /api/bolsa-leads/analisis?desde&hasta
+//   Embudo por empresa, por asesor, por hora/día y antes vs piloto. Usa Bitrix
+//   (etapa y responsable actuales de cada lead) → se guarda 5 min en memoria.
+// Caché: el cron lo recalcula cada 10 min para el rango por defecto, así la página abre al instante.
+const cacheAnalisis = new Map();
+const VIGENCIA_ANALISIS = 15 * 60 * 1000;
+const enCurso = new Map();   // si dos personas lo piden a la vez, se calcula una sola vez
+
+const armarAnalisis = async (query) => {
+    const { analizarPiloto, compararPeriodos, analizarTiempos } = require('../shared/bolsaLeadsAnalisis');
+    const ctrl = require('../controllers/bolsaLeads.controller');
+    const { _entregas: entregas, _db: db, ...costos } = await armarCostos(query);
+    const avisos = [...costos.avisos];
+    const ids = [...new Set(entregas.map((x) => String(x.deal)))];
+
+    // Hora, día, cola y saltos de cada entrega
+    const extra = new Map(entregas.map((x) => {
+      const m = /casilla \d+ era (NOVONET|VELSA|SEMILLERO) sin asesores conectados/i.exec(x.detalle || '');
+      return [String(x.deal), { hora: x.hora, dow: x.dow, viaCola: x.via === 'pendientes', salto: !!m, saltoDe: m ? m[1].toLowerCase() : null }];
+    }));
+    const enEspera = Number((await erp.query(
+      `SELECT COUNT(DISTINCT bitrix_deal_id)::int AS n FROM bolsa_leads_entregas
+        WHERE estado = 'en_espera' AND (creado_en AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date`,
+      [costos.desde, costos.hasta]
+    )).rows[0]?.n) || 0;
+
+    // Etapa y responsable actuales (Bitrix)
+    // Bitrix en paralelo (cada uno ya va por lotes de 50 consultas)
+    const [infoR, histR] = await Promise.allSettled([ctrl.infoDealsBitrix(ids), ctrl.historialEtapas(ids)]);
+    let bitrix = new Map();
+    try { if (infoR.status === 'rejected') throw infoR.reason; bitrix = infoR.value; }
+    catch (e) {
+      console.error('[bolsaLeads] analisis: Bitrix:', e.message);
+      avisos.push('No se pudo leer la etapa y el responsable en Bitrix: el embudo y los asesores salen incompletos');
+    }
+    const analisis = analizarPiloto({ detalle: costos.detalle, extra, bitrix, enEspera });
+
+    // Tiempos de operación: historial de etapas de Bitrix + primera venta registrada
+    let tiempos = null;
+    try {
+      if (histR.status === 'rejected') throw histR.reason;
+      const historial = histR.value;
+      const primeraVenta = new Map();
+      try {
+        const { rows } = await db.query(
+          `SELECT NULLIF(BTRIM(e.id_bitrix::text), '') AS deal,
+                  to_char(MIN(public.parse_fecha_flex(e.fecha_registro_sistema::text)), 'YYYY-MM-DD"T"HH24:MI:SS') || '-05:00' AS t
+             FROM public.envios_ventas e
+            WHERE NULLIF(BTRIM(e.id_bitrix::text), '') = ANY($1::text[]) AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'
+            GROUP BY 1`, [ids]
+        );
+        for (const r of rows) if (r.t) primeraVenta.set(String(r.deal), r.t);
+      } catch (e) {
+        console.warn('[bolsaLeads] analisis: fecha de ventas:', e.message);
+      }
+      const { EMPRESAS: CFG } = require('../shared/repartoEmpresas');
+      const plazos = Object.fromEntries(Object.entries(CFG).map(([k, v]) => [k, v.plazoVentaHoras ?? null]));
+      const cfgBolsa = await ctrl.leerConfig?.().catch(() => null);
+      const categoriaBolsa = String(cfgBolsa?.categoria_origen ?? 43);
+      tiempos = analizarTiempos({
+        leads: entregas.map((x) => ({ deal: x.deal, empresa: x.empresa, entregado_en: x.entregado_en, categoriaBolsa })),
+        historial, primeraVenta, plazos,
+      });
+    } catch (e) {
+      console.error('[bolsaLeads] analisis: tiempos:', e.message);
+      avisos.push('No se pudo leer el historial de etapas en Bitrix: los tiempos de operación no están disponibles');
+    }
+
+    // Antes vs piloto: mismos días, justo antes del primer día del rango
+    let comparacion = null;
+    try {
+      const dia = 24 * 3600 * 1000;
+      const d0 = new Date(`${costos.desde}T12:00:00Z`), d1 = new Date(`${costos.hasta}T12:00:00Z`);
+      const dias = Math.round((d1 - d0) / dia) + 1;
+      const fmt = (d) => d.toISOString().slice(0, 10);
+      const antesHasta = fmt(new Date(d0.getTime() - dia));
+      const antesDesde = fmt(new Date(d0.getTime() - dias * dia));
+      const periodo = async (desde, hasta) => {
+        const inv = await db.query(
+          `SELECT COALESCE((SELECT SUM(monto_usd) FROM public.novonet_inversion_redes WHERE fecha::date BETWEEN $1::date AND $2::date), 0)
+                + COALESCE((SELECT SUM(monto_usd) FROM public.velsa_inversion_redes   WHERE fecha::date BETWEEN $1::date AND $2::date), 0) AS total`,
+          [desde, hasta]
+        );
+        const ven = await db.query(
+          `SELECT UPPER(BTRIM(COALESCE(e.distribuidor_autorizado, ''))) AS empresa, COUNT(*)::int AS n
+             FROM public.envios_ventas e
+            WHERE e.estatus_envio IS DISTINCT FROM 'BORRADOR'
+              AND e.fecha_ingreso_telcos BETWEEN $1::date AND $2::date
+            GROUP BY 1`, [desde, hasta]
+        );
+        const ventas = { novonet: 0, velsa: 0, semillero: 0 };
+        for (const r of ven.rows) {
+          const k = /SEMILLERO/.test(r.empresa) ? 'semillero' : /VELSA/.test(r.empresa) ? 'velsa' : /NOVONET/.test(r.empresa) ? 'novonet' : null;
+          if (k) ventas[k] += r.n;
+        }
+        return { desde, hasta, dias, inversion: Number(inv.rows[0].total) || 0, leads: await ctrl.leadsPorPipeline(desde, hasta), ventas };
+      };
+      const [pAntes, pPiloto] = await Promise.all([periodo(antesDesde, antesHasta), periodo(costos.desde, costos.hasta)]);
+      comparacion = compararPeriodos(pAntes, pPiloto);
+    } catch (e) {
+      console.error('[bolsaLeads] analisis: antes vs piloto:', e.message);
+      avisos.push('No se pudo armar la comparación antes vs piloto');
+    }
+
+    return {
+      success: true, generado: new Date().toISOString(), desde: costos.desde, hasta: costos.hasta, avisos,
+      totales: costos.totales, porEmpresa: costos.porEmpresa, ...analisis, comparacion, tiempos,
+    };
+};
+
+const analisisConCache = async (query = {}, { forzar = false } = {}) => {
+  const clave = `${query.desde || ''}|${query.hasta || ''}`;
+  const c = cacheAnalisis.get(clave);
+  if (!forzar && c && Date.now() - c.ts < VIGENCIA_ANALISIS) return c.data;
+  if (enCurso.has(clave)) return enCurso.get(clave);
+  const p = armarAnalisis(query)
+    .then((data) => { cacheAnalisis.set(clave, { ts: Date.now(), data }); return data; })
+    .finally(() => enCurso.delete(clave));
+  enCurso.set(clave, p);
+  return p;
+};
+
+router.get('/analisis', async (req, res) => {
+  try {
+    res.json(await analisisConCache({ desde: req.query.desde, hasta: req.query.hasta }, { forzar: req.query.forzar === '1' }));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ success: false, error: e.message });
+    console.error('[bolsaLeads] analisis:', e.message);
+    res.status(500).json({ success: false, error: 'No se pudo armar el análisis del piloto' });
+  }
+});
+
+// Cada 10 min: deja listo el análisis del rango por defecto (BOLSA_LEADS_ANALISIS_WORKER=false lo apaga)
+const initAnalisisBolsaLeads = () => {
+  if (String(process.env.BOLSA_LEADS_ANALISIS_WORKER || 'true').toLowerCase() === 'false') return null;
+  const cron = require('node-cron');
+  const calentar = () => analisisConCache({}, { forzar: true })
+    .then(() => console.log('[bolsaLeads] Análisis del piloto precalculado'))
+    .catch((e) => console.warn('[bolsaLeads] No se pudo precalcular el análisis:', e.message));
+  setTimeout(calentar, 60 * 1000);   // 1 min después de arrancar
+  return cron.schedule('*/10 * * * *', calentar, { timezone: 'America/Guayaquil' });
+};
 
 router.post('/reintentar', async (req, res) => {
   const dealId = String(req.body?.deal_id || '').trim();
@@ -233,4 +419,5 @@ router.post('/pendientes', async (req, res) => {
   }
 });
 
+router.initAnalisisBolsaLeads = initAnalisisBolsaLeads;
 module.exports = router;

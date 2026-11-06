@@ -61,7 +61,8 @@ server.listen(process.env.PORT, async () => {
   initWinTrackerSync();
   initReconciliacionBitrix();    // origen/etapa al día con Bitrix (cada hora)
   require('./controllers/bolsaLeads.controller').initBolsaLeadsCron(); // Bolsa Leads: reparte lo que espera en LECTOR LEAD (en horario), cada minuto
-  require('./shared/bolsaLeadsConectados').initConexionBolsaLeads(); // Bolsa Leads: conectados por empresa, cada minuto
+  require('./shared/bolsaLeadsConectados').initConexionBolsaLeads();
+  require('./routes/bolsaLeads.routes').initAnalisisBolsaLeads(); // Bolsa Leads: análisis del piloto precalculado cada 10 min // Bolsa Leads: conectados por empresa, cada minuto
   initColaGestionables();        // entrega cada minuto los leads que esperan en la estación (reparto de gestionables)
   // WABOT EXTERNO: con WABOT_REMOTE_URL, WhatsApp corre en su propio servicio
   // de Render y este proceso NO abre sesiones (evita dos dueños por línea).

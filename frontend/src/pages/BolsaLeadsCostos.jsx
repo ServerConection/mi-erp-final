@@ -92,7 +92,7 @@ export default function BolsaLeadsCostos() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-xs text-slate-400"><Link to="/bolsa-leads" className="hover:underline">Bolsa Leads</Link> / Costos</div>
-          <h1 className="text-2xl font-bold text-slate-800">Costos del piloto Bolsa Leads</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Costos del piloto Bolsa Leads <Link to="/bolsa-leads/analisis" className="ml-2 align-middle text-sm font-medium text-violet-700 hover:underline">🔎 Análisis profundo</Link></h1>
           <p className="text-sm text-slate-500">Cuánto costó la pauta a cada empresa según los leads que recibió, y qué tan eficiente fue.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2 text-sm">
@@ -163,6 +163,54 @@ export default function BolsaLeadsCostos() {
               </section>
             ))}
           </div>
+
+          {/* Por empresa: de qué agencia recibió leads y cuánto le costó cada una */}
+          {data.porAgencia?.length > 0 && (
+            <section className="rounded-2xl border bg-white p-4 shadow-sm">
+              <h2 className="mb-1 font-semibold text-slate-700">Por empresa: cuánta pauta recibió de cada agencia</h2>
+              <p className="mb-3 text-xs text-slate-400">VELSA incluye VELSA 1 y VELSA 2. CPL = inversión de la agencia ÷ todos sus leads: es el mismo para las tres empresas, lo que cambia es cuántos leads recibió cada una y cuántos vendió.</p>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                {LISTA.map((e) => {
+                  const filas = data.porAgencia.filter((a) => a[e] > 0);
+                  // CPL y costo por venta del total: solo con los leads de agencias con costo conocido
+                  const tot = filas.reduce((acc, a) => {
+                    const conCosto = a[`costo_${e}`] !== null && a[`costo_${e}`] !== undefined;
+                    return {
+                      leads: acc.leads + a[e], costo: acc.costo + (conCosto ? a[`costo_${e}`] : 0), ventas: acc.ventas + a[`ventas_${e}`],
+                      leadsCosto: acc.leadsCosto + (conCosto ? a[e] : 0), ventasCosto: acc.ventasCosto + (conCosto ? a[`ventas_${e}`] : 0),
+                    };
+                  }, { leads: 0, costo: 0, ventas: 0, leadsCosto: 0, ventasCosto: 0 });
+                  return (
+                    <div key={e} className={`rounded-xl border p-3 ${EMP[e].suave}`}>
+                      <h3 className="mb-2 font-bold">{EMP[e].label}</h3>
+                      <table className="w-full text-xs">
+                        <thead><tr className="text-left opacity-70"><th className="py-1">Agencia</th><th>Leads</th><th>CPL</th><th>Costo</th><th>Ventas</th><th>Costo/venta</th></tr></thead>
+                        <tbody>
+                          {filas.map((a) => (
+                            <tr key={a.agencia} className="border-t border-black/10">
+                              <td className="py-1 font-semibold">{a.agencia}</td>
+                              <td>{num(a[e])}</td><td>{usd(a.cpl)}</td><td>{usd(a[`costo_${e}`])}</td>
+                              <td>{num(a[`ventas_${e}`])}</td>
+                              <td>{a[`costo_${e}`] !== null && a[`ventas_${e}`] ? usd(a[`costo_${e}`] / a[`ventas_${e}`]) : '—'}</td>
+                            </tr>
+                          ))}
+                          {!filas.length && <tr><td colSpan={6} className="py-3 text-center opacity-60">Sin leads</td></tr>}
+                        </tbody>
+                        {filas.length > 0 && (
+                          <tfoot><tr className="border-t-2 border-black/20 font-bold">
+                            <td className="py-1">Total</td><td>{num(tot.leads)}</td>
+                            <td>{tot.leadsCosto ? usd(tot.costo / tot.leadsCosto) : '—'}</td><td>{usd(tot.costo)}</td>
+                            <td>{num(tot.ventas)}</td><td>{tot.ventasCosto ? usd(tot.costo / tot.ventasCosto) : '—'}</td>
+                          </tr></tfoot>
+                        )}
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-slate-400">El costo de SIN ORIGEN / SIN AGENCIA no se calcula (no se sabe de qué pauta vienen), así que el total por agencia puede ser menor que el de las tarjetas de arriba.</p>
+            </section>
+          )}
 
           {/* Por agencia: inversión, leads y costo por empresa (con sub-agencias) */}
           {data.porAgencia?.length > 0 && (

@@ -3,6 +3,14 @@ const { esLeadTotalExpr, esGestionableExpr, esDescarteExpr } = require('../share
 const { fechaWebhookExpr, etapaWebhookExpr, horaWebhookExpr } = require('../shared/webhookRedes');
 const { resolverCanalInversion, construirForecastAgencias } = require('../shared/inversionRedes');
 const { asegurarInversionReciente } = require('../services/inversionFreshness.service');
+const { fuenteDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
+
+// 2026-11-06: las ventas VELSA salen de envios_ventas (en vivo), no de
+// mv_indicadores_velsa_completo (congelada: su auto-refresh está apagado y
+// JotForm se dejó de usar en oct-2026). VELSA vive en el Bitrix de NOVONET
+// como otro pipeline; bitrix_webhook_leads ya la marca con empresa='velsa'.
+// DISTINCT por venta (ev_id): una negociación puede tener varias ventas.
+const FUENTE_VENTAS_VELSA = fuenteDetalleJotform('velsa', 'mv');
 
 const FECHA = fechaWebhookExpr('w');
 const ETAPA = etapaWebhookExpr('w');
@@ -301,14 +309,14 @@ async function catalogoAgenciasVelsa() {
 }
 
 const jotMensualMv = `WITH jot AS (
-  SELECT DISTINCT ON (mv.id_jotform::text)
-    mv.fecha_registro_date registro, mv.fecha_activacion_date activacion,
-    mv.fecha_creacion_date creacion, mv.forma_pago, mv.asesor,
+  SELECT DISTINCT ON (mv.ev_id)
+    mv.fecha_registro_jotform::date registro, mv.fecha_activacion::date activacion,
+    mv.fecha_creacion_crm::date creacion, mv.forma_pago, mv.asesor,
     COALESCE(NULLIF(UPPER(BTRIM(m.agencia)),''),'VELSA') agencia
-  FROM public.mv_indicadores_velsa_completo mv
+  FROM ${FUENTE_VENTAS_VELSA}
   LEFT JOIN public.velsa_lineas_canal m ON UPPER(BTRIM(m.origen))=UPPER(BTRIM(mv.origen))
-  WHERE mv.id_jotform IS NOT NULL
-  ORDER BY mv.id_jotform::text, mv.fecha_registro_date DESC NULLS LAST
+  WHERE mv.fecha_registro_jotform IS NOT NULL
+  ORDER BY mv.ev_id
 )`;
 const filtroJotAgencia = canales => canales.length
   ? `AND agencia IN (${canales.map((_, i) => `$${i + 3}`).join(',')})` : '';
@@ -408,16 +416,15 @@ async function consultarJotVelsaMensual(desde, hasta, canales) {
   const where = canales.length ? `AND agencia IN (${canales.map((_, i) => `$${i + 3}`).join(',')})` : '';
   const params = [desde, hasta, ...canales.map(x => x.toUpperCase())];
   const base = `WITH registros AS (
-    SELECT DISTINCT ON (mv.id_jotform::text)
-      mv.id_jotform, mv.fecha_registro_date registro, mv.fecha_activacion_date activacion,
+    SELECT DISTINCT ON (mv.ev_id)
+      mv.id_jotform, mv.fecha_registro_jotform::date registro, mv.fecha_activacion::date activacion,
       mv.estado_venta estado, mv.estado_regularizacion regularizacion,
       COALESCE(NULLIF(UPPER(BTRIM(m.agencia)),''),'VELSA') agencia,
-      (w.created_at AT TIME ZONE 'America/Guayaquil')::date fecha_bitrix
-    FROM public.mv_indicadores_velsa_completo mv
+      mv.fecha_creacion_crm::date fecha_bitrix
+    FROM ${FUENTE_VENTAS_VELSA}
     LEFT JOIN public.velsa_lineas_canal m ON UPPER(BTRIM(m.origen))=UPPER(BTRIM(mv.origen))
-    LEFT JOIN public.bitrix_webhook_leads w ON w.empresa='velsa' AND BTRIM(w.bitrix_id::text)=BTRIM(mv.id_jotform::text)
-    WHERE mv.id_jotform IS NOT NULL
-    ORDER BY mv.id_jotform::text, mv.fecha_registro_date DESC NULLS LAST
+    WHERE mv.fecha_registro_jotform IS NOT NULL
+    ORDER BY mv.ev_id
   ), filtrados AS (SELECT * FROM registros WHERE 1=1 ${where})`;
   const [den, status] = await Promise.all([
     pool.query(`${base} SELECT EXTRACT(DAY FROM COALESCE(

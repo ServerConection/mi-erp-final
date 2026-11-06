@@ -149,6 +149,47 @@ const pasarAlRepartidor = async (empresa, dealId) => {
 };
 
 // ── Horario: el mismo del reparto de gestionables NOVONET ───────────────────
+// ── Origen (campaña) del lead, directo de Bitrix: SOURCE_ID → nombre ───────
+let cacheOrigenes = { ts: 0, mapa: null };
+const nombresDeOrigen = async () => {
+  if (cacheOrigenes.mapa && Date.now() - cacheOrigenes.ts < 30 * 60 * 1000) return cacheOrigenes.mapa;
+  const mapa = new Map();
+  let start = 0;
+  for (let pagina = 0; pagina < 20; pagina++) {
+    const json = await bx('crm.status.list', { filter: { ENTITY_ID: 'SOURCE' }, start });
+    for (const s of json.result || []) mapa.set(String(s.STATUS_ID), String(s.NAME || s.STATUS_ID));
+    if (!json.next) break;
+    start = json.next;
+  }
+  cacheOrigenes = { ts: Date.now(), mapa };
+  return mapa;
+};
+const guardarOrigen = (dealId, id, nombre) => poolErp.query(
+  `UPDATE bolsa_leads_entregas SET origen_lead_id = $2, origen_lead = $3
+    WHERE bitrix_deal_id = $1 AND estado = 'entregado'`, [String(dealId), id, nombre]
+).catch(() => {});   // sin la migración 20261105 no se guarda, pero nada se rompe
+
+/**
+ * Origen de Bitrix de varios leads (de 50 en 50) → Map deal → { id, nombre }.
+ * Lo que encuentra lo guarda en bolsa_leads_entregas para no volver a pedirlo.
+ */
+const origenesDesdeBitrix = async (ids, { max = 3000 } = {}) => {
+  const out = new Map();
+  const lista = [...new Set(ids.map(String))].slice(0, max);
+  if (!lista.length) return out;
+  const nombres = await nombresDeOrigen().catch(() => new Map());
+  for (let i = 0; i < lista.length; i += 50) {
+    const json = await bx('crm.deal.list', { filter: { ID: lista.slice(i, i + 50) }, select: ['ID', 'SOURCE_ID'] });
+    for (const d of json.result || []) {
+      if (!d.SOURCE_ID) continue;
+      const o = { id: String(d.SOURCE_ID), nombre: nombres.get(String(d.SOURCE_ID)) || String(d.SOURCE_ID) };
+      out.set(String(d.ID), o);
+      await guardarOrigen(d.ID, o.id, o.nombre);
+    }
+  }
+  return out;
+};
+
 const leerHorario = async () => {
   let cfg = {};
   try { cfg = await require('../shared/repartoEstado').leerConfig({ empresa: 'novonet' }); } catch { /* por defecto */ }
@@ -245,6 +286,10 @@ const distribuir = async (dealId, { origen = 'webhook', forzar = false } = {}) =
     client.release();
   }
 
+  if (deal.SOURCE_ID) {
+    const nombres = await nombresDeOrigen().catch(() => new Map());
+    await guardarOrigen(dealId, String(deal.SOURCE_ID), nombres.get(String(deal.SOURCE_ID)) || String(deal.SOURCE_ID));
+  }
   console.log(`[bolsaLeads] Deal ${dealId} → ${DESTINOS[r.empresa].etiqueta}${r.casilla ? ` (casilla ${r.casilla})` : ''}`);
   if (r.encadenar) {
     let resultado;
@@ -316,4 +361,151 @@ const initBolsaLeadsCron = () => {
   }, { timezone: 'America/Guayaquil' });
 };
 
-module.exports = { recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, leerHorario, resumenPatron, DESTINOS, conectadosPorEmpresa, initBolsaLeadsCron };
+// ── Para el análisis del piloto (Bitrix por lotes: hasta 50 consultas en 1 llamada) ──
+// Antes cada consulta era una llamada a Bitrix (≈100 seguidas, más de un minuto).
+// Con el método "batch" de Bitrix se mandan 50 juntas por POST.
+const aQuery = (obj, prefijo = '') => {
+  const partes = [];
+  for (const [k, v] of Object.entries(obj)) {
+    const clave = prefijo ? `${prefijo}[${k}]` : k;
+    if (v !== null && typeof v === 'object') partes.push(aQuery(Array.isArray(v) ? Object.fromEntries(v.map((x, i) => [i, x])) : v, clave));
+    else partes.push(`${encodeURIComponent(clave)}=${encodeURIComponent(v)}`);
+  }
+  return partes.filter(Boolean).join('&');
+};
+/**
+ * comandos: { clave: [metodo, params] } → { clave: { result, total, next, error } }
+ * Se parte en lotes de 50 y se reintenta si Bitrix está saturado.
+ */
+const bxLote = async (comandos) => {
+  const url = (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, '');
+  if (!url) throw new Error('Webhook de Bitrix NOVONET no configurado');
+  const claves = Object.keys(comandos);
+  const out = {};
+  for (let i = 0; i < claves.length; i += 50) {
+    const lote = claves.slice(i, i + 50);
+    const cmd = Object.fromEntries(lote.map((k) => [k, `${comandos[k][0]}?${aQuery(comandos[k][1] || {})}`]));
+    let json;
+    for (let intento = 1; ; intento++) {
+      const res = await fetch(`${url}/batch.json`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ halt: 0, cmd }),
+      });
+      json = await res.json();
+      const saturado = /QUERY_LIMIT_EXCEEDED|Too many requests/i.test(`${json.error || ''} ${JSON.stringify(json.result?.result_error || {})}`);
+      if (!saturado || intento >= 5) break;
+      await esperar(1000 * intento + Math.floor(Math.random() * 500));
+    }
+    if (json.error) throw new Error(`Bitrix [batch]: ${json.error} — ${json.error_description || ''}`);
+    const r = json.result || {};
+    for (const k of lote) {
+      out[k] = { result: r.result?.[k], total: r.result_total?.[k], next: r.result_next?.[k], error: r.result_error?.[k] || null };
+    }
+  }
+  return out;
+};
+
+const etapasCache = new Map();   // categoría → Map STATUS_ID → nombre
+const cargarEtapas = async (categorias) => {
+  const faltan = [...new Set(categorias.map(String))].filter((c) => !etapasCache.has(c));
+  if (!faltan.length) return;
+  const r = await bxLote(Object.fromEntries(faltan.map((c) => [`c${c}`, ['crm.dealcategory.stage.list', { id: c }]])));
+  for (const c of faltan) {
+    etapasCache.set(c, new Map((r[`c${c}`]?.result || []).map((e) => [String(e.STATUS_ID), String(e.NAME)])));
+  }
+};
+const nombresEtapas = async (categoria) => { await cargarEtapas([categoria]); return etapasCache.get(String(categoria)) || new Map(); };
+
+let usuariosCache = { ts: 0, mapa: new Map() };
+const nombresUsuarios = async (idsBuscados) => {
+  if (Date.now() - usuariosCache.ts > 30 * 60 * 1000) usuariosCache = { ts: Date.now(), mapa: new Map() };
+  // Solo los responsables que aparecen, por ID (activos o no), en lotes
+  const pedir = [...new Set(idsBuscados.map(String))].filter((id) => id && !usuariosCache.mapa.has(id));
+  if (pedir.length) {
+    const r = await bxLote(Object.fromEntries(pedir.map((id) => [`u${id}`, ['user.get', { ID: id }]])));
+    for (const id of pedir) {
+      const u = r[`u${id}`]?.result?.[0];
+      usuariosCache.mapa.set(id, u ? `${u.NAME || ''} ${u.LAST_NAME || ''}`.trim() || `ID ${id}` : `ID ${id}`);
+    }
+  }
+  return usuariosCache.mapa;
+};
+
+const trozos = (lista, n = 50) => Array.from({ length: Math.ceil(lista.length / n) }, (_, i) => lista.slice(i * n, i * n + n));
+
+/** Map deal → { etapa (nombre), asesor (nombre), categoria } */
+const infoDealsBitrix = async (ids, { max = 5000 } = {}) => {
+  const grupos = trozos([...new Set(ids.map(String))].slice(0, max));
+  const r = await bxLote(Object.fromEntries(grupos.map((g, i) => [`d${i}`, ['crm.deal.list', {
+    filter: { ID: g }, select: ['ID', 'STAGE_ID', 'CATEGORY_ID', 'ASSIGNED_BY_ID'],
+  }]])));
+  const crudos = grupos.flatMap((_, i) => r[`d${i}`]?.result || []);
+  await cargarEtapas(crudos.map((d) => String(d.CATEGORY_ID || 0)));
+  const usuarios = await nombresUsuarios(crudos.map((d) => String(d.ASSIGNED_BY_ID)).filter(Boolean));
+  const out = new Map();
+  for (const d of crudos) {
+    const etapas = etapasCache.get(String(d.CATEGORY_ID || 0)) || new Map();
+    out.set(String(d.ID), {
+      etapa: etapas.get(String(d.STAGE_ID)) || String(d.STAGE_ID || ''),
+      asesor: usuarios.get(String(d.ASSIGNED_BY_ID)) || (d.ASSIGNED_BY_ID ? `ID ${d.ASSIGNED_BY_ID}` : null),
+      categoria: String(d.CATEGORY_ID ?? ''),
+    });
+  }
+  return out;
+};
+
+/**
+ * Historial de etapas (crm.stagehistory.list) → Map deal → [{ etapa, categoria, t }].
+ * Vuelta 1: las primeras 4 páginas (200 cambios) de cada grupo de 50 leads.
+ * Vuelta 2: solo para los grupos con más de 200 cambios, el resto de páginas.
+ * Todo en lotes de 50 consultas.
+ */
+const historialEtapas = async (ids, { max = 5000 } = {}) => {
+  const grupos = trozos([...new Set(ids.map(String))].slice(0, max));
+  const items = [];
+  const totales = new Map();
+  const pedir = async (paginas) => {
+    const r = await bxLote(Object.fromEntries(paginas.map(({ gi, start }) => [`h${gi}_${start}`, ['crm.stagehistory.list', {
+      entityTypeId: 2, filter: { OWNER_ID: grupos[gi] }, select: ['OWNER_ID', 'STAGE_ID', 'CATEGORY_ID', 'CREATED_TIME'], order: { ID: 'ASC' }, start,
+    }]])));
+    for (const { gi, start } of paginas) {
+      const x = r[`h${gi}_${start}`];
+      items.push(...(x?.result?.items || []));
+      if (x?.total !== undefined) totales.set(gi, Number(x.total) || 0);
+    }
+  };
+  await pedir(grupos.flatMap((_, gi) => [0, 50, 100, 150].map((start) => ({ gi, start }))));
+  const resto = grupos.flatMap((_, gi) => {
+    const paginas = [];
+    for (let start = 200; start < (totales.get(gi) || 0) && start < 5000; start += 50) paginas.push({ gi, start });
+    return paginas;
+  });
+  if (resto.length) await pedir(resto);
+
+  await cargarEtapas(items.map((h) => String(h.CATEGORY_ID ?? 0)));
+  const out = new Map();
+  const vistos = new Set();
+  for (const h of items) {
+    const clave = `${h.OWNER_ID}|${h.STAGE_ID}|${h.CREATED_TIME}`;
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    const cat = String(h.CATEGORY_ID ?? 0);
+    const deal = String(h.OWNER_ID);
+    if (!out.has(deal)) out.set(deal, []);
+    out.get(deal).push({ etapa: (etapasCache.get(cat) || new Map()).get(String(h.STAGE_ID)) || String(h.STAGE_ID), categoria: cat, t: h.CREATED_TIME });
+  }
+  for (const h of out.values()) h.sort((a, b) => new Date(a.t) - new Date(b.t));
+  return out;
+};
+
+/** Leads creados en el pipeline de cada empresa entre dos fechas (hora Ecuador), en 1 lote */
+const leadsPorPipeline = async (desde, hasta) => {
+  const empresas = Object.keys(DESTINOS);
+  const cats = {};
+  for (const e of empresas) cats[e] = (await resolverDestino(e)).categoria;
+  const r = await bxLote(Object.fromEntries(empresas.map((e) => [`p${e}`, ['crm.deal.list', {
+    filter: { CATEGORY_ID: cats[e], '>=DATE_CREATE': `${desde}T00:00:00-05:00`, '<=DATE_CREATE': `${hasta}T23:59:59-05:00` }, select: ['ID'],
+  }]])));
+  return Object.fromEntries(empresas.map((e) => [e, Number(r[`p${e}`]?.total ?? (r[`p${e}`]?.result || []).length) || 0]));
+};
+
+module.exports = { bxLote, infoDealsBitrix, leadsPorPipeline, historialEtapas, recibirBolsaLead, distribuir, distribuirPendientes, leerConfig, leerHorario, resumenPatron, DESTINOS, conectadosPorEmpresa, initBolsaLeadsCron, origenesDesdeBitrix };

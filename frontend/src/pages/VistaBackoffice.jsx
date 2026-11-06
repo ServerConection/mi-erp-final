@@ -357,10 +357,8 @@ const CAMPOS_CLIENTE_NO_EXPORTABLES = new Set([
 ]);
 
 const OPCIONES_ESTATUS_REGULARIZACION = [
-  { valor: "__SIN_REVISAR__", etiqueta: "Sin Revisar" },
-  { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
   { valor: "REGULARIZADO", etiqueta: "Regularizado" },
-  { valor: "GESTION ATC", etiqueta: "Gestion ATC" },
+  { valor: "POR REGULARIZAR", etiqueta: "Por regularizar" },
   { valor: "NO REQUIERE REGULARIZAR", etiqueta: "No requiere regularizar" },
 ];
 function calcularFranjaAgendamiento(fechaHora) {
@@ -3968,9 +3966,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                 );
                               })() : field === "estatus_regularizacion" ? (() => {
                                 const estadoActual = String(detail?.[field] ?? "").trim().toUpperCase();
-                                const valorSeleccionado = !estadoActual || estadoActual === "SIN REVISAR"
-                                  ? "__SIN_REVISAR__"
-                                  : estadoActual;
+                                const valorSeleccionado = estadoActual === "SIN REVISAR" ? "" : estadoActual;
                                 const esValorConocido = OPCIONES_ESTATUS_REGULARIZACION.some(
                                   (opcion) => opcion.valor === valorSeleccionado
                                 );
@@ -3979,9 +3975,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                   <select
                                     value={valorSeleccionado}
                                     onChange={(e) => {
-                                      const valor = e.target.value === "__SIN_REVISAR__"
-                                        ? ""
-                                        : e.target.value.toUpperCase();
+                                      const valor = e.target.value.toUpperCase();
                                       setDetail((prev) => ({ ...prev, [field]: valor }));
                                     }}
                                     className="bo-campo-color"
@@ -3998,6 +3992,7 @@ function PanelRegistros({ onVolver, idInicial, fechaFija, sinFiltroFechaInicial 
                                       ...estiloCampoColor(field, estadoActual || "SIN REVISAR"),
                                     }}
                                   >
+                                    {!estadoActual && <option value="" disabled>Seleccione un estado...</option>}
                                     {estadoActual && !esValorConocido && (
                                       <option value={valorSeleccionado} disabled>
                                         Estado actual: {estadoActual}
@@ -7568,7 +7563,6 @@ const BLOQUES_VALIDACION = [
   { id: "POR_REGULARIZAR", titulo: "Por regularizar", color: "#b45309", fondo: "#fffbeb", borde: "#fcd34d", valorBD: "POR REGULARIZAR" },
   { id: "NO_REQUIERE", titulo: "No requiere regularizar", color: "#6d28d9", fondo: "#f5f3ff", borde: "#c4b5fd", valorBD: "NO REQUIERE REGULARIZAR" },
   { id: "REGULARIZADO", titulo: "Regularizado", color: "#047857", fondo: "#f0fdf4", borde: "#86efac", valorBD: "REGULARIZADO" },
-  { id: "GESTION_ATC", titulo: "Gestión ATC", color: "#e11d48", fondo: "#fff1f2", borde: "#fecdd3", valorBD: "GESTION ATC" },
 ];
 
 // Normaliza para comparar: sin tildes, sin espacios sobrantes, en mayúsculas.
@@ -7581,7 +7575,6 @@ function bloqueDeRegistro(row) {
   if (!v) return "SIN_REVISAR";
   if (v.includes("NO NECESITA") || v.includes("NO REQUIERE")) return "NO_REQUIERE";
   if (v.startsWith("REGULARIZAD")) return "REGULARIZADO";
-  if (v.includes("GESTION") && v.includes("ATC")) return "GESTION_ATC";
   if (v.includes("REGULARIZAR")) return "POR_REGULARIZAR";
   return "SIN_REVISAR";
 }
@@ -7821,12 +7814,9 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
   const [sobreBloque, setSobreBloque] = useState(null);
   const [moviendo, setMoviendo] = useState(null);
   const [aviso, setAviso] = useState(null);
-  const [filtrosFecha, setFiltrosFecha] = useState({
-    SIN_REVISAR: FILTRO_FECHA_VACIO,
-    POR_REGULARIZAR: FILTRO_FECHA_VACIO,
-    GESTION_ATC: FILTRO_FECHA_VACIO,
-    REGULARIZADO: FILTRO_FECHA_VACIO,
-  });
+  const [filtrosFecha, setFiltrosFecha] = useState(() =>
+    Object.fromEntries(BLOQUES_VALIDACION.map((bloque) => [bloque.id, FILTRO_FECHA_VACIO]))
+  );
 
   const token = localStorage.getItem("token");
   const cambiarFiltro = (bloqueId, nuevo) =>
@@ -7844,7 +7834,7 @@ function TableroValidacion({ onVolver, onAbrirRegistro, empresa, onCambiarEmpres
     });
   })();
 
-  const porBloque = { SIN_REVISAR: [], POR_REGULARIZAR: [], GESTION_ATC: [], REGULARIZADO: [] };
+  const porBloque = Object.fromEntries(BLOQUES_VALIDACION.map((bloque) => [bloque.id, []]));
   for (const r of ordenadas) {
     const b = bloqueDeRegistro(r);
     if (porBloque[b]) porBloque[b].push(r);

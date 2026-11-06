@@ -60,10 +60,9 @@ const fechaRegEC = (col) => `(CASE WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}[T 
 const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
 const EMPRESAS_BACKOFFICE = new Set(['NOVONET', 'VELSA', 'SEMILLERO']);
 const ESTATUS_REGULARIZACION_BACKOFFICE = [
-  'GESTION ATC',
-  'NO REQUIERE REGULARIZAR',
-  'POR REGULARIZAR',
   'REGULARIZADO',
+  'POR REGULARIZAR',
+  'NO REQUIERE REGULARIZAR',
 ];
 // Algunos registros históricos llegaron serializados como arreglo JSON, por
 // ejemplo ["POR REGULARIZAR"]. Para filtrar se retira exclusivamente la

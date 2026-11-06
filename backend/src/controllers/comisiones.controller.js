@@ -76,7 +76,7 @@ function categoriaDesdeTexto(texto) {
   return null;
 }
 const REGLAS = {
-  asegurado: 550, meta: 35, desdeTramo2: 42,
+  asegurado: 550, meta: 35, desdeTramo2: 41,
   // Bono al volumen: ventas que cuentan → USD (se toma el escalón más alto alcanzado)
   bonoVolumen: [[60, 80], [50, 60], [40, 40]],
   // Tercera edad: máximo 15% de las ventas del asesor; las que pasan ese % no se pagan
@@ -87,12 +87,17 @@ const esTerceraEdad = (v) => String(v.tipo || '').toUpperCase() === 'TERCERA EDA
 
 /**
  * Valor de un conjunto de ventas de UN asesor.
- * ventas: [{ t1, t2, categoria }] (t1 = tabla "hasta 41", t2 = "42 en adelante"; null = sin tarifa)
+ * ventas: [{ t1, t2, categoria }] (t1 = tabla "hasta 40", t2 = "41 en adelante"; null = sin tarifa)
  *  - N = ventas que suman a tabla (las de categoría COMISION / NO_VENDER no cuentan)
- *  - tramo del asesor: N >= 42 → "DESDE 42"; si no → "HASTA 41" (para planes de comisión y PYME bono)
+ *  - tramo del asesor: N >= 41 → "DESDE 41"; si no → "HASTA 40" (para planes de comisión y PYME bono)
  *  - N >= 35 → la parte de tabla nunca baja de $550 (asegurado garantizado)
  *  - las de comisión se suman aparte con el mismo tramo
  */
+// Orden de las ventas (qué entra en las 35, 36–40 y 41+; y qué 3ra edad excede): fecha de INGRESO JOTFORM.
+// Si falta, se usa la fecha de activación.
+const ordenDe = (v) => String(v.fecha_orden || v.fecha_activacion || '');
+const porOrden = (a, b) => ordenDe(a).localeCompare(ordenDe(b));
+
 function calcularValor(ventas, reglas = REGLAS, registro = null) {
   // registro(venta, concepto, valor): opcional, deja el detalle de cómo se pagó cada venta
   const anotar = registro || (() => {});
@@ -103,7 +108,7 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
   // Tope tercera edad por asesor: solo se paga hasta el 15% de sus ventas; las más recientes quedan fuera
   const permitidasTE = Math.floor((reglas.topeTerceraEdad ?? 1) * cuentan.length + 1e-9);
   const te = cuentan.filter(esTerceraEdad)
-    .sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    .sort(porOrden);
   const excedentes = new Set(te.slice(permitidasTE));
   const pagables = cuentan.filter((v) => !excedentes.has(v));
 
@@ -116,21 +121,21 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
 
   const n = tabla.length;
   // Las PYME SIEMPRE suman al total para elegir el tramo (aunque se paguen aparte como bono):
-  // 40 a tabla + 2 PYME = 42 → todo lo que depende del tramo (PYME incluidas) va con la tabla "42 en adelante".
+  // 39 a tabla + 2 PYME = 41 → todo lo que depende del tramo (PYME incluidas) va con la tabla "41 en adelante".
   const nTotal = pymeComoBono ? n + pymes.length : n;
   const tramo = nTotal >= reglas.desdeTramo2 ? 2 : 1;
   const valorDe = (v) => Number((tramo === 2 ? (v.t2 ?? v.t1) : v.t1) ?? 0);
   const t1De = (v) => Number(v.t1 ?? 0);
   const t2De = (v) => Number((v.t2 ?? v.t1) ?? 0);
   const aseguradoAplica = n >= reglas.meta;
-  // Menos de 35: cada venta a la tabla "hasta 41".
+  // Menos de 35: cada venta a la tabla "hasta 40".
   // Desde 35: $550 cubre las primeras 35 (por fecha de activación) y se SUMA cada venta extra:
-  //   venta 36 a 41 → tabla "hasta 41" (com_t1); venta 42 en adelante → tabla "42 en adelante" (com_t2).
+  //   venta 36 a 40 → tabla "hasta 40" (com_t1); venta 41 en adelante → tabla "41 en adelante" (com_t2).
   let valorTabla;
   if (!aseguradoAplica) {
     valorTabla = tabla.reduce((a, v) => a + t1De(v), 0);
   } else {
-    const ordenadas = [...tabla].sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    const ordenadas = [...tabla].sort(porOrden);
     valorTabla = reglas.asegurado + ordenadas.slice(reglas.meta)
       .reduce((a, v, i) => a + (reglas.meta + i + 1 >= reglas.desdeTramo2 ? t2De(v) : t1De(v)), 0);
   }
@@ -143,13 +148,13 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
     excedentes.forEach((v) => anotar(v, 'Tercera edad sobre el 15% (no se paga)', 0));
     directas.forEach((v) => anotar(v, `Plan de comisión${sinTarifa(v)}`, valorDe(v)));
     if (pymeComoBono) pymes.forEach((v) => anotar(v, `PYME como bono${sinTarifa(v)}`, valorDe(v)));
-    const ordenadas = [...tabla].sort((a, b) => String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    const ordenadas = [...tabla].sort(porOrden);
     ordenadas.forEach((v, i) => {
       const num = i + 1;
-      if (!aseguradoAplica) return anotar(v, `Venta a tabla “hasta 41” (venta ${num})${sinTarifa(v)}`, t1De(v));
+      if (!aseguradoAplica) return anotar(v, `Venta a tabla “hasta 40” (venta ${num})${sinTarifa(v)}`, t1De(v));
       if (num <= reglas.meta) return anotar(v, `Asegurado (venta ${num} de ${reglas.meta})`, reglas.asegurado / reglas.meta);
-      if (num >= reglas.desdeTramo2) return anotar(v, `Extra “42 en adelante” (venta ${num})${sinTarifa(v)}`, t2De(v));
-      return anotar(v, `Extra “hasta 41” (venta ${num})${sinTarifa(v)}`, t1De(v));
+      if (num >= reglas.desdeTramo2) return anotar(v, `Extra “41 en adelante” (venta ${num})${sinTarifa(v)}`, t2De(v));
+      return anotar(v, `Extra “hasta 40” (venta ${num})${sinTarifa(v)}`, t1De(v));
     });
   }
 
@@ -168,7 +173,7 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
 }
 
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
-const TRAMO_TXT = { 1: 'HASTA 41', 2: 'DESDE 42' };
+const TRAMO_TXT = { 1: 'HASTA 40', 2: 'DESDE 41' };
 
 /** Agrupa las ventas por asesor y calcula total (todas las activas) y disponible (solo REGULARIZADO). */
 function calcularAsesores(ventas, reglas = REGLAS) {
@@ -180,7 +185,7 @@ function calcularAsesores(ventas, reglas = REGLAS) {
   const filas = [];
   for (const [usuario, vs] of grupos) {
     const regularizadas = vs.filter((v) => v.reg === 'REGULARIZADO');
-    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 42".
+    // "SIN ASIGNAR" no es un asesor: nunca recibe asegurado ni tramo "desde 41".
     const sinAsesor = usuario === 'SIN ASIGNAR';
     const reglasGrupo = sinAsesor ? { ...reglas, meta: Infinity, desdeTramo2: Infinity } : reglas;
     const total = calcularValor(vs, reglasGrupo);
@@ -303,7 +308,7 @@ async function calcularComisiones(query) {
       filtroGlobal = `AND (to_jsonb(e)::text || ' ' || COALESCE(u.usuario, '') || ' ' || COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellidos, '') || ' ' || COALESCE(u.codigo_vendedor, '')) ILIKE $${values.length}`;
     }
 
-    // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 41", com_t2 = "42 en adelante".
+    // Tarifa = TIPO + VELOCIDAD (igual que el Excel). com_t1 = tabla "hasta 40", com_t2 = "41 en adelante".
     const mes = await mesCatalogo(query);
     let catalogo = `SELECT NULL::text AS tipo, NULL::int AS velocidad, NULL::numeric AS t1, NULL::numeric AS t2, NULL::text AS categoria WHERE false`;
     if (mes) {
@@ -325,6 +330,8 @@ async function calcularComisiones(query) {
           COALESCE(NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), ''), NULLIF(BTRIM(CONCAT_WS(' ', uc.nombres, uc.apellidos)), ''), ${usuario}) AS nombre_asesor,
           public.parse_fecha_flex(e.fecha_ingreso_telcos::text)::date AS fecha_telcos,
           public.parse_fecha_flex(e.fecha_activacion_netlife::text)::date AS fecha_activacion,
+          CASE WHEN e.fecha_registro_sistema::text ~ '^\\d{4}-\\d{2}-\\d{2}' THEN LEFT(REPLACE(e.fecha_registro_sistema::text, 'T', ' '), 19)
+               ELSE to_char(public.parse_fecha_flex(e.fecha_registro_sistema::text), 'YYYY-MM-DD') END AS fecha_orden,
           ${REG_NORM} AS reg,
           ${TIPO_VENTA} AS tipo,
           ${VELOCIDAD_VENTA} AS velocidad,
@@ -354,7 +361,7 @@ async function calcularComisiones(query) {
           ${filtroGlobal}
       ), cat AS (${catalogo})
       SELECT v.codigo, v.usuario, v.nombre_asesor, v.tipo, to_char(v.fecha_telcos, 'YYYY-MM-DD') AS fecha_telcos,
-             to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.reg,
+             to_char(v.fecha_activacion, 'YYYY-MM-DD') AS fecha_activacion, v.fecha_orden, v.reg,
              c.t1::float AS t1, c.t2::float AS t2, c.categoria,
              v.velocidad, v.id_bitrix, v.login, v.plan, v.servicios, v.estado_reg, v.cliente
       FROM ventas v

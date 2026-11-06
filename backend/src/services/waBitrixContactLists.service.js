@@ -52,6 +52,21 @@ function patronesAsesor(user) {
 }
 const RESPONSABLE_NORM_SQL = `UPPER(TRANSLATE(COALESCE(responsible, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'))`
 
+// El nombre del ERP suele traer 2 nombres + 2 apellidos y Bitrix solo
+// "Nombre Apellido". Exigir TODAS las palabras dejaba a esos asesores sin
+// negocios (responsable en blanco). Ahora basta con que coincidan 2 palabras
+// (o todas, si el nombre del ERP tiene menos de 2).
+// La Bolsa reparte pauta de VELSA a otros pipelines y el negocio conserva
+// su origen ("VELSA 1"). Esos orígenes solo se muestran a VELSA.
+const ORIGEN_AJENO_SQL = `UPPER(BTRIM(source)) LIKE 'VELSA%'`
+const esOrigenAjeno = (empresa, origen) =>
+  String(empresa).toUpperCase() !== 'VELSA' && /^\s*VELSA/i.test(String(origen || ''))
+
+function filtroAsesorSQL(pos) {
+  return `(SELECT COUNT(*) FROM unnest($${pos}::text[]) AS pa(p) WHERE ${RESPONSABLE_NORM_SQL} LIKE pa.p)
+            >= LEAST(2, cardinality($${pos}::text[]))`
+}
+
 // Empresa registrada del usuario (incluye VENTA EN LÍNEA).
 function empresaFija(user) {
   const propia = String(user?.empresa || '').trim().toUpperCase().replace(/\s+/g, '')
@@ -212,7 +227,7 @@ async function obtenerOpciones(user, input = {}, db) {
   // Asesor: solo sus propios negocios (etapas, responsables y orígenes).
   if (soloSusNegocios(user)) {
     params.push(patronesAsesor(user))
-    rango += `\n          AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
+    rango += `\n          AND ${filtroAsesorSQL(params.length)}`
   }
   // Estados Netlife disponibles en JotForm para la empresa. NO dependen del
   // rango: el modal abre con la fecha de hoy y casi nunca hay activaciones
@@ -234,7 +249,7 @@ async function obtenerOpciones(user, input = {}, db) {
     db.query(
       `SELECT BTRIM(source) AS id, BTRIM(source) AS name
          FROM bitrix_webhook_leads
-        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL${rango}
+        WHERE empresa=$1 AND NULLIF(BTRIM(source), '') IS NOT NULL${rango}${empresa === 'VELSA' ? '' : `\n          AND NOT ${ORIGEN_AJENO_SQL}`}
         GROUP BY BTRIM(source) ORDER BY 2`, params),
     db.query(
       `SELECT ${ESTADO_NETLIFE_SQL} AS id, ${ESTADO_NETLIFE_SQL} AS name
@@ -297,10 +312,15 @@ async function consultar(user, input, db = require('../config/db')) {
   // Asesor: forzado a sus propios negocios aunque el navegador pida otros.
   if (soloSusNegocios(user)) {
     params.push(patronesAsesor(user))
-    filtrosExtra += `\n        AND ${RESPONSABLE_NORM_SQL} LIKE ALL($${params.length}::text[])`
+    filtrosExtra += `\n        AND ${filtroAsesorSQL(params.length)}`
   }
-  if (f.sourceIds.length) {
-    params.push(f.sourceIds.map(o => o.toUpperCase()))
+  // Un origen de VELSA pedido desde otra empresa se ignora (no se cuela por API).
+  const origenes = f.sourceIds.filter(o => !esOrigenAjeno(empresa, o))
+  if (f.sourceIds.length && !origenes.length) {
+    return { company: empresa, total_deals: 0, deals_without_phone: 0, unique_contacts: 0, truncated: false, items: [] }
+  }
+  if (origenes.length) {
+    params.push(origenes.map(o => o.toUpperCase()))
     filtrosExtra += `\n        AND UPPER(BTRIM(source)) = ANY($${params.length}::text[])`
   }
   params.push(MAX_DEALS)

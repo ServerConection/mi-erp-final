@@ -1186,10 +1186,28 @@ const getIndicadoresDashboard = async (req, res) => {
         // dashboard está en caché, se reutiliza, pero el detalle se vuelve a
         // consultar en vivo (1 sola query, no el dashboard completo).
         if (cached) {
-            const resNetVivo = await pool.query(queryJotform, values);
+            const [resNetVivo, resEmbudoVivo, resEmbudoDiaVivo, resOrigenEtapasVivo] = await Promise.all([
+                pool.query(queryJotform, values),
+                pool.query(queryEmbudo, values),
+                pool.query(queryEmbudoPorDia, values),
+                pool.query(queryOrigenesEtapasDia, values),
+            ]);
             const kpiPlanes = calcularPlanesHasta600(resNetVivo.rows);
-            console.log(`[DASHBOARD] Cache hit (detalle Jotform en vivo) → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
-            return res.json({ ...cached, ...kpiPlanes, dataNetlife: resNetVivo.rows });
+            const graficoEmbudoVivo = resEmbudoVivo.rows.map(r => ({
+                name: r.etapa, value: Number(r.total || 0), etapa: r.etapa, total: Number(r.total || 0),
+            }));
+            const graficoEmbudoPorDiaVivo = resEmbudoDiaVivo.rows.map(r => ({
+                fecha: r.fecha, etapa: r.etapa, total: Number(r.total || 0),
+            }));
+            console.log(`[DASHBOARD] Cache hit (Jotform + embudo CRM en vivo) → ${desde}~${hasta} asesor=${asesorQuery||''} sup=${supervisor||''}`);
+            return res.json({
+                ...cached,
+                ...kpiPlanes,
+                dataNetlife: resNetVivo.rows,
+                graficoEmbudo: graficoEmbudoVivo,
+                graficoEmbudoPorDia: graficoEmbudoPorDiaVivo,
+                origenesEtapasDia: resOrigenEtapasVivo.rows,
+            });
         }
 
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).

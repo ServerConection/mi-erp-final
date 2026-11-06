@@ -59,6 +59,17 @@ const fechaRegEC = (col) => `(CASE WHEN ${col}::text ~ '^\\d{4}-\\d{2}-\\d{2}[T 
 // backend para que tampoco pueda evadirse manipulando filtros o URLs.
 const FECHA_MINIMA_BACKOFFICE = '2026-06-01';
 const EMPRESAS_BACKOFFICE = new Set(['NOVONET', 'VELSA', 'SEMILLERO']);
+const ESTATUS_REGULARIZACION_BACKOFFICE = [
+  'GESTION ATC',
+  'NO REQUIERE REGULARIZAR',
+  'POR REGULARIZAR',
+  'REGULARIZADO',
+];
+// Algunos registros históricos llegaron serializados como arreglo JSON, por
+// ejemplo ["POR REGULARIZAR"]. Para filtrar se retira exclusivamente la
+// envoltura; los valores cifrados/residuales no se presentan como opciones.
+const estatusRegularizacionNormalizado = (col = 'estatus_regularizacion') =>
+  `UPPER(TRIM(BOTH '[]"' FROM TRIM(${col})))`;
 const condicionFechaBackoffice = (alias = '') => (
   `${fechaRegEC(`${alias}fecha_registro_sistema`)} >= '${FECHA_MINIMA_BACKOFFICE}'`
 );
@@ -187,7 +198,7 @@ router.get('/', async (req, res) => {
     if (estatusNetlife.trim())
       whereClause += ` AND UPPER(TRIM(netlife_estatus_real)) = UPPER(TRIM(${P(estatusNetlife.trim())}))`;
     if (estatusRegularizacion.trim())
-      whereClause += ` AND UPPER(TRIM(estatus_regularizacion)) = UPPER(TRIM(${P(estatusRegularizacion.trim())}))`;
+      whereClause += ` AND ${estatusRegularizacionNormalizado()} = UPPER(TRIM(${P(estatusRegularizacion.trim())}))`;
     if (terceraEdad.trim())
       whereClause += ` AND UPPER(TRIM(aplica_descuento_3ra_edad)) = UPPER(TRIM(${P(terceraEdad.trim())}))`;
 
@@ -268,13 +279,19 @@ router.get('/opciones', async (req, res) => {
       return rows.map(r => r.v);
     };
 
-    const [estatusNetlife, estatusRegularizacion, terceraEdad] = await Promise.all([
+    const [estatusNetlife, terceraEdad] = await Promise.all([
       distintos('netlife_estatus_real'),
-      distintos('estatus_regularizacion'),
       distintos('aplica_descuento_3ra_edad'),
     ]);
 
-    res.json({ success: true, data: { estatusNetlife, estatusRegularizacion, terceraEdad } });
+    res.json({
+      success: true,
+      data: {
+        estatusNetlife,
+        estatusRegularizacion: ESTATUS_REGULARIZACION_BACKOFFICE,
+        terceraEdad,
+      },
+    });
   } catch (e) {
     console.error('[BACKOFFICE] GET opciones:', e.message);
     res.status(500).json({ success: false, error: 'Error interno al cargar las opciones de filtro' });

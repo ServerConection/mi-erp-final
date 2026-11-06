@@ -169,7 +169,7 @@ function Detalle({ r, reglas, empresa, mes, filtros, onCerrar }) {
       <h3 className="mt-5 text-xs font-black uppercase text-slate-500">Cómo se forma lo disponible</h3>
       <div className="mt-1">
         {fila('Asegurado', d.asegurado, r.asegurado_aplicado ? `Llegó a ${reglas?.meta || 35} · ref. ${dinero(r.asegurado_por_venta)} por venta (${dinero(reglas?.asegurado || 550)} / ${r.ventas_total_tramo} ventas)` : `Llegó a ${reglas?.meta || 35} ventas a tabla`, 'text-emerald-700')}
-        {fila(r.asegurado_aplicado ? 'Comisión desde la venta 36' : 'Comisión por ventas a tabla', d.tabla, r.asegurado_aplicado ? `Tramo ${r.tramo}` : 'Tabla “hasta 41” por venta')}
+        {fila(r.asegurado_aplicado ? 'Comisión desde la venta 36' : 'Comisión por ventas a tabla', d.tabla, r.asegurado_aplicado ? `Tramo ${r.tramo}` : 'Tabla “hasta 40” por venta')}
         {fila('Planes de comisión', d.directa, 'No cuentan para el asegurado')}
         {fila('PYME como bono', d.pyme, `Llegó a 35 sin PYME · cuentan para el tramo (total ${r.ventas_total_tramo ?? r.ventas_tabla})`)}
         <div className="flex justify-between py-3 text-base font-black text-emerald-700"><span>Disponible</span><span>{dinero(r.valor_disponible)}</span></div>
@@ -294,9 +294,9 @@ export default function Comisiones() {
       <summary className="flex cursor-pointer list-none items-center gap-2 font-bold text-slate-700"><Info className="h-4 w-4 text-blue-600" />¿Cómo se calcula?<span className="ml-1 text-xs font-semibold text-slate-400">catálogo {data.mes_catalogo || '—'}</span></summary>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
         <li>Solo se paga lo <b>REGULARIZADO</b>, por fecha de activación del mes (incluye backlog).</li>
-        <li>Menos de {meta} ventas a tabla: cada venta con la tabla “hasta 41”.</li>
-        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra (36–{(reglas.desdeTramo2 || 42) - 1} “hasta 41”, desde la {reglas.desdeTramo2 || 42} “42 en adelante”).</li>
-        <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono, pero <b>suman al total para el tramo</b> (ej. 40 + 2 PYME = 42 → “42 en adelante”).</li>
+        <li>Menos de {meta} ventas a tabla: cada venta con la tabla “hasta 40”.</li>
+        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra (36–{(reglas.desdeTramo2 || 41) - 1} “hasta 40”, desde la {reglas.desdeTramo2 || 41} “41 en adelante”).</li>
+        <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono, pero <b>suman al total para el tramo</b> (ej. 39 + 2 PYME = 41 → “41 en adelante”).</li>
         <li>Tercera edad: si NOVONET + VELSA superan el 15% global, a cada asesor solo se le paga hasta el 15% de sus ventas. Bono al volumen: 40 = $40, 50 = $60, 60 = $80.</li>
       </ul>
     </details>

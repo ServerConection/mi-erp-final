@@ -676,10 +676,16 @@ async function getIndicadoresDashboardVelsa(req, res) {
     // Novonet no tenía este problema porque vw_bitrix_novonet ya normaliza
     // la etapa en la vista. Acá se normaliza en la query.
     const qEmbudo = `
-      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
+      SELECT UPPER(REPLACE(COALESCE(NULLIF(BTRIM(etapa_viva.etapa_bitrix), ''), NULLIF(BTRIM(etapa_viva.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS etapa,
+        COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
-      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
+      JOIN public.bitrix_webhook_leads etapa_viva
+        ON etapa_viva.empresa = 'velsa'
+       AND BTRIM(etapa_viva.bitrix_id::text) = BTRIM(mv.id_crm::text)
+       AND BTRIM(COALESCE(etapa_viva.categoria_id, '')) = '51'
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+        ${filters}
+      GROUP BY 1 ORDER BY total DESC
     `;
     // ── NUEVO: mismo embudo, desglosado por día + etapa (barra apilada) ─────
     // Mismo universo/filtros que qEmbudo (misma MV, mismo rango, mismos
@@ -688,23 +694,30 @@ async function getIndicadoresDashboardVelsa(req, res) {
     const qEmbudoPorDia = `
       SELECT
         mv.fecha_creacion_crm::date::text AS fecha,
-        UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa,
+        UPPER(REPLACE(COALESCE(NULLIF(BTRIM(etapa_viva.etapa_bitrix), ''), NULLIF(BTRIM(etapa_viva.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS etapa,
         COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
-      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY mv.fecha_creacion_crm::date, UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA')))
+      JOIN public.bitrix_webhook_leads etapa_viva
+        ON etapa_viva.empresa = 'velsa'
+       AND BTRIM(etapa_viva.bitrix_id::text) = BTRIM(mv.id_crm::text)
+       AND BTRIM(COALESCE(etapa_viva.categoria_id, '')) = '51'
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+        ${filters}
+      GROUP BY mv.fecha_creacion_crm::date, 2
       ORDER BY fecha ASC
     `;
     const qOrigenesEtapasDia = `
       SELECT COALESCE(NULLIF(TRIM(origen_tabla.source), ''), NULLIF(TRIM(mv.origen), ''), 'SIN ORIGEN') AS origen,
-        UPPER(COALESCE(NULLIF(TRIM(mv.etapa_crm), ''), 'SIN ETAPA')) AS etapa,
+        UPPER(REPLACE(COALESCE(NULLIF(BTRIM(origen_tabla.etapa_bitrix), ''), NULLIF(BTRIM(origen_tabla.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS etapa,
         mv.fecha_creacion_crm::date::text AS fecha,
         COUNT(DISTINCT mv.id_crm)::int AS total
       FROM ${MV}
-      LEFT JOIN public.bitrix_webhook_leads origen_tabla
+      JOIN public.bitrix_webhook_leads origen_tabla
         ON origen_tabla.empresa = 'velsa'
        AND BTRIM(origen_tabla.bitrix_id::text) = BTRIM(COALESCE(mv.id_crm, mv.id_jotform)::text)
-      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
+       AND BTRIM(COALESCE(origen_tabla.categoria_id, '')) = '51'
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+        ${filters}
       GROUP BY 1, 2, 3
       ORDER BY 1, 3, 2
     `;
@@ -756,6 +769,7 @@ async function getIndicadoresDashboardVelsa(req, res) {
       SELECT source AS origen, COUNT(*)::int AS total
       FROM public.bitrix_webhook_leads
       WHERE empresa = 'velsa'
+        AND BTRIM(COALESCE(categoria_id, '')) = '51'
         AND NULLIF(TRIM(source), '') IS NOT NULL
         AND ${esLeadTotalExpr('etapa_bitrix')}
       GROUP BY 1
@@ -1153,9 +1167,16 @@ async function getReporte180Velsa(req, res) {
     // qEmbudoJot: es el mismo tipo de columna de texto libre y le pasa lo
     // mismo si llega con distinto uso de mayúsculas o un espacio de más.
     const qEmbudoCRM = `
-      SELECT UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) AS etapa, COUNT(DISTINCT mv.id_crm)::int AS total
-      FROM ${MV} WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      GROUP BY UPPER(TRIM(COALESCE(mv.etapa_crm,'SIN ETAPA'))) ORDER BY total DESC
+      SELECT UPPER(REPLACE(COALESCE(NULLIF(BTRIM(etapa_viva.etapa_bitrix), ''), NULLIF(BTRIM(etapa_viva.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS etapa,
+        COUNT(DISTINCT mv.id_crm)::int AS total
+      FROM ${MV}
+      JOIN public.bitrix_webhook_leads etapa_viva
+        ON etapa_viva.empresa = 'velsa'
+       AND BTRIM(etapa_viva.bitrix_id::text) = BTRIM(mv.id_crm::text)
+       AND BTRIM(COALESCE(etapa_viva.categoria_id, '')) = '51'
+      WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+        ${filters}
+      GROUP BY 1 ORDER BY total DESC
     `;
     const qEmbudoJot = `
       SELECT UPPER(TRIM(COALESCE(mv.estado_venta,'SIN ESTADO'))) AS etapa, COUNT(*)::int AS total

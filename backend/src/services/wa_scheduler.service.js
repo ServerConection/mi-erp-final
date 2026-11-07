@@ -64,12 +64,16 @@ class SchedulerService {
   async _checkCampanasPausadasPorHorario() {
     try {
       const res = await query(
-        `SELECT id, name, send_days, send_hour_from, send_hour_to FROM campaigns
+        `SELECT id, name, line_id, line_ids, send_days, send_hour_from, send_hour_to FROM campaigns
          WHERE status='paused' AND paused_for_schedule = true
          LIMIT 20`
       )
       for (const c of res.rows) {
         if (!CampaignEngine.dentroDeHorarioPermitido(c)) continue
+        // Tras un reinicio las líneas tardan unos minutos en reconectar: se
+        // espera a que al menos una línea de la campaña esté conectada para
+        // no gastar destinatarios en envíos fallidos.
+        if (!this._algunaLineaConectada(c)) continue
         try {
           console.log(`[Scheduler] ▶ Reanudando campaña "${c.name}" (${c.id}) — ya entró a su horario permitido`)
           await this.campaignEngine.start(c.id)
@@ -80,6 +84,12 @@ class SchedulerService {
     } catch (err) {
       console.warn('[Scheduler] checkCampanasPausadasPorHorario:', err.message)
     }
+  }
+
+  _algunaLineaConectada(c) {
+    if (typeof this.baileysManager?.getStatus !== 'function') return true
+    const ids = Array.isArray(c.line_ids) && c.line_ids.length ? c.line_ids : [c.line_id]
+    return ids.filter(Boolean).some(id => this.baileysManager.getStatus(id) === 'connected')
   }
 
   async _checkScheduledMessages() {

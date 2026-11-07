@@ -1,16 +1,22 @@
 // Reporte de uso de Campañas Masivas por empresa, supervisor y asesor.
-// Visible solo para ADMINISTRADOR y usuarios autorizados (el backend también lo valida).
+// Visible para ADMINISTRADOR y usuarios autorizados (todas las empresas) y para
+// GERENCIA/GERENTE (solo su empresa). El backend también lo valida y fija la empresa.
 import { useEffect, useState } from "react";
 
 const API = `${import.meta.env.VITE_API_URL}/api/wa`;
 const USUARIOS_REPORTE = ["acloaiza"];
 
+const perfilActual = () => {
+  try { return JSON.parse(localStorage.getItem("userProfile") || "{}"); } catch { return {}; }
+};
+const veTodas = (u) => String(u.perfil || "").toUpperCase() === "ADMINISTRADOR"
+  || USUARIOS_REPORTE.includes(String(u.usuario || "").toLowerCase());
+const empresaDeGerencia = (u) => ["GERENCIA", "GERENTE"].includes(String(u.perfil || "").toUpperCase())
+  ? String(u.empresa || "").trim().toUpperCase() : "";
+
 export const puedeVerReporteCampanas = () => {
-  try {
-    const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
-    return String(u.perfil || "").toUpperCase() === "ADMINISTRADOR"
-      || USUARIOS_REPORTE.includes(String(u.usuario || "").toLowerCase());
-  } catch { return false; }
+  const u = perfilActual();
+  return veTodas(u) || Boolean(empresaDeGerencia(u));
 };
 
 const hoy = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
@@ -69,7 +75,9 @@ function Tabla({ titulo, filas, mostrarEmpresa = true }) {
 }
 
 export default function ReporteUsoCampanas({ onClose }) {
-  const [filtros, setFiltros] = useState({ desde: inicioMes(), hasta: hoy(), empresa: "TODAS" });
+  const usuario = perfilActual();
+  const empresaFija = veTodas(usuario) ? "" : empresaDeGerencia(usuario);
+  const [filtros, setFiltros] = useState({ desde: inicioMes(), hasta: hoy(), empresa: empresaFija || "TODAS" });
   const [data, setData] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
@@ -115,9 +123,9 @@ export default function ReporteUsoCampanas({ onClose }) {
                 className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </label>
             <label className="text-xs font-semibold text-slate-500">EMPRESA
-              <select value={filtros.empresa} onChange={e => cambiar("empresa", e.target.value)}
-                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                {["TODAS", "NOVONET", "VELSA", "SEMILLERO", "VENTAENLINEA"].map(e =>
+              <select value={filtros.empresa} onChange={e => cambiar("empresa", e.target.value)} disabled={Boolean(empresaFija)}
+                className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-100">
+                {(empresaFija ? [empresaFija] : ["TODAS", "NOVONET", "VELSA", "SEMILLERO", "VENTAENLINEA"]).map(e =>
                   <option key={e} value={e}>{e === "VENTAENLINEA" ? "VENTA EN LÍNEA" : e}</option>)}
               </select>
             </label>

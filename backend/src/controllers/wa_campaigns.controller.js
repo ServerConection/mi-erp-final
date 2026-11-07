@@ -437,10 +437,10 @@ async function retryFailed(req, res) {
 // ── Reporte de uso por empresa / supervisor / asesor (admin + autorizados) ──
 async function usageReport(req, res) {
   if (!campaignsReport.puedeVerReporte(req.user)) {
-    return res.status(403).json({ success: false, error: 'Solo administradores pueden ver el reporte de uso' })
+    return res.status(403).json({ success: false, error: 'No tienes acceso al reporte de uso de campañas' })
   }
   try {
-    res.json({ success: true, data: await campaignsReport.reporteUso(req.query || {}) })
+    res.json({ success: true, data: await campaignsReport.reporteUso(req.query || {}, undefined, req.user) })
   } catch (err) {
     if (err.status === 400) return res.status(400).json({ success: false, error: err.message })
     console.error('[campaigns.usageReport]', err)

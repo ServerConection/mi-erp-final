@@ -575,9 +575,12 @@ class CampaignEngine {
     try {
       const res = await query(`SELECT id, name FROM campaigns WHERE status='running'`)
       for (const c of res.rows) {
-        // Marcar como pausada y dejar que el usuario las reanude manualmente
-        await query(`UPDATE campaigns SET status='paused' WHERE id=$1`, [c.id])
-        console.log(`[CampaignEngine] ⏸ Campaña "${c.name}" pausada por restart`)
+        // Se pausa con paused_for_schedule=true: el Scheduler la reanuda sola
+        // en cuanto su línea vuelva a estar conectada (y esté en horario).
+        // Antes quedaba pausada hasta que alguien le diera "Reanudar" y cada
+        // deploy de erp-wabot dejaba campañas a medias.
+        await query(`UPDATE campaigns SET status='paused', paused_for_schedule=true WHERE id=$1`, [c.id])
+        console.log(`[CampaignEngine] ⏸ Campaña "${c.name}" pausada por restart — se reanudará sola al reconectar su línea`)
       }
     } catch (e) {
       console.warn('[CampaignEngine] resumePendingOnBoot:', e.message)

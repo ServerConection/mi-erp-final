@@ -109,14 +109,29 @@ test('crear base: asesor solo ve sus negocios; supervisor ve todos', async () =>
   assert.equal(service.soloSusNegocios({ ...asesor, perfil: 'SUPERVISOR' }), false)
   assert.equal(service.soloSusNegocios({ ...asesor, perfil: 'ADMINISTRADOR' }), false)
   assert.equal(service.soloSusNegocios({ ...asesor, usuario: 'acloaiza' }), false)
-  assert.deepEqual(service.patronesAsesor(asesor), ['%KAT%', '%PUC%'])
-  assert.deepEqual(service.patronesAsesor({ nombreCompleto: 'Jacj Vera' }), ['%JAC%', '%VER%'])
-  assert.deepEqual(service.patronesAsesor({}), ['%__SIN_NOMBRE_ASESOR__%'])
+  assert.deepEqual(service.patronesAsesor(asesor), ['KAT', 'PUC'])
+  assert.deepEqual(service.patronesAsesor({ nombreCompleto: 'Jacj Vera' }), ['JAC', 'VER'])
+  assert.deepEqual(service.patronesAsesor({}), ['__SIN_NOMBRE_ASESOR__'])
   const calls = []
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
   await service.consultar(asesor, { responsible_ids: ['OTRO ASESOR'], date_from: '2026-10-01', date_to: '2026-10-07' }, db)
   assert.match(calls[0].sql, /LEAST\(2, cardinality/)
-  assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('%PUC%')))
+  assert.match(calls[0].sql, /regexp_split_to_table/)
+  assert.match(calls[0].sql, /palabra LIKE pa\.p \|\| '%'/)
+  assert.ok(calls[0].params.some(p => Array.isArray(p) && p.includes('PUC')))
+})
+
+test('crear base: Rossanna no coincide accidentalmente con Monteros o Burgos', async () => {
+  const calls = []
+  const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] } } }
+  const rossanna = { empresa: 'VELSA', perfil: 'ASESOR', nombreCompleto: 'Rossanna Maribel Alvarado Cruz' }
+  await service.obtenerOpciones(rossanna, { date_from: '2026-11-01', date_to: '2026-11-08' }, db)
+
+  assert.deepEqual(service.patronesAsesor(rossanna), ['ROS', 'MAR', 'ALV', 'CRU'])
+  assert.match(calls[1].sql, /regexp_split_to_table/)
+  assert.ok(calls[1].params.some(p => Array.isArray(p) && p.join(',') === 'ROS,MAR,ALV,CRU'))
+  // ROS ahora debe iniciar una palabra; ya no coincide dentro de MonteROS/BuRGOS.
+  assert.doesNotMatch(calls[1].sql, /LIKE pa\.p\)/)
 })
 
 test('vista previa: solo ID y dos últimos dígitos del teléfono', () => {

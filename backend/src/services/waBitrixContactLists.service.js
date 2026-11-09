@@ -48,7 +48,7 @@ const SIN_TILDES = (txt) => String(txt || '').normalize('NFD').replace(/[\u0300-
 function patronesAsesor(user) {
   const palabras = [...new Set(SIN_TILDES(user?.nombreCompleto).toUpperCase()
     .split(/[^A-Z]+/).filter(p => p.length >= 3))]
-  return palabras.length ? palabras.map(p => `%${p.slice(0, 3)}%`) : ['%__SIN_NOMBRE_ASESOR__%']
+  return palabras.length ? palabras.map(p => p.slice(0, 3)) : ['__SIN_NOMBRE_ASESOR__']
 }
 const RESPONSABLE_NORM_SQL = `UPPER(TRANSLATE(COALESCE(responsible, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'))`
 
@@ -63,7 +63,13 @@ const esOrigenAjeno = (empresa, origen) =>
   String(empresa).toUpperCase() !== 'VELSA' && /^\s*VELSA/i.test(String(origen || ''))
 
 function filtroAsesorSQL(pos) {
-  return `(SELECT COUNT(*) FROM unnest($${pos}::text[]) AS pa(p) WHERE ${RESPONSABLE_NORM_SQL} LIKE pa.p)
+  return `(SELECT COUNT(*)
+             FROM unnest($${pos}::text[]) AS pa(p)
+            WHERE EXISTS (
+              SELECT 1
+                FROM regexp_split_to_table(${RESPONSABLE_NORM_SQL}, '[^A-Z0-9]+') AS palabra
+               WHERE palabra LIKE pa.p || '%'
+            ))
             >= LEAST(2, cardinality($${pos}::text[]))`
 }
 

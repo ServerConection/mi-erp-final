@@ -462,6 +462,10 @@ class CampaignEngine {
           mimetype: this._guessMime(mediaFile || mediaUrl),
           filename: path.basename(mediaFile || mediaUrl || 'archivo'),
           caption:  body,
+          // BaileysManager usa esta referencia para persistir el adjunto en
+          // messages y emitirlo al Inbox. Sin ella WhatsApp recibia la imagen,
+          // pero la burbuja local quedaba registrada solamente con el caption.
+          mediaUrl,
         })
       } else {
         // Solo texto

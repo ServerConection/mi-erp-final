@@ -125,7 +125,7 @@ function VentasAsesor({ r, empresa, mes, filtros }) {
   const descargar = () => {
     const filas = (det?.items || []).map((x) => ({
       'ID Bitrix': x.id_bitrix, Login: x.login, Cliente: x.cliente, Plan: x.plan, Servicios: x.servicios, Tipo: x.tipo, 'Velocidad (Mbps)': x.velocidad,
-      'Fecha activación': x.fecha_activacion, 'Ingreso Telcos': x.fecha_telcos, 'Estado regularización': x.estado_regularizacion,
+      'Fecha ingreso Jot': x.fecha_ingreso_jot, 'Fecha activación': x.fecha_activacion, 'Ingreso Telcos': x.fecha_telcos, 'Estado regularización': x.estado_regularizacion,
       'Cómo se paga': x.concepto, 'Valor a pagar': x.valor_pagado, 'Valor si regulariza': x.valor_si_regulariza,
     }));
     filas.push({ 'Cómo se paga': 'TOTAL A PAGAR (solo regularizadas)', 'Valor a pagar': det?.total_pagado });
@@ -140,11 +140,11 @@ function VentasAsesor({ r, empresa, mes, filtros }) {
     {cargando ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">Cargando ventas…</p>
       : err ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{err}</p>
       : <div className="mt-2 max-h-[45vh] overflow-auto rounded-xl border"><table className="w-full text-left text-[11px]">
-        <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500"><tr><th className="px-2 py-2">Login / ID</th><th className="px-2 py-2">Plan</th><th className="px-2 py-2">Activación</th><th className="px-2 py-2">Cómo se paga</th><th className="px-2 py-2 text-right">Valor</th></tr></thead>
+        <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500"><tr><th className="px-2 py-2">Login / ID</th><th className="px-2 py-2">Plan</th><th className="px-2 py-2">Ingreso Jot / Activación</th><th className="px-2 py-2">Cómo se paga</th><th className="px-2 py-2 text-right">Valor</th></tr></thead>
         <tbody className="divide-y">{items.map((x, i) => <tr key={`${x.id_bitrix}-${i}`} className={x.regularizada ? '' : 'bg-amber-50/60'}>
           <td className="px-2 py-2"><div className="font-bold text-slate-800">{x.login || 'Sin login'}</div><div className="text-slate-400">{x.id_bitrix || '—'}</div></td>
           <td className="px-2 py-2"><div className="font-semibold text-slate-700">{x.plan || '—'}</div><div className="text-slate-400">{x.tipo} {x.velocidad ? `· ${x.velocidad} Mbps` : ''}</div></td>
-          <td className="whitespace-nowrap px-2 py-2 text-slate-600">{formatearFechaTelcos(x.fecha_activacion)}</td>
+          <td className="whitespace-nowrap px-2 py-2 text-slate-600"><div className="font-semibold">{x.fecha_ingreso_jot ? formatearFechaTelcos(String(x.fecha_ingreso_jot).slice(0, 10)) : '—'}</div><div className="text-slate-400">{formatearFechaTelcos(x.fecha_activacion)}</div></td>
           <td className={`px-2 py-2 ${x.regularizada ? 'text-slate-600' : 'font-semibold text-amber-700'}`}>{x.concepto}{!x.regularizada && <div className="font-normal text-amber-600">{x.estado_regularizacion}</div>}</td>
           <td className="whitespace-nowrap px-2 py-2 text-right font-black">{x.regularizada ? <span className="text-emerald-700">{dinero(x.valor_pagado)}</span> : <span className="text-slate-400" title="Lo que cobraría si se regulariza">({dinero(x.valor_si_regulariza)})</span>}</td>
         </tr>)}</tbody>
@@ -294,8 +294,9 @@ export default function Comisiones() {
       <summary className="flex cursor-pointer list-none items-center gap-2 font-bold text-slate-700"><Info className="h-4 w-4 text-blue-600" />¿Cómo se calcula?<span className="ml-1 text-xs font-semibold text-slate-400">catálogo {data.mes_catalogo || '—'}</span></summary>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
         <li>Solo se paga lo <b>REGULARIZADO</b>, por fecha de activación del mes (incluye backlog).</li>
+        <li>Las ventas se ordenan por <b>fecha de ingreso Jotform</b>: las primeras 35 forman el asegurado y desde la 36 son extras (también define qué 3ra edad excede el 15%).</li>
         <li>Menos de {meta} ventas a tabla: cada venta con la tabla “hasta 40”.</li>
-        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra (36–{(reglas.desdeTramo2 || 41) - 1} “hasta 40”, desde la {reglas.desdeTramo2 || 41} “41 en adelante”).</li>
+        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra: con “hasta 40” si se queda en 36–{(reglas.desdeTramo2 || 41) - 1}; si llega a {reglas.desdeTramo2 || 41}, <b>todas desde la 36</b> con “41 en adelante”.</li>
         <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono, pero <b>suman al total para el tramo</b> (ej. 39 + 2 PYME = 41 → “41 en adelante”).</li>
         <li>Tercera edad: si NOVONET + VELSA superan el 15% global, a cada asesor solo se le paga hasta el 15% de sus ventas. Bono al volumen: 40 = $40, 50 = $60, 60 = $80.</li>
       </ul>

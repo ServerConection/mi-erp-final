@@ -23,3 +23,20 @@ test('reporte de uso: separa supervisores y asesores y totaliza por empresa', as
   assert.deepEqual(r.empresas.map(e => [e.empresa, e.enviados]), [['NOVONET', 80], ['VELSA', 10]])
   await assert.rejects(() => svc.reporteUso({ desde: '2026-10-28', hasta: '2026-10-01' }, db), /rango/)
 })
+
+test('gerencia ve el reporte solo de su empresa', async () => {
+  assert.equal(svc.puedeVerReporte({ perfil: 'GERENCIA', empresa: 'NOVONET' }), true)
+  assert.equal(svc.puedeVerReporte({ perfil: 'GERENTE', empresa: 'velsa' }), true)
+  assert.equal(svc.puedeVerReporte({ perfil: 'GERENCIA', empresa: '' }), false)
+  assert.equal(svc.empresaForzada({ perfil: 'ADMINISTRADOR', empresa: 'NOVONET' }), null)
+  let params
+  const db = { query: async (_sql, p) => { params = p; return { rows: [] } } }
+  // Aunque pida TODAS o VELSA, una gerencia de NOVONET solo ve NOVONET.
+  await svc.reporteUso({ desde: '2026-11-01', hasta: '2026-11-07', empresa: 'VELSA' }, db, { perfil: 'GERENCIA', empresa: 'Novonet' })
+  assert.deepEqual(params, ['2026-11-01', '2026-11-07', 'NOVONET'])
+  await svc.reporteUso({ desde: '2026-11-01', hasta: '2026-11-07', empresa: 'TODAS' }, db, { perfil: 'GERENTE', empresa: 'VELSA' })
+  assert.equal(params[2], 'VELSA')
+  // Administrador sigue pudiendo ver todas.
+  await svc.reporteUso({ desde: '2026-11-01', hasta: '2026-11-07', empresa: 'TODAS' }, db, { perfil: 'ADMINISTRADOR' })
+  assert.equal(params[2], '')
+})

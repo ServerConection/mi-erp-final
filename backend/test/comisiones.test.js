@@ -51,9 +51,10 @@ assert.equal(uno(venta(10, 14.899, 16.461)).valor_disponible, 148.99);
 // 36 ventas: $550 del asegurado + la venta 36 a tabla "hasta 41"
 assert.equal(uno(venta(36, 14.899, 16.461)).valor_disponible, 564.9);
 assert.equal(uno(venta(36, 14.899, 16.461)).asegurado_aplicado, true);
-// $550 + ventas 36-40 a "hasta 40" + desde la 41 a "41 en adelante"
-assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 640.96);
-assert.equal(uno(venta(45, 14.899, 16.461)).valor_disponible, 706.8);
+// $550 + extras: 36–40 a "hasta 40"; si llega a 41, todas desde la 36 a "41 en adelante"
+assert.equal(uno(venta(41, 14.899, 16.461)).valor_disponible, 648.77);
+assert.equal(uno(venta(45, 14.899, 16.461)).valor_disponible, 714.61);
+assert.equal(uno(venta(40, 14.899, 16.461)).valor_disponible, 624.5);
 assert.equal(uno(venta(41, 14.899, 16.461)).tramo, 'DESDE 41');
 assert.equal(uno(venta(40, 14.899, 16.461)).tramo, 'HASTA 40');
 // los planes de comisión no cuentan para llegar a 35

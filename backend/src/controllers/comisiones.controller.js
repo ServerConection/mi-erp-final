@@ -130,14 +130,15 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
   const aseguradoAplica = n >= reglas.meta;
   // Menos de 35: cada venta a la tabla "hasta 40".
   // Desde 35: $550 cubre las primeras 35 (por fecha de activación) y se SUMA cada venta extra:
-  //   venta 36 a 40 → tabla "hasta 40" (com_t1); venta 41 en adelante → tabla "41 en adelante" (com_t2).
+  //   si llega a 41 (contando PYME), TODAS las extras desde la 36 van con "41 en adelante" (com_t2);
+  //   si se queda en 36–40, las extras van con "hasta 40" (com_t1).
   let valorTabla;
   if (!aseguradoAplica) {
     valorTabla = tabla.reduce((a, v) => a + t1De(v), 0);
   } else {
     const ordenadas = [...tabla].sort(porOrden);
     valorTabla = reglas.asegurado + ordenadas.slice(reglas.meta)
-      .reduce((a, v, i) => a + (reglas.meta + i + 1 >= reglas.desdeTramo2 ? t2De(v) : t1De(v)), 0);
+      .reduce((a, v) => a + (tramo === 2 ? t2De(v) : t1De(v)), 0);
   }
   const valorDirecto = [...directas, ...noVender].reduce((a, v) => a + valorDe(v), 0);
   const valorPymeBono = pymeComoBono ? pymes.reduce((a, v) => a + valorDe(v), 0) : 0;
@@ -153,7 +154,7 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
       const num = i + 1;
       if (!aseguradoAplica) return anotar(v, `Venta a tabla “hasta 40” (venta ${num})${sinTarifa(v)}`, t1De(v));
       if (num <= reglas.meta) return anotar(v, `Asegurado (venta ${num} de ${reglas.meta})`, reglas.asegurado / reglas.meta);
-      if (num >= reglas.desdeTramo2) return anotar(v, `Extra “41 en adelante” (venta ${num})${sinTarifa(v)}`, t2De(v));
+      if (tramo === 2) return anotar(v, `Extra “41 en adelante” (venta ${num})${sinTarifa(v)}`, t2De(v));
       return anotar(v, `Extra “hasta 40” (venta ${num})${sinTarifa(v)}`, t1De(v));
     });
   }
@@ -594,7 +595,7 @@ function detalleAsesor(vs, usuario, reglas = REGLAS) {
     return {
       id_bitrix: v.id_bitrix, login: v.login, cliente: v.cliente, plan: v.plan, servicios: v.servicios,
       tipo: v.tipo, velocidad: v.velocidad, categoria: v.categoria || (v.t1 == null ? null : 'TABLA'),
-      fecha_activacion: v.fecha_activacion, fecha_telcos: v.fecha_telcos,
+      fecha_activacion: v.fecha_activacion, fecha_ingreso_jot: v.fecha_orden || null, fecha_telcos: v.fecha_telcos,
       estado_regularizacion: v.estado_reg || 'SIN ESTADO',
       regularizada: v.reg === 'REGULARIZADO',
       concepto: pagada ? c.concepto : 'Por regularizar (no se paga todavía)',
@@ -603,7 +604,7 @@ function detalleAsesor(vs, usuario, reglas = REGLAS) {
       tarifa_hasta_41: v.t1, tarifa_desde_42: v.t2,
     };
   }).sort((a, b) => Number(b.regularizada) - Number(a.regularizada)
-    || String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    || String(a.fecha_ingreso_jot || a.fecha_activacion || '').localeCompare(String(b.fecha_ingreso_jot || b.fecha_activacion || '')));
   const totalCrudo = [...conceptos.values()].reduce((a, c) => a + Number(c.valor || 0), 0);
   return { items, total_pagado: r2(totalCrudo) };
 }

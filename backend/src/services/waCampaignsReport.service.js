@@ -1,11 +1,28 @@
 // Reporte de uso de Campañas Masivas por empresa, supervisor y asesor.
 // Solo ADMINISTRADOR y usuarios autorizados (USUARIOS_REPORTE).
 
+// GERENCIA/GERENTE también lo ven, pero SOLO las campañas de su empresa.
+
 const USUARIOS_REPORTE = ['acloaiza']
+const PERFILES_GERENCIA = ['GERENCIA', 'GERENTE']
+
+const perfilDe = user => String(user?.perfil || '').trim().toUpperCase()
+const esGerencia = user => PERFILES_GERENCIA.includes(perfilDe(user))
+
+// Ven todas las empresas (pueden elegir el filtro).
+function veTodasLasEmpresas(user) {
+  return perfilDe(user) === 'ADMINISTRADOR'
+    || USUARIOS_REPORTE.includes(String(user?.usuario || '').trim().toLowerCase())
+}
 
 function puedeVerReporte(user) {
-  if (String(user?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR') return true
-  return USUARIOS_REPORTE.includes(String(user?.usuario || '').trim().toLowerCase())
+  return veTodasLasEmpresas(user) || (esGerencia(user) && Boolean(empresaForzada(user)))
+}
+
+// Empresa fija para gerencia (null = sin restricción).
+function empresaForzada(user) {
+  if (veTodasLasEmpresas(user)) return null
+  return String(user?.empresa || '').trim().toUpperCase() || null
 }
 
 function validarRango(input = {}) {
@@ -60,8 +77,11 @@ SELECT u.id AS usuario_id,
  GROUP BY u.id, u.usuario, u.nombres, u.apellidos, u.empresa, u.perfil
  ORDER BY enviados DESC, campanas DESC`
 
-async function reporteUso(input, db = require('../config/db')) {
+async function reporteUso(input, db = require('../config/db'), user = null) {
   const f = validarRango(input)
+  // Gerencia: se ignora lo que pida el navegador y se fija su empresa.
+  const fija = user ? empresaForzada(user) : null
+  if (fija) f.empresa = fija
   const { rows } = await db.query(SQL_REPORTE, [f.desde, f.hasta, f.empresa])
   const esSupervisor = r => ['SUPERVISOR', 'GERENCIA'].includes(r.perfil)
   const sumar = filas => filas.reduce((acc, r) => {
@@ -83,4 +103,4 @@ async function reporteUso(input, db = require('../config/db')) {
   }
 }
 
-module.exports = { puedeVerReporte, validarRango, reporteUso }
+module.exports = { puedeVerReporte, empresaForzada, validarRango, reporteUso }

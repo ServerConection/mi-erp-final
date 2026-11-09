@@ -170,3 +170,42 @@ test('SchedulerService reanuda solo las campañas pausadas por horario que ya ca
 
   assert.deepEqual(iniciadas, ['camp-b'])
 })
+
+// ── Reinicio del servidor: se reanudan solas al reconectar la línea ──────
+
+test('al reiniciar, las campañas en curso quedan marcadas para reanudarse solas', async () => {
+  const sqls = []
+  const query = async (sql, params) => {
+    sqls.push({ sql, params })
+    if (sql.includes("WHERE status='running'")) return { rows: [{ id: 'c1', name: 'Seguimiento' }] }
+    return { rows: [] }
+  }
+  const CampaignEngine = cargarMotor(query)
+  const engine = new CampaignEngine({ baileysManager: {}, io: null })
+  await engine.resumePendingOnBoot()
+  const upd = sqls.find(q => q.sql.startsWith('UPDATE campaigns'))
+  assert.match(upd.sql, /paused_for_schedule=true/)
+  assert.deepEqual(upd.params, ['c1'])
+})
+
+test('Scheduler espera a que alguna línea de la campaña esté conectada', async () => {
+  const iniciadas = []
+  const query = async (sql) => {
+    if (sql.includes("WHERE status='paused' AND paused_for_schedule = true")) {
+      return { rows: [
+        { id: 'sin-linea', line_id: 'L1', line_ids: null, send_days: null },
+        { id: 'multi', line_id: 'L1', line_ids: ['L1', 'L2'], send_days: null },
+        { id: 'conectada', line_id: 'L2', line_ids: null, send_days: null },
+      ] }
+    }
+    return { rows: [] }
+  }
+  const Scheduler = cargarScheduler(query)
+  const scheduler = new Scheduler({
+    baileysManager: { getStatus: id => (id === 'L2' ? 'connected' : 'connecting') },
+    campaignEngine: { start: async (id) => { iniciadas.push(id) } },
+    io: null,
+  })
+  await scheduler._checkCampanasPausadasPorHorario()
+  assert.deepEqual(iniciadas, ['multi', 'conectada'])
+})

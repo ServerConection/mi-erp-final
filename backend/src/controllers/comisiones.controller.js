@@ -595,7 +595,7 @@ function detalleAsesor(vs, usuario, reglas = REGLAS) {
     return {
       id_bitrix: v.id_bitrix, login: v.login, cliente: v.cliente, plan: v.plan, servicios: v.servicios,
       tipo: v.tipo, velocidad: v.velocidad, categoria: v.categoria || (v.t1 == null ? null : 'TABLA'),
-      fecha_activacion: v.fecha_activacion, fecha_telcos: v.fecha_telcos,
+      fecha_activacion: v.fecha_activacion, fecha_ingreso_jot: v.fecha_orden || null, fecha_telcos: v.fecha_telcos,
       estado_regularizacion: v.estado_reg || 'SIN ESTADO',
       regularizada: v.reg === 'REGULARIZADO',
       concepto: pagada ? c.concepto : 'Por regularizar (no se paga todavía)',
@@ -604,7 +604,7 @@ function detalleAsesor(vs, usuario, reglas = REGLAS) {
       tarifa_hasta_41: v.t1, tarifa_desde_42: v.t2,
     };
   }).sort((a, b) => Number(b.regularizada) - Number(a.regularizada)
-    || String(a.fecha_activacion || '').localeCompare(String(b.fecha_activacion || '')));
+    || String(a.fecha_ingreso_jot || a.fecha_activacion || '').localeCompare(String(b.fecha_ingreso_jot || b.fecha_activacion || '')));
   const totalCrudo = [...conceptos.values()].reduce((a, c) => a + Number(c.valor || 0), 0);
   return { items, total_pagado: r2(totalCrudo) };
 }

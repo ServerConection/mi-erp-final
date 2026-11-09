@@ -295,7 +295,7 @@ export default function Comisiones() {
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
         <li>Solo se paga lo <b>REGULARIZADO</b>, por fecha de activación del mes (incluye backlog).</li>
         <li>Menos de {meta} ventas a tabla: cada venta con la tabla “hasta 40”.</li>
-        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra (36–{(reglas.desdeTramo2 || 41) - 1} “hasta 40”, desde la {reglas.desdeTramo2 || 41} “41 en adelante”).</li>
+        <li>Con {meta} ventas a tabla gana el <b>asegurado de {dinero(reglas.asegurado || 550)}</b>; desde la venta 36 se suma cada venta extra: con “hasta 40” si se queda en 36–{(reglas.desdeTramo2 || 41) - 1}; si llega a {reglas.desdeTramo2 || 41}, <b>todas desde la 36</b> con “41 en adelante”.</li>
         <li>Planes de comisión y “No vender” se pagan aparte y no cuentan para el asegurado. Si llega a {meta} sin PYME, las PYME se pagan como bono, pero <b>suman al total para el tramo</b> (ej. 39 + 2 PYME = 41 → “41 en adelante”).</li>
         <li>Tercera edad: si NOVONET + VELSA superan el 15% global, a cada asesor solo se le paga hasta el 15% de sus ventas. Bono al volumen: 40 = $40, 50 = $60, 60 = $80.</li>
       </ul>

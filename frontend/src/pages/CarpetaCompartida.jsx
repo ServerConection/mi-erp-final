@@ -29,9 +29,12 @@ const tamano = (b) => {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 };
-// Lo que acepta el servidor de almacenamiento.
-const esPermitido = (f) => f.type === "application/pdf" || /^image\/(png|jpe?g|webp|gif|heic)$/i.test(f.type)
-  || /\.(pdf|png|jpe?g|webp|gif|heic)$/i.test(f.name);
+// Se acepta cualquier archivo; solo se ignoran los archivos de sistema que
+// trae una carpeta (desktop.ini, Thumbs.db, .DS_Store…).
+const esPermitido = (f) => !/^(desktop\.ini|thumbs\.db|\.ds_store)$/i.test(f.name) && !f.name.startsWith("~$");
+const MAX_BYTES = 20 * 1024 * 1024;
+// Solo PDF e imágenes se abren en el navegador; lo demás se descarga.
+const sePuedeVer = (a) => /^(application\/pdf|image\/(png|jpeg|gif|webp))$/i.test(a.tipo_mime || "");
 const fecha = (f) => (f ? new Date(f).toLocaleDateString("es-EC") : "—");
 
 export default function CarpetaCompartida() {
@@ -86,9 +89,9 @@ export default function CarpetaCompartida() {
   const subir = async (files) => {
     const lista = Array.from(files || []);
     if (!lista.length) return;
-    const validos = lista.filter(esPermitido);
-    const omitidos = lista.length - validos.length;
-    if (!validos.length) { alert("Solo se pueden subir PDF o imágenes."); return; }
+    const grandes = lista.filter(f => esPermitido(f) && f.size > MAX_BYTES);
+    const validos = lista.filter(f => esPermitido(f) && f.size <= MAX_BYTES);
+    if (!validos.length) { alert(grandes.length ? "Los archivos superan 20 MB." : "No hay archivos para subir."); return; }
     setSubiendo(true);
     const errores = [];
     try {
@@ -115,7 +118,7 @@ export default function CarpetaCompartida() {
       cargar();
     }
     const partes = [];
-    if (omitidos) partes.push(`${omitidos} archivo(s) omitidos: solo se aceptan PDF e imágenes.`);
+    if (grandes.length) partes.push(`${grandes.length} archivo(s) omitidos por superar 20 MB.`);
     if (errores.length) partes.push(`No se subieron:\n${errores.slice(0, 10).join("\n")}${errores.length > 10 ? "\n…" : ""}`);
     if (partes.length) alert(partes.join("\n\n"));
   };
@@ -158,6 +161,7 @@ export default function CarpetaCompartida() {
   };
 
   const ver = async (a) => {
+    if (!sePuedeVer(a)) return descargar(a);
     try {
       const url = URL.createObjectURL(await obtenerBlob(a));
       window.open(url, "_blank", "noopener,noreferrer");
@@ -219,7 +223,7 @@ export default function CarpetaCompartida() {
             <label className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm cursor-pointer hover:bg-blue-700 ${subiendo ? "opacity-60 pointer-events-none" : ""}`}>
               {subiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               {subiendo ? `Subiendo ${progreso}…` : "Subir archivo"}
-              <input type="file" multiple accept="application/pdf,image/*" className="hidden"
+              <input type="file" multiple className="hidden"
                 onChange={(e) => { subir(e.target.files); e.target.value = ""; }} />
             </label>
           </div>
@@ -270,7 +274,7 @@ export default function CarpetaCompartida() {
           <div className="text-center text-slate-400 py-16">
             <Folder className="w-12 h-12 mx-auto mb-2" />
             <p>{q ? "Sin resultados." : "Carpeta vacía."}</p>
-            {admin && !q && <p className="text-xs mt-1">Arrastra aquí PDFs o imágenes (máx. 20 MB c/u), o usa "Subir carpeta".</p>}
+            {admin && !q && <p className="text-xs mt-1">Arrastra aquí cualquier archivo (máx. 20 MB c/u), o usa "Subir carpeta".</p>}
           </div>
         ) : (
           <>

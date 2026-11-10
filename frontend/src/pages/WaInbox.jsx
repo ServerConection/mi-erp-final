@@ -284,13 +284,16 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
         return singleDealConversation ? next.slice(0, 1) : next;
       });
     };
+    // Chat unificado: una fila del inbox agrupa varias conversaciones (mismo
+    // asesor + cliente por distintas líneas) en conversation_ids.
+    const incluye = (c, convId) => !!c && (c.id === convId || (c.conversation_ids || []).includes(convId));
     const onMessage = (msg) => {
       if (isLegacySyntheticCall(msg)) return;
-      if (dealId && !conversationsRef.current.some(c => c.id === msg.conversation_id)) return;
+      if (dealId && !conversationsRef.current.some(c => incluye(c, msg.conversation_id))) return;
       if (msg.direction === "in" && typeof Notification !== "undefined" && Notification.permission === "granted"
-        && (document.hidden || selectedRef.current?.id !== msg.conversation_id)) {
+        && (document.hidden || !incluye(selectedRef.current, msg.conversation_id))) {
         try {
-          const conv = conversationsRef.current.find(c => c.id === msg.conversation_id);
+          const conv = conversationsRef.current.find(c => incluye(c, msg.conversation_id));
           const notification = new Notification(conv?.contact_name || `WhatsApp ${numVisible(conv?.wa_number)}`, {
             body: msg.content || msg.text || (msg.media_url ? "Imagen recibida" : "Nuevo mensaje de WhatsApp"),
             icon: "/favicon.ico",
@@ -304,11 +307,11 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
       // El recargado va FUERA del updater: React puede invocar el updater dos
       // veces (StrictMode) y eso disparaba dos peticiones por cada mensaje.
       setConversations(prev => {
-        if (msg.conversation_id && !prev.some(c => c.id === msg.conversation_id)) {
+        if (msg.conversation_id && !prev.some(c => incluye(c, msg.conversation_id))) {
           queueMicrotask(() => loadConvs());   // conversación nueva → recargar con TODOS los filtros vigentes
         }
         return prev.map(c =>
-          c.id === msg.conversation_id
+          incluye(c, msg.conversation_id)
             ? {
               ...c, last_msg_at: msg.timestamp, last_message: msg.content || msg.text,
               unread_count: (c.unread_count || 0) + (msg.direction === "in" && selectedRef.current?.id !== c.id ? 1 : 0)
@@ -316,7 +319,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
             : c
         );
       });
-      if (selectedRef.current?.id === msg.conversation_id) {
+      if (incluye(selectedRef.current, msg.conversation_id)) {
         setMessages(prev => {
           const normalized = { ...msg, content: msg.content || msg.text };
           const index = prev.findIndex(m => (normalized.id && m.id === normalized.id)
@@ -1025,6 +1028,11 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                     ) : null}
                     {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                     <div className={`text-[11px] mt-0.5 text-right ${msg.type === "internal_note" ? "text-slate-300" : "text-[#667781]"}`}>
+                      {(msg.line_phone || msg.line_name) && !["internal_note"].includes(msg.type) && (
+                        <span title="Línea por la que salió/entró este mensaje" className="mr-1.5 rounded bg-black/5 px-1">
+                          vía {msg.line_phone || msg.line_name}
+                        </span>
+                      )}
                       {new Date(msg.timestamp).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" })}
                       {msg.direction === "out" && !["internal_note", "call"].includes(msg.type) && (
                         <span title={msg.status === "read" ? "Leído" : msg.status === "delivered" ? "Entregado" : "Enviado"}

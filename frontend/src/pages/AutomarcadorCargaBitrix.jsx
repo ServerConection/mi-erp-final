@@ -5,7 +5,7 @@
  * así nadie tiene que descargar nada de Bitrix. El envío al Automarcador lo
  * hace el backend (/api/llamadas/bitrix/enviar).
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import MultiSelectBuscable from "../components/MultiSelectBuscable";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:3050"}/api/llamadas/bitrix`;
@@ -13,10 +13,20 @@ const authH = () => ({ "Content-Type": "application/json", Authorization: `Beare
 // El envío al Automarcador anterior (ngrok) queda oculto, no borrado.
 const MOSTRAR_METODO_ANTERIOR = false;
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+const formVacio = () => ({ stage_ids: [], responsible_ids: [], source_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
 
 export default function AutomarcadorCargaBitrix() {
   const [opciones, setOpciones] = useState(null);
-  const [form, setForm] = useState({ stage_ids: [], responsible_ids: [], source_ids: [], date_from: hoy(), date_to: hoy(), name: "" });
+  const [form, setForm] = useState(formVacio);
+  // Popup breve (3 s) de éxito/error al crear la campaña
+  const [popup, setPopup] = useState(null);
+  const popupTimer = useRef(null);
+  const mostrarPopup = (tipo, texto) => {
+    clearTimeout(popupTimer.current);
+    setPopup({ tipo, texto });
+    popupTimer.current = setTimeout(() => setPopup(null), 3000);
+  };
+  useEffect(() => () => clearTimeout(popupTimer.current), []);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -62,8 +72,11 @@ export default function AutomarcadorCargaBitrix() {
       const r = await fetch(`${API}/campanas`, { method: "POST", headers: authH(), body: JSON.stringify({ ...form, asesor_ids: asesorIds }) });
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.error || "No se pudo crear la campaña");
-      setCreadaBx(j.data); cargarCampanas();
-    } catch (e) { setError(e.message); }
+      // Se limpia todo para que no se cree la misma campaña dos veces.
+      setForm(formVacio()); setPreview(null); setAsesorIds([]); setCreadaBx(null);
+      mostrarPopup("ok", `Campaña #${j.data.campana_id} creada con ${j.data.total} número(s) para ${Object.keys(j.data.por_asesor || {}).length} asesor(es).`);
+      cargarCampanas();
+    } catch (e) { mostrarPopup("error", e.message || "No se pudo crear la campaña"); }
     finally { setBusy(false); }
   };
 
@@ -146,6 +159,14 @@ export default function AutomarcadorCargaBitrix() {
 
   return (
     <div className="flex-1 overflow-y-auto p-1 space-y-4">
+      {popup && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+          <div className={`pointer-events-auto max-w-sm mx-4 rounded-2xl shadow-2xl border px-5 py-4 text-[12px] font-bold text-center ${popup.tipo === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-red-50 border-red-300 text-red-800"}`}>
+            <div className="text-2xl mb-1">{popup.tipo === "ok" ? "✅" : "⚠️"}</div>
+            {popup.tipo === "ok" ? popup.texto : `Error: ${popup.texto}`}
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <p className="text-[10px] text-slate-500">Empresa: <b>{opciones?.empresa || "cargando…"}</b> · Igual que en WABOT, sin descargar nada de Bitrix.</p>
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">

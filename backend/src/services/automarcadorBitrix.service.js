@@ -12,7 +12,10 @@
 const ESTADOS_FINALES = ['contestada', 'no_contesta', 'fallida', 'omitida']
 // Tipificaciones que el asesor elige al terminar cada llamada.
 const TIPIFICACIONES = ['Contrata', 'No contesta', 'Seguimiento', 'No desea', 'ATC',
-  'Fuera de Cobertura', 'Zona Peligrosa', 'Innegociable']
+  'Fuera de Cobertura', 'Zona Peligrosa', 'Innegociable',
+  // Agregadas 2026-11-10 (pedido de operación): sin modificar las anteriores.
+  'Contrató con competencia', 'Buzón de voz', 'Apagado / fuera de servicio', 'Número errado', 'Cuelga',
+  'No desea - Precio', 'No desea - Cobertura', 'No desea - Ya tiene servicio', 'No desea - Otro']
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS automarcador_bx_campanas (

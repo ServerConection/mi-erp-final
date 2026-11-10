@@ -24,6 +24,7 @@ const XLSX = require('xlsx');
 const pool = require('../config/db');
 const { parseHojaMetas, hojasDeMetas, mesDelTexto, MESES } = require('../services/metasExcelParser.service');
 const { construirPool, cruzarAsesores, marcarDuplicados, claveNombre, ESTADOS_AUTOMATICOS } = require('../services/asesorMatcher.service');
+const { cargarListadoReparto } = require('../shared/repartoListadoMensual');
 
 const EMPRESAS = new Set(['NOVONET', 'VELSA', 'SEMILLERO', 'VENTAENLINEA']);
 const DIAS_POOL = 120;   // ventana para buscar los nombres que aparecen en Bitrix
@@ -423,6 +424,18 @@ const confirmar = async (req, res) => {
       [cargaId, resumen, snapshot, JSON.stringify(decisiones), JSON.stringify(renombres)]);
 
     await client.query('COMMIT');
+
+    // 6. Reparto de gestionables: los asesores del mes quedan en el listado de su
+    //    empresa hasta fin de mes (0 permitidos, 50% ATC). Es otra base
+    //    (erp_database): si falla, las metas ya quedaron guardadas igual.
+    try {
+      resumen.reparto = await cargarListadoReparto({
+        empresa, anio, mes, nombres: finales.flatMap((a) => a.variantes),
+      });
+    } catch (e) {
+      console.error('[MetasCarga][reparto]', e.message);
+      resumen.reparto = { error: 'No se pudo actualizar el listado del reparto de gestionables' };
+    }
     return res.json({ success: true, data: { carga_id: cargaId, resumen } });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

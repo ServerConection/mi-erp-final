@@ -194,6 +194,15 @@ export default function CargaMetasComerciales() {
               Equipos: {resultado.empleados_insert + resultado.empleados_update + resultado.catalogo_velsa} asignaciones ·
               Nombres recordados: {resultado.alias}
               {resultado.omitidos?.length ? ` · Omitidos: ${resultado.omitidos.join(", ")}` : ""}
+              {resultado.reparto && (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  {resultado.reparto.error
+                    ? `⚠️ Reparto de gestionables: ${resultado.reparto.error}`
+                    : resultado.reparto.omitido
+                      ? ""
+                      : `Reparto de gestionables: ${resultado.reparto.asesores} asesores cargados ${resultado.reparto.desde ? `del ${resultado.reparto.desde} al ${resultado.reparto.hasta}` : "(el mes ya terminó)"} con 0 permitidos (${resultado.reparto.insertados} días nuevos, ${resultado.reparto.ya_existian} ya estaban)`}
+                </span>
+              )}
             </p>
           </div>
         )}

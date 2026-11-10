@@ -7,8 +7,9 @@
 //
 // Los binarios van al servidor de almacenamiento local (carpeta física
 // "carpeta_compartida"); la jerarquía que ve el usuario vive en la BD
-// (cc_carpetas / cc_archivos). Formatos: PDF e imágenes (lo que acepta el
-// servidor de almacenamiento), máx. 20 MB.
+// (cc_carpetas / cc_archivos). Formatos: cualquiera, máx. 20 MB. Solo PDF e
+// imágenes seguras se muestran en línea; el resto se descarga.
+
 //
 // GET    /api/carpeta-compartida/carpetas?padre_id=
 // GET    /api/carpeta-compartida/carpetas/:id
@@ -51,11 +52,11 @@ asegurarTablas().catch((e) => console.error('[CARPETA-COMPARTIDA] no se pudieron
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(Object.assign(new Error('Formato no permitido. Sube PDF o imagen (JPG, PNG, WEBP).'), { status: 400 }));
-  },
 });
+
+// Tipos que el navegador puede mostrar sin riesgo. Cualquier otro (HTML, SVG,
+// Office, ZIP…) se entrega como descarga binaria para que no se ejecute.
+const MIME_EN_LINEA = /^(application\/pdf|image\/(png|jpeg|gif|webp))$/i;
 
 const idONull = (v) => {
   const n = parseInt(v, 10);
@@ -201,8 +202,9 @@ router.get('/archivos/:id/descargar', async (req, res) => {
     if (!rows.length) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
     const a = rows[0];
     const { buffer, contentType } = await obtenerArchivo(a.storage_carpeta, a.storage_archivo);
-    res.set('Content-Type', a.tipo_mime || contentType);
-    res.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.nombre_original)}`);
+    const enLinea = MIME_EN_LINEA.test(a.tipo_mime || '');
+    res.set('Content-Type', enLinea ? a.tipo_mime : 'application/octet-stream');
+    res.set('Content-Disposition', `${enLinea ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(a.nombre_original)}`);
     res.set('Cache-Control', 'private, max-age=0, no-store');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(buffer);

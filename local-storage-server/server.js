@@ -146,14 +146,16 @@ function dentroDelAlmacen(rutaAbsoluta) {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 10, parts: 15 },
-  fileFilter: (req, file, cb) => {
-    // Primer filtro barato. La defensa real es la firma binaria, más abajo.
-    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf'
-      || file.mimetype.startsWith('audio/') || /^video\/(webm|mp4|3gpp|ogg)$/.test(file.mimetype)
-      || file.mimetype === 'application/octet-stream') cb(null, true);
-    else cb(new Error('FORMATO_NO_PERMITIDO'));
-  }
+  // Sin filtro por mimetype: el campo "carpeta" llega DESPUÉS del archivo,
+  // así que aquí no se sabe el destino. La defensa real es la firma binaria
+  // (más abajo), que sigue rechazando lo desconocido salvo en CARPETAS_LIBRES.
 });
+
+// Carpetas donde se acepta CUALQUIER tipo de archivo (Carpeta Compartida del
+// ERP: Excel, Word, ZIP…). Lo no reconocido se guarda con extensión .bin y se
+// entrega siempre como application/octet-stream + attachment: nunca se ejecuta
+// ni se renderiza desde este servidor.
+const CARPETAS_LIBRES = new Set(['carpeta_compartida']);
 
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
@@ -186,9 +188,13 @@ app.post('/upload', verificarApiKey, (req, res, next) => {
       // El backend ya decidió si el campo admite audio; aquí se aceptan por firma.
       permitidos: ['jpeg', 'png', 'webp', 'gif', 'heic', 'pdf', ...TIPOS_AUDIO],
     });
+    let extension = veredicto.ext;
     if (!veredicto.ok) {
-      console.warn('[STORAGE] contenido rechazado:', veredicto.codigo);
-      return res.status(415).json({ success: false, error: veredicto.motivo });
+      if (!CARPETAS_LIBRES.has(carpeta)) {
+        console.warn('[STORAGE] contenido rechazado:', veredicto.codigo);
+        return res.status(415).json({ success: false, error: veredicto.motivo });
+      }
+      extension = '.bin';
     }
 
     const dir = path.join(STORAGE_DIR, carpeta);
@@ -199,7 +205,7 @@ app.post('/upload', verificarApiKey, (req, res, next) => {
 
     // Nombre 100 % generado por el servidor. La extensión sale de la firma
     // binaria, NO del nombre que envió el cliente.
-    const filename = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${veredicto.ext}`;
+    const filename = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${extension}`;
     const destino  = path.join(dir, filename);
     if (!dentroDelAlmacen(destino)) {
       return res.status(400).json({ success: false, error: 'Ruta inválida' });
@@ -209,7 +215,7 @@ app.post('/upload', verificarApiKey, (req, res, next) => {
     // 0o600: solo el usuario que corre el servicio puede leerlo.
     fs.writeFileSync(destino, req.file.buffer, { flag: 'wx', mode: 0o600 });
 
-    console.log(`[STORAGE] Archivo guardado: ${carpeta}/${filename} (${req.file.size} bytes, ${veredicto.tipo})`);
+    console.log(`[STORAGE] Archivo guardado: ${carpeta}/${filename} (${req.file.size} bytes, ${veredicto.ok ? veredicto.tipo : 'libre'})`);
     res.json({
       success: true,
       carpeta,

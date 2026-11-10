@@ -4,7 +4,7 @@
 // (el backend lo valida; aquí solo se ocultan los botones).
 import { useCallback, useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
-import { Folder, FolderPlus, FileText, Image as ImageIcon, Upload, Download, Eye, Trash2, Home, ChevronRight, Search } from "lucide-react";
+import { Folder, FolderPlus, FolderUp, FileText, Image as ImageIcon, Upload, Download, Eye, Trash2, Home, ChevronRight, Search, Loader2 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
 const BASE = `${API}/api/carpeta-compartida`;
@@ -29,6 +29,9 @@ const tamano = (b) => {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 };
+// Lo que acepta el servidor de almacenamiento.
+const esPermitido = (f) => f.type === "application/pdf" || /^image\/(png|jpe?g|webp|gif|heic)$/i.test(f.type)
+  || /\.(pdf|png|jpe?g|webp|gif|heic)$/i.test(f.name);
 const fecha = (f) => (f ? new Date(f).toLocaleDateString("es-EC") : "—");
 
 export default function CarpetaCompartida() {
@@ -38,6 +41,8 @@ export default function CarpetaCompartida() {
   const [archivos, setArchivos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
+  const [progreso, setProgreso] = useState("");
+  const [descargando, setDescargando] = useState(null); // id de carpeta o "actual"
   const [arrastrando, setArrastrando] = useState(false);
   const [busca, setBusca] = useState("");
   const [error, setError] = useState("");
@@ -76,21 +81,70 @@ export default function CarpetaCompartida() {
     if (d.success) cargar(); else alert(`❌ ${d.error}`);
   };
 
+  // Sube archivos sueltos o una carpeta completa (webkitRelativePath trae
+  // "Carpeta/Sub/archivo.pdf": se manda la parte de carpetas como `ruta`).
   const subir = async (files) => {
-    if (!files || !files.length) return;
+    const lista = Array.from(files || []);
+    if (!lista.length) return;
+    const validos = lista.filter(esPermitido);
+    const omitidos = lista.length - validos.length;
+    if (!validos.length) { alert("Solo se pueden subir PDF o imágenes."); return; }
     setSubiendo(true);
+    const errores = [];
     try {
-      for (const f of Array.from(files)) {
+      for (let i = 0; i < validos.length; i++) {
+        const f = validos[i];
+        setProgreso(`${i + 1}/${validos.length}`);
+        const rel = f.webkitRelativePath || "";
+        const ruta = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
         const fd = new FormData();
         fd.append("archivo", f);
         if (actualId) fd.append("carpeta_id", actualId);
-        const r = await fetch(`${BASE}/archivos/upload`, { method: "POST", headers: headers(false), body: fd });
-        const d = await r.json().catch(() => ({}));
-        if (!d.success) alert(`❌ ${f.name}: ${d.error || "no se pudo subir"}`);
+        if (ruta) fd.append("ruta", ruta);
+        try {
+          const r = await fetch(`${BASE}/archivos/upload`, { method: "POST", headers: headers(false), body: fd });
+          const d = await r.json().catch(() => ({}));
+          if (!d.success) errores.push(`${rel || f.name}: ${d.error || "no se pudo subir"}`);
+        } catch {
+          errores.push(`${rel || f.name}: error de conexión`);
+        }
       }
     } finally {
       setSubiendo(false);
+      setProgreso("");
       cargar();
+    }
+    const partes = [];
+    if (omitidos) partes.push(`${omitidos} archivo(s) omitidos: solo se aceptan PDF e imágenes.`);
+    if (errores.length) partes.push(`No se subieron:\n${errores.slice(0, 10).join("\n")}${errores.length > 10 ? "\n…" : ""}`);
+    if (partes.length) alert(partes.join("\n\n"));
+  };
+
+  // Descarga una carpeta (o la carpeta actual / todo) en .zip.
+  const descargarCarpeta = async (carpeta) => {
+    const id = carpeta ? carpeta.id : actualId;
+    setDescargando(carpeta ? carpeta.id : "actual");
+    try {
+      const r = await fetch(`${BASE}/zip${id ? `?carpeta_id=${id}` : ""}`, { headers: headers(false) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || "No se pudo descargar la carpeta.");
+      }
+      const nombre = carpeta?.nombre || (ruta.length ? ruta[ruta.length - 1].nombre : "Carpeta Compartida");
+      const url = URL.createObjectURL(await r.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${nombre}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      const omitidos = r.headers.get("X-Archivos-Omitidos");
+      if (omitidos) alert(`⚠️ ${omitidos} archivo(s) no estaban disponibles y no se incluyeron.`);
+    } catch (e) {
+      alert(`❌ ${e.message}`);
+    } finally {
+      setDescargando(null);
     }
   };
 
@@ -152,13 +206,19 @@ export default function CarpetaCompartida() {
           <p className="text-sm text-slate-500">Manuales y documentos del ERP. Todos pueden verlos y descargarlos.</p>
         </div>
         {admin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={crearCarpeta}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-600 text-blue-700 font-semibold text-sm hover:bg-blue-50">
               <FolderPlus className="w-4 h-4" /> Nueva carpeta
             </button>
+            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-600 text-blue-700 font-semibold text-sm cursor-pointer hover:bg-blue-50 ${subiendo ? "opacity-60 pointer-events-none" : ""}`}>
+              <FolderUp className="w-4 h-4" /> Subir carpeta
+              <input type="file" multiple webkitdirectory="" directory="" className="hidden"
+                onChange={(e) => { subir(e.target.files); e.target.value = ""; }} />
+            </label>
             <label className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm cursor-pointer hover:bg-blue-700 ${subiendo ? "opacity-60 pointer-events-none" : ""}`}>
-              <Upload className="w-4 h-4" /> {subiendo ? "Subiendo…" : "Subir archivo"}
+              {subiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {subiendo ? `Subiendo ${progreso}…` : "Subir archivo"}
               <input type="file" multiple accept="application/pdf,image/*" className="hidden"
                 onChange={(e) => { subir(e.target.files); e.target.value = ""; }} />
             </label>
@@ -182,10 +242,18 @@ export default function CarpetaCompartida() {
             </span>
           ))}
         </nav>
+        <div className="flex items-center gap-2">
+        <button onClick={() => descargarCarpeta(null)} disabled={descargando !== null}
+          title={ruta.length ? "Descargar esta carpeta en .zip" : "Descargar toda la Carpeta Compartida en .zip"}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+          {descargando === "actual" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {ruta.length ? "Descargar carpeta" : "Descargar todo"}
+        </button>
         <div className="relative">
           <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar en esta carpeta"
             className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-60" />
+        </div>
         </div>
       </div>
 
@@ -202,7 +270,7 @@ export default function CarpetaCompartida() {
           <div className="text-center text-slate-400 py-16">
             <Folder className="w-12 h-12 mx-auto mb-2" />
             <p>{q ? "Sin resultados." : "Carpeta vacía."}</p>
-            {admin && !q && <p className="text-xs mt-1">Arrastra aquí PDFs o imágenes (máx. 20 MB) para subirlos.</p>}
+            {admin && !q && <p className="text-xs mt-1">Arrastra aquí PDFs o imágenes (máx. 20 MB c/u), o usa "Subir carpeta".</p>}
           </div>
         ) : (
           <>
@@ -210,15 +278,21 @@ export default function CarpetaCompartida() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-5">
                 {carpetasF.map((c) => (
                   <div key={c.id} onClick={() => setRuta((r) => [...r, { id: c.id, nombre: c.nombre }])}
-                    className="group relative flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer">
+                    className="group relative flex items-center gap-2 p-3 pr-14 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer">
                     <Folder className="w-6 h-6 text-amber-500 shrink-0" fill="currentColor" />
                     <span className="text-sm font-medium text-slate-700 truncate" title={c.nombre}>{c.nombre}</span>
-                    {admin && (
-                      <button title="Eliminar carpeta" onClick={(e) => { e.stopPropagation(); eliminar("carpetas", c); }}
-                        className="absolute top-1 right-1 p-1 rounded text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100">
-                        <Trash2 className="w-4 h-4" />
+                    <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100">
+                      <button title="Descargar carpeta (.zip)" onClick={(e) => { e.stopPropagation(); descargarCarpeta(c); }}
+                        className="p-1 rounded text-slate-400 hover:text-blue-700 bg-white/80">
+                        {descargando === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                       </button>
-                    )}
+                      {admin && (
+                        <button title="Eliminar carpeta" onClick={(e) => { e.stopPropagation(); eliminar("carpetas", c); }}
+                          className="p-1 rounded text-slate-400 hover:text-red-600 bg-white/80">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -57,6 +57,7 @@ const SaludSistema         = lazy(() => import("./pages/SaludSistema"));
 const ReporteGerencial     = lazy(() => import("./pages/ReporteGerencial"));
 const Tareas               = lazy(() => import("./pages/Tareas"));
 const ArchivosCompartidos  = lazy(() => import("./pages/Hojas"));
+const CarpetaCompartida    = lazy(() => import("./pages/CarpetaCompartida"));
 const ChatInterno          = lazy(() => import("./pages/Chat"));
 const Evaluaciones         = lazy(() => import("./pages/Evaluaciones"));
 const Forecast             = lazy(() => import("./pages/Forecast"));
@@ -244,6 +245,7 @@ export default function App() {
             <Route path="tareas"                   element={<Tareas />} />
             <Route path="soporte"                  element={<Soporte />} />
             <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
+            <Route path="carpeta-compartida"       element={<CarpetaCompartida />} />
             <Route path="chat"                     element={<ChatInterno />} />
             <Route path="evaluaciones"             element={<Evaluaciones />} />
             <Route path="forecast"                 element={<Forecast />} />

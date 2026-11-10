@@ -20,14 +20,27 @@ function palabrasNombre(nombre) {
 }
 
 // ¿El responsable del lead (texto de Bitrix) es el dueño de la línea?
-// Todas las palabras del nombre del dueño deben aparecer en el responsable
-// ("KATHERINE PUCHA" ↔ "KATHERINE PAOLA PUCHA BRAVO").
+// Se compara contra el nombre del usuario que registró la línea y contra el
+// NOMBRE de la línea (las líneas suelen llamarse como el asesor, y muchas las
+// registró un supervisor/admin, así que el creador no siempre es el asesor).
+// Basta con que coincidan 2 palabras: Bitrix guarda "MONICA PILCO QUINATOA" y
+// la línea "MONICA_ALEXANDRA_PILCO_QUINATOA"; antes se exigían todas y el
+// modo "mismo" saltaba contactos que sí tenían su línea en la campaña.
+function coinciden(nombre, tokensResp, minimo) {
+  const palabras = palabrasNombre(nombre)
+  if (!palabras.length) return false
+  const comunes = palabras.filter(p => tokensResp.has(p)).length
+  return comunes >= Math.min(minimo ?? 2, palabras.length)
+}
+
 function esResponsable(linea, responsable) {
   const resp = sinTildes(responsable)
-  const palabras = palabrasNombre(linea?.owner_nombre)
-  if (!resp || !palabras.length) return false
-  const tokens = new Set(resp.split(/[^A-Z]+/).filter(Boolean))
-  return palabras.every(p => tokens.has(p))
+  if (!resp) return false
+  const tokens = new Set(resp.split(/[^A-Z]+/).filter(p => p.length >= 3))
+  if (!tokens.size) return false
+  // Por nombre de línea se exigen 2 palabras siempre: una línea llamada
+  // solo "KATHERINE" no debe tomar los leads de cualquier Katherine.
+  return coinciden(linea?.owner_nombre, tokens) || coinciden(linea?.name, tokens, 2) && palabrasNombre(linea?.name).length >= 2
 }
 
 const responsableDe = (recipient) => String(recipient?.variables?.bitrix_responsible || '').trim()

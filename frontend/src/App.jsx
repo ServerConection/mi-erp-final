@@ -17,6 +17,7 @@ import HomeModules    from "./pages/HomeModules";
 // El browser descarga el chunk solo cuando el usuario navega a esa ruta
 const Indicadores          = lazy(() => import("./pages/Indicadores"));
 const Horarios             = lazy(() => import("./pages/Horarios"));
+const Soporte              = lazy(() => import("./pages/Soporte"));
 const PilotoLlamadas       = lazy(() => import("./pages/PilotoLlamadas"));
 const IndicadoresVelsa     = lazy(() => import("./pages/IndicadoresVelsa"));
 const ComparativaSupervisores = lazy(() => import("./pages/ComparativaSupervisores"));
@@ -241,6 +242,7 @@ export default function App() {
             {/* Reporte Gerencial: salud comercial de ambas empresas en una pantalla */}
             <Route path="reporte-gerencial"        element={<ReporteGerencial />} />
             <Route path="tareas"                   element={<Tareas />} />
+            <Route path="soporte"                  element={<Soporte />} />
             <Route path="archivos-compartidos"     element={<ArchivosCompartidos />} />
             <Route path="chat"                     element={<ChatInterno />} />
             <Route path="evaluaciones"             element={<Evaluaciones />} />

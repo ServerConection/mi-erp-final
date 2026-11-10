@@ -169,6 +169,15 @@ async function findOwnedConversation(req, id) {
   return null
 }
 
+// Clave del chat unificado: dueño de la línea + dígitos del número real del
+// cliente (o del wa_number si no hay real_phone). Requiere alias c, l, ct.
+const GRUPO_CHAT_SQL = `CASE
+  WHEN l.created_by IS NULL
+    OR regexp_replace(COALESCE(NULLIF(ct.metadata->>'real_phone',''), c.wa_number, ''), '[^0-9]', '', 'g') = ''
+  THEN c.id::text
+  ELSE l.created_by::text || '|' || regexp_replace(COALESCE(NULLIF(ct.metadata->>'real_phone',''), c.wa_number), '[^0-9]', '', 'g')
+END`
+
 // ── LISTAR conversaciones (inbox) ────────────────────────────
 async function getAll(req, res) {
   try {
@@ -216,36 +225,59 @@ async function getAll(req, res) {
     // Se llama unread_calc (no unread_count) para no chocar con la columna
     // homónima que llega en c.*; abajo se reemplaza de forma explícita.
     // Se limita a 30 días para que el conteo no recorra años de historial.
+    // Chat unificado por ASESOR + CLIENTE: si al asesor le cambian la línea
+    // (bloqueo, reemplazo), sus conversaciones con el mismo cliente desde
+    // distintas líneas se muestran como UN solo chat (la más reciente manda).
+    // Las líneas huérfanas (created_by NULL) no se agrupan.
+    // Paso 1 (liviano): agrupar y limitar. Paso 2: calcular último mensaje y
+    // no leídos SOLO para los chats que se van a mostrar (no para todo el historial).
     const result = await query(`
+      WITH base AS (
+        SELECT c.id, c.last_msg_at, ${GRUPO_CHAT_SQL} AS grupo_chat
+        FROM conversations c
+        LEFT JOIN contacts ct ON c.contact_id = ct.id
+        LEFT JOIN lines l ON c.line_id = l.id
+        ${whereSql}
+      ),
+      grp AS (
+        SELECT DISTINCT ON (grupo_chat) id, last_msg_at,
+               ARRAY_AGG(id) OVER (PARTITION BY grupo_chat) AS conversation_ids
+        FROM base
+        ORDER BY grupo_chat, last_msg_at DESC NULLS LAST
+      ),
+      top AS (
+        SELECT * FROM grp ORDER BY last_msg_at DESC NULLS LAST LIMIT $${pLimit}
+      )
       SELECT c.*,
              ct.name AS contact_name,
              ct.metadata AS contact_metadata,
              ct.is_blocked,
              l.name AS line_name,
+             l.phone_number AS line_phone,
+             top.conversation_ids,
              (SELECT content FROM messages m
-              WHERE m.conversation_id = c.id ORDER BY timestamp DESC LIMIT 1) AS last_message,
+              WHERE m.conversation_id = ANY(top.conversation_ids) ORDER BY timestamp DESC LIMIT 1) AS last_message,
              (SELECT direction FROM messages m
-              WHERE m.conversation_id = c.id ORDER BY timestamp DESC LIMIT 1) AS last_direction,
+              WHERE m.conversation_id = ANY(top.conversation_ids) ORDER BY timestamp DESC LIMIT 1) AS last_direction,
              (SELECT COUNT(*)::int FROM messages m
-               WHERE m.conversation_id = c.id
+               LEFT JOIN conversation_reads cr
+                      ON cr.conversation_id = m.conversation_id AND cr.user_id = $${pUser}
+               WHERE m.conversation_id = ANY(top.conversation_ids)
                  AND m.direction = 'in'
                  AND m.timestamp > NOW() - INTERVAL '30 days'
                  AND m.timestamp > COALESCE(cr.last_read_at, TIMESTAMPTZ 'epoch')
              ) AS unread_calc
-      FROM conversations c
+      FROM top
+      JOIN conversations c ON c.id = top.id
       LEFT JOIN contacts ct ON c.contact_id = ct.id
       LEFT JOIN lines l ON c.line_id = l.id
-      LEFT JOIN conversation_reads cr
-             ON cr.conversation_id = c.id AND cr.user_id = $${pUser}
-      ${whereSql}
-      ORDER BY c.last_msg_at DESC
-      LIMIT $${pLimit}
+      ORDER BY top.last_msg_at DESC NULLS LAST
     `, params)
 
     // Sustituir el contador global (siempre 0) por el calculado para este usuario
     const data = result.rows.map(({ unread_calc, ...conv }) => ({
       ...conv,
-      unread_count: unread_calc || 0,
+      unread_count: Number(unread_calc) || 0,
     }))
 
     res.json({ success: true, data })
@@ -265,18 +297,43 @@ async function getMessages(req, res) {
       // wa_msg_id es imprescindible: el inbox actualiza el doble check
       // (entregado/leido) buscando la burbuja por ese id cuando llega el
       // evento 'message:status'. Sin la columna, ese listener nunca acertaba.
-      `SELECT id, direction, type, content, media_url, media_mime, status, timestamp, node_type, wa_msg_id, metadata
-       FROM messages WHERE conversation_id=$1 ORDER BY timestamp ASC`,
+      // Trae los mensajes de TODAS las conversaciones del mismo asesor con el
+      // mismo cliente (aunque fueran por otra línea) y marca por qué número salió.
+      `WITH ref AS (
+         SELECT c.id, l.created_by, ${GRUPO_CHAT_SQL} AS grupo
+         FROM conversations c
+         LEFT JOIN lines l ON c.line_id = l.id
+         LEFT JOIN contacts ct ON c.contact_id = ct.id
+         WHERE c.id = $1
+       ),
+       convs AS (
+         SELECT c.id
+         FROM conversations c
+         LEFT JOIN lines l ON c.line_id = l.id
+         LEFT JOIN contacts ct ON c.contact_id = ct.id
+         JOIN ref ON ref.created_by IS NOT NULL AND l.created_by = ref.created_by
+         WHERE ${GRUPO_CHAT_SQL} = ref.grupo
+         UNION SELECT id FROM ref
+       )
+       SELECT m.id, m.conversation_id, m.line_id, m.direction, m.type, m.content, m.media_url, m.media_mime,
+              m.status, m.timestamp, m.node_type, m.wa_msg_id, m.metadata,
+              lm.phone_number AS line_phone, lm.name AS line_name
+       FROM messages m
+       LEFT JOIN lines lm ON lm.id = m.line_id
+       WHERE m.conversation_id IN (SELECT id FROM convs)
+       ORDER BY m.timestamp ASC`,
       [id]
     )
     // Marcar como leída SOLO para este usuario. Si un asesor abre el chat, el
     // supervisor y la gerencia conservan su propio aviso de no leído.
+    // (todas las conversaciones del chat unificado, para que no queden no leídos colgados)
+    const convIds = [...new Set([id, ...result.rows.map(r => r.conversation_id)])]
     await query(
       `INSERT INTO conversation_reads (conversation_id, user_id, last_read_at)
-       VALUES ($1, $2, NOW())
+       SELECT unnest($1::uuid[]), $2, NOW()
        ON CONFLICT (conversation_id, user_id)
        DO UPDATE SET last_read_at = NOW()`,
-      [id, req.user.id]
+      [convIds, req.user.id]
     )
 
     // Y recién AQUÍ avisar a WhatsApp que fueron leídas (doble check azul).
@@ -374,15 +431,31 @@ async function sendMessage(req, res) {
     const owned = await findOwnedConversation(req, id)
     if (!owned) return res.status(404).json({ success: false, error: 'Conversación no encontrada' })
 
-    const c = owned
+    let c = owned
     const bm = req.app.get('baileysManager')
     if (!bm) return res.status(503).json({ success: false, error: 'WhatsApp no inicializado. Intenta en unos segundos.' })
 
     // Resiliencia: si la línea está caída, intentar levantarla con la sesión
-    // guardada (sin QR). Si no se puede, responder claro en vez de error 500.
-    if (bm.getStatus(c.line_id) !== 'connected') {
-      const ok = await bm.ensureConnected(c.line_id)
-      if (!ok) {
+    // guardada (sin QR). Si no se puede (ej. línea bloqueada o dada de baja),
+    // responder por OTRA línea conectada del mismo asesor: el mensaje queda en
+    // el mismo chat unificado, marcado con el número desde el que salió.
+    const lineaDeBaja = !!(await query('SELECT 1 FROM lines WHERE id=$1 AND deleted_at IS NOT NULL', [c.line_id])).rows.length
+    if (lineaDeBaja || bm.getStatus(c.line_id) !== 'connected') {
+      const ok = !lineaDeBaja && await bm.ensureConnected(c.line_id)
+      if (!ok && c.line_created_by) {
+        const alternas = await query(
+          `SELECT id FROM lines
+           WHERE created_by=$1 AND deleted_at IS NULL AND id <> $2
+           ORDER BY last_connected DESC NULLS LAST`,
+          [c.line_created_by, c.line_id]
+        )
+        const alterna = alternas.rows.find(r => bm.getStatus(r.id) === 'connected')
+        if (alterna) {
+          const real = String(c.contact_real_phone || '').replace(/\D/g, '')
+          c = { ...c, line_id: alterna.id, wa_number: real || c.wa_number }
+        }
+      }
+      if (!ok && c.line_id === owned.line_id) {
         return res.status(409).json({
           success: false,
           error: 'La línea de WhatsApp de esta conversación está desconectada. Ve a Líneas y reconéctala (escanea el QR si es necesario).',

@@ -8,7 +8,7 @@ import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
-  CheckSquare, FileSpreadsheet, FolderOpen, MessageCircle, GraduationCap, Laptop,
+  CheckSquare, FileSpreadsheet, LifeBuoy, FolderOpen, MessageCircle, GraduationCap, Laptop,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -96,6 +96,8 @@ export default function HomeModules() {
 
     // El acceso NO depende del perfil sino de tener área y cargo asignados
     // (los asesores comerciales no los tienen). Se consulta al backend.
+    { title: "Soporte Desarrollo", path: "/soporte", icon: LifeBuoy, accent: "rosa", cat: "equipo",
+      desc: "Reporta una falla (WABOT, indicadores…), pide creación o eliminación de usuarios y sigue la atención." },
     { title: "Tareas y Acuerdos", path: "/tareas", icon: CheckSquare, accent: "verde", cat: "equipo",
       desc: "Registra tareas y acuerdos, define responsable y fecha de entrega, y sigue el cumplimiento por área.",
       requiereTareas: true },
@@ -176,9 +178,9 @@ export default function HomeModules() {
       const perfil = (up.perfil || '').toUpperCase();
       const empresa = (up.empresa || '').toUpperCase();
       if (perfil === 'TV') {
-        if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos', '/evaluaciones', '/carpeta-compartida'].includes(m.path));
-        if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos', '/evaluaciones', '/carpeta-compartida'].includes(m.path));
-        return modules.filter(m => ['/llamadas', '/inventario-activos', '/evaluaciones', '/carpeta-compartida'].includes(m.path));
+        if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
+        if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
+        return modules.filter(m => ['/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
       }
     } catch (e) {
       // ignore parse errors and fall back to normal filtering
@@ -189,8 +191,8 @@ export default function HomeModules() {
       if (mod.path === '/inventario-activos') {
         return !q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q);
       }
-      // Evaluaciones y Carpeta Compartida son transversales: cualquier perfil autenticado.
-      if (mod.path === '/evaluaciones' || mod.path === '/carpeta-compartida') {
+      // Evaluaciones, Soporte y Carpeta Compartida son transversales: cualquier perfil autenticado.
+      if (mod.path === '/evaluaciones' || mod.path === '/soporte' || mod.path === '/carpeta-compartida') {
         return !q || (mod.title + ' ' + mod.desc).toLowerCase().includes(q);
       }
       if (userRol === 'ANALISTA' && !rutaPermitidaAnalista(mod.path)) return false;

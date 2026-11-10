@@ -19,6 +19,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { MessageCircle, ClipboardCheck } from "lucide-react";
 import { chatApi, useSocketChat } from "../hooks/useChat";
 import { useMisTareas } from "../hooks/useTareas";
+import BotonSoporte from "./soporte/BotonSoporte";
 
 const tieneSesion = () => !!localStorage.getItem("token");
 
@@ -159,7 +160,9 @@ export default function ChatTareasFloatingButtons() {
   return (
     <>
       <BotonChatInterno />
-      <BotonTareasAsignadas />
+      {/* La burbuja de Tareas se ocultó (nov-2026): su lugar lo toma la de Soporte.
+          El componente BotonTareasAsignadas se conserva por si se quiere volver. */}
+      <BotonSoporte />
     </>
   );
 }

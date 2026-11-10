@@ -11,6 +11,8 @@ const API = import.meta.env.VITE_API_URL;
 // RUTAS QUE NO REQUIEREN PERMISOS ESPECIALES
 // ─────────────────────────────────────────────────────────────────────────────
 const RUTAS_PUBLICAS = ['/broadcast'];
+// Soporte Desarrollo: cualquier perfil puede reportar una falla o pedir usuarios.
+const RUTA_SOPORTE = '/soporte';
 const RUTA_NOVONET_ACCESS = '/conexiones';
 // Carpeta Compartida (manuales): visible para TODOS los perfiles.
 const RUTA_CARPETA_COMPARTIDA = '/carpeta-compartida';
@@ -336,6 +338,7 @@ const rutaRepartoTV = (usuario = '') => {
 const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
   if (ruta === RUTA_NOVONET_ACCESS) return true;
+  if (ruta === RUTA_SOPORTE) return true;
   if (ruta === RUTA_CARPETA_COMPARTIDA) return true;
   if (!PERFILES_MENU_RESTRINGIDO.has(perfil)) return true;
   if (perfil === 'ANALISTA') return rutaPermitidaAnalista(ruta);
@@ -508,6 +511,9 @@ const ALL_MENU_ITEMS = [
   { name: "📗 Archivos Compartidos", path: "/archivos-compartidos", icon: "📗",
     accessCheck: (p) => p !== 'CONSULTOR' },
 
+  // ── Soporte Desarrollo (mesa de ayuda) ─────────────────────────────────────
+  { name: "🛟 Soporte Desarrollo", path: RUTA_SOPORTE, icon: "🛟", accessCheck: () => true },
+
   // ── Carpeta Compartida (manuales y documentos) ─────────────────────────────
   // Todos la ven y descargan; solo ADMINISTRADOR sube (lo valida el backend).
   { name: "📁 Carpeta Compartida", path: RUTA_CARPETA_COMPARTIDA, icon: "📁", accessCheck: () => true },
@@ -639,6 +645,7 @@ export default function DashboardLayout() {
     if (PERFILES_MENU_RESTRINGIDO.has(p)) return;
 
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
+    if (location.pathname === RUTA_SOPORTE) return;
     if (location.pathname === RUTA_CARPETA_COMPARTIDA) return;
 
     const itemActual = ALL_MENU_ITEMS.find(m => !m.isSeparator && m.path === location.pathname);
@@ -691,6 +698,7 @@ export default function DashboardLayout() {
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
     if (item.path === RUTA_NOVONET_ACCESS) return true;
+    if (item.path === RUTA_SOPORTE) return true;
     if (item.path === RUTA_CARPETA_COMPARTIDA) return true;
     if (item.group === 'administracion' && !puedeVerMenuAdministracion(perfil)) return false;
     if (PERFILES_MENU_RESTRINGIDO.has(perfil)) {

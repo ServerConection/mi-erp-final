@@ -269,6 +269,7 @@ app.use('/api/horarios',           require('./routes/horarios.routes'));
 app.use('/api/piloto-llamadas',    require('./routes/pilotoLlamadas.routes'));
 app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
+app.use('/api/soporte', require('./routes/soporte.routes'));
 app.use('/api/carpeta-compartida', require('./routes/carpetaCompartida.routes'));
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));

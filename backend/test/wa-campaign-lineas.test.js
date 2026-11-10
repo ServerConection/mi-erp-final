@@ -79,3 +79,19 @@ test('motor: reparte en ronda entre líneas y salta si rompe la regla de respons
   assert.deepEqual(saltados, [3])
   delete require.cache[enginePath]; delete require.cache[dbPath]
 })
+
+test('modo mismo reconoce la línea por su nombre aunque la haya registrado otro usuario', () => {
+  const lineas = [
+    { id: 'm', name: 'MONICA_ALEXANDRA_PILCO_QUINATOA', owner_nombre: 'Bryan Pineda' },
+    { id: 'n', name: 'ALEXIS_GEOVANNY_NAGUA_TORRES', owner_nombre: null },
+    { id: 't', name: 'ALEXIS ANDRES TOBAR BONIFAZ', owner_nombre: null },
+  ]
+  assert.equal(elegirLinea({ lineas, recipient: lead('MONICA PILCO QUINATOA'), modo: 'mismo' }).linea.id, 'm')
+  assert.equal(elegirLinea({ lineas, recipient: lead('Alexis Geovanny Nagua Torres'), modo: 'mismo' }).linea.id, 'n')
+  assert.equal(elegirLinea({ lineas, recipient: lead('ALEXIS TOBAR'), modo: 'mismo' }).linea.id, 't')
+  // Solo comparten "ALEXIS": no es el mismo asesor.
+  assert.ok(elegirLinea({ lineas, recipient: lead('ALEXIS PEREZ'), modo: 'mismo' }).saltar)
+  // En modo evitar no se usa la línea propia.
+  const r = elegirLinea({ lineas, indice: 0, recipient: lead('MONICA PILCO QUINATOA'), modo: 'evitar' })
+  assert.equal(r.linea.id, 'n')
+})

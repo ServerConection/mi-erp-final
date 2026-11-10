@@ -36,7 +36,7 @@ async function opciones(req, res) {
 // POST /api/llamadas/bitrix/consultar  { stage_id, responsible_id, date_from, date_to }
 async function consultar(req, res) {
   try {
-    const data = await bitrixLists.consultar(req.user, req.body)
+    const data = await bitrixLists.consultar(req.user, { ...req.body, solo_pipeline_oficial: true })
     // La vista previa no expone teléfonos: solo el ID de Bitrix y el nombre.
     const items = data.items.slice(0, PREVIEW_MAX).map(it => ({ bitrix_id: it.variables?.bitrix_id || '', name: it.name || null }))
     res.json({ success: true, data: { ...data, items } })

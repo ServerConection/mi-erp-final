@@ -285,6 +285,9 @@ async function cargarContactos(webhook, contactIds) {
   return map
 }
 
+// Pipeline oficial por empresa (mismo criterio que Indicadores).
+const PIPELINE_OFICIAL = { NOVONET: process.env.NOVONET_CATEGORY_ID || '19' }
+
 async function consultar(user, input, db = require('../config/db')) {
   const empresa = empresaElegida(user, input)
   const f = validarFiltros(input)
@@ -305,8 +308,14 @@ async function consultar(user, input, db = require('../config/db')) {
     params.push(f.stageIds)
     filtrosExtra += `\n        AND etapa = ANY($${params.length}::text[])`
   }
+  // Automarcador: solo el pipeline oficial de la empresa (igual que Indicadores:
+  // NOVONET = categoría 19). WABOT no manda este flag y queda como estaba.
+  if (input?.solo_pipeline_oficial && PIPELINE_OFICIAL[empresa]) {
+    params.push(PIPELINE_OFICIAL[empresa])
+    filtrosExtra += `\n        AND BTRIM(COALESCE(categoria_id, '')) = $${params.length}`
+  }
   if (f.responsibleIds.length) {
-    params.push(f.responsibleIds.map(r => r.toUpperCase()))
+    params.push(f.responsibleIds.map(r => r.trim().toUpperCase()))
     filtrosExtra += `\n        AND UPPER(BTRIM(responsible)) = ANY($${params.length}::text[])`
   }
   // Asesor: forzado a sus propios negocios aunque el navegador pida otros.

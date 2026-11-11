@@ -354,7 +354,12 @@ async function consultar(user, input, db = require('../config/db')) {
   for (const deal of deals) {
     const phones = String(deal.phone || '').split(/[,;|/]+/).map(normalizeNumber).filter(Boolean)
     if (!phones.length) { dealsWithoutPhone++; continue }
-    for (const phone of phones) {
+    // Un negocio representa un contacto para el Automarcador. El placeholder
+    // de Bitrix puede incluir varios telefonos y antes cada uno se convertia
+    // en una fila de campana, repitiendo el mismo bitrix_id varias veces.
+    // WABOT conserva todos; el Automarcador toma solo el primero.
+    const phonesToInclude = input?.solo_pipeline_oficial ? phones.slice(0, 1) : phones
+    for (const phone of phonesToInclude) {
       if (byPhone.has(phone)) continue
       byPhone.set(phone, {
         wa_number: phone,

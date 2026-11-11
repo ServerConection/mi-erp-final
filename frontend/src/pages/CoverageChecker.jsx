@@ -232,6 +232,10 @@ function getUserPerfil() {
 export default function CoverageChecker() {
   // ── Perfil del usuario ──────────────────────────────────────────────────────
   const isAdmin = getUserPerfil() === "ADMINISTRADOR";
+  const paramsIniciales = new URLSearchParams(window.location.search);
+  const negociacionId = paramsIniciales.get("negociacion_id") || "";
+  const negociacionTitulo = paramsIniciales.get("negociacion_titulo") || "";
+  const chatContexto = paramsIniciales.get("chat") || "";
 
   // ── Estado general ──────────────────────────────────────────────────────────
   const [tab, setTab] = useState("link"); // "link" | "coords"
@@ -491,6 +495,8 @@ export default function CoverageChecker() {
     setError("");
     setResult(null);
 
+    const negocio = negociacionId.trim();
+
     let lat, lon;
 
     if (tab === "link") {
@@ -526,7 +532,12 @@ export default function CoverageChecker() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_URL}/check?lat=${lat}&lon=${lon}`,
+        `${API_URL}/check?${new URLSearchParams({
+          lat: String(lat),
+          lon: String(lon),
+          ...(negocio ? { negociacion_id: negocio, negociacion_titulo: negociacionTitulo } : {}),
+          ...(chatContexto ? { chat: chatContexto } : {}),
+        })}`,
         { headers: authHeaders() }
       );
       if (!res.ok) {
@@ -537,6 +548,9 @@ export default function CoverageChecker() {
       const entry = {
         lat,
         lon,
+        negociacionId: negocio,
+        negociacionTitulo,
+        chat: data.chat || null,
         // Pregunta 1 — cobertura
         hasCoverage: data.hasCoverage,
         zoneName: data.zoneName || "—",
@@ -556,7 +570,7 @@ export default function CoverageChecker() {
         sourceLink: tab === "link" ? linkInput.trim() : null,
       };
       setResult(entry);
-      addToHistory(entry);
+      if (isAdmin) addToHistory(entry);
     } catch (err) {
       setError(err.message || "Error desconocido");
     } finally {
@@ -795,8 +809,9 @@ export default function CoverageChecker() {
   // ─────────────────────────────────────────────────────────────────────────
   function exportCSV() {
     if (!history.length) return;
-    const headers = ["Latitud", "Longitud", "Cobertura", "Zona", "Zona peligrosa", "Tipo de restricción", "Fecha/Hora", "Enlace origen"];
+    const headers = ["Negociación", "Latitud", "Longitud", "Cobertura", "Zona", "Zona peligrosa", "Tipo de restricción", "Fecha/Hora", "Enlace origen"];
     const rows = history.map((h) => [
+      h.negociacionId || "",
       h.lat?.toFixed(6) ?? "",
       h.lon?.toFixed(6) ?? "",
       h.hasCoverage ? "Sí" : "No",
@@ -1436,6 +1451,7 @@ export default function CoverageChecker() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
+                  ...(result.negociacionId ? [{ label: "Negociación", val: `#${result.negociacionId}` }] : []),
                   { label: "Latitud",  val: result.lat?.toFixed(6) },
                   { label: "Longitud", val: result.lon?.toFixed(6) },
                   { label: "Zona",     val: result.zoneName },
@@ -1623,7 +1639,7 @@ export default function CoverageChecker() {
           )}
 
           {/* Historial */}
-          {history.length > 0 && (
+          {isAdmin && history.length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                 <h3 className="font-semibold text-slate-700">
@@ -1653,7 +1669,7 @@ export default function CoverageChecker() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      {["Latitud", "Longitud", "Cobertura", "Zona", "Seguridad", "Fecha/Hora"].map((h) => (
+                      {["Negociación", "Latitud", "Longitud", "Cobertura", "Zona", "Seguridad", "Fecha/Hora"].map((h) => (
                         <th key={h} className="px-4 py-2.5 text-left font-semibold text-xs">
                           {h}
                         </th>
@@ -1674,6 +1690,7 @@ export default function CoverageChecker() {
                             : ""
                         }`}
                       >
+                        <td className="px-4 py-2.5 text-xs font-bold text-blue-700">#{item.negociacionId || "—"}</td>
                         <td className="px-4 py-2.5 font-mono text-xs">{item.lat?.toFixed(4)}</td>
                         <td className="px-4 py-2.5 font-mono text-xs">{item.lon?.toFixed(4)}</td>
                         <td className="px-4 py-2.5">

@@ -10,6 +10,8 @@ const path   = require('path');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const pool   = require('../config/db');
+const { bitrixCall, bitrixCallNovonet } = require('../services/bitrix.service');
+const { claveNombre } = require('../services/asesorMatcher.service');
 // xml2js ya NO se usa para KML — reemplazado por parser regex de bajo consumo
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -422,6 +424,141 @@ async function ensureCoverageTable() {
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+}
+
+// Historial centralizado de consultas individuales de cobertura.
+// Conserva una copia del nombre del asesor para que el registro siga siendo
+// legible aunque el usuario cambie posteriormente sus datos de perfil.
+let coverageConsultasTablePromise = null;
+function ensureCoverageConsultasTable() {
+  if (!coverageConsultasTablePromise) {
+    coverageConsultasTablePromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS public.coverage_consultas (
+        id                  BIGSERIAL PRIMARY KEY,
+        usuario_id          BIGINT,
+        usuario             TEXT NOT NULL,
+        asesor              TEXT NOT NULL,
+        empresa             TEXT,
+        negociacion_id      TEXT,
+        negociacion_titulo  TEXT,
+        chat                JSONB,
+        latitud             DOUBLE PRECISION NOT NULL,
+        longitud            DOUBLE PRECISION NOT NULL,
+        tiene_cobertura     BOOLEAN NOT NULL,
+        zona_nombre         TEXT,
+        cobertura_via       TEXT,
+        cobertura_metros    DOUBLE PRECISION,
+        cobertura_detalle   TEXT,
+        zona_mas_cercana    JSONB,
+        es_zona_peligrosa   BOOLEAN NOT NULL DEFAULT FALSE,
+        peligro_tipo        TEXT,
+        peligro_etiqueta    TEXT,
+        peligro_zonas       JSONB NOT NULL DEFAULT '[]'::jsonb,
+        consultado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      ALTER TABLE public.coverage_consultas ADD COLUMN IF NOT EXISTS negociacion_id TEXT;
+      ALTER TABLE public.coverage_consultas ADD COLUMN IF NOT EXISTS negociacion_titulo TEXT;
+      ALTER TABLE public.coverage_consultas ADD COLUMN IF NOT EXISTS chat JSONB;
+
+      CREATE INDEX IF NOT EXISTS idx_coverage_consultas_fecha
+        ON public.coverage_consultas (consultado_en DESC);
+      CREATE INDEX IF NOT EXISTS idx_coverage_consultas_usuario_fecha
+        ON public.coverage_consultas (usuario_id, consultado_en DESC);
+      CREATE INDEX IF NOT EXISTS idx_coverage_consultas_resultado_fecha
+        ON public.coverage_consultas (tiene_cobertura, consultado_en DESC);
+      CREATE INDEX IF NOT EXISTS idx_coverage_consultas_negociacion_fecha
+        ON public.coverage_consultas (negociacion_id, consultado_en DESC);
+    `).catch((error) => {
+      coverageConsultasTablePromise = null;
+      throw error;
+    });
+  }
+  return coverageConsultasTablePromise;
+}
+
+async function registrarConsultaCobertura(req, datos) {
+  await ensureCoverageConsultasTable();
+  const user = req.user || {};
+  const asesor = user.nombreCompleto || user.usuario || 'Usuario desconocido';
+
+  await pool.query(
+    `INSERT INTO public.coverage_consultas (
+       usuario_id, usuario, asesor, empresa, negociacion_id, negociacion_titulo, chat,
+       latitud, longitud, tiene_cobertura, zona_nombre,
+       cobertura_via, cobertura_metros, cobertura_detalle, zona_mas_cercana,
+       es_zona_peligrosa, peligro_tipo, peligro_etiqueta, peligro_zonas
+     ) VALUES (
+       $1, $2, $3, $4,
+       $5, $6, $7::jsonb,
+       $8, $9, $10, $11,
+       $12, $13, $14, $15::jsonb,
+       $16, $17, $18, $19::jsonb
+     )`,
+    [
+      user.id || null,
+      user.usuario || 'desconocido',
+      asesor,
+      user.empresa || null,
+      datos.negociacionId,
+      datos.negociacionTitulo || null,
+      datos.chat ? JSON.stringify(datos.chat) : null,
+      datos.latitude,
+      datos.longitude,
+      datos.hasCoverage,
+      datos.zoneName,
+      datos.coberturaVia,
+      datos.coberturaVia === 'trazado' ? datos.coberturaMetros : null,
+      datos.coberturaDetalle,
+      datos.zonaMasCercana ? JSON.stringify(datos.zonaMasCercana) : null,
+      datos.esZonaPeligrosa,
+      datos.peligroTipo,
+      datos.peligroEtiqueta,
+      JSON.stringify(datos.peligroZonas || [])
+    ]
+  );
+}
+
+async function completarChatCobertura(chat, negociacionId) {
+  if (!chat) return null;
+  const ids = [...new Set(
+    [chat.conversation_id, ...(chat.conversation_ids || [])]
+      .filter(Boolean)
+      .map(String)
+  )].slice(0, 20);
+  if (!ids.length) return chat;
+
+  // Lee la conversacion desde PostgreSQL; nunca acepta mensajes enviados por
+  // el navegador. El JOIN impide asociar conversaciones de otra negociacion.
+  const result = await pool.query(
+    `SELECT m.id, m.conversation_id, m.direction, m.type, m.content,
+            m.media_url, m.status, m.timestamp
+       FROM public.messages m
+       JOIN public.conversations c ON c.id = m.conversation_id
+      WHERE m.conversation_id = ANY($1::uuid[])
+        AND c.bitrix_deal_id::text = $2
+        AND m.direction IN ('in', 'out')
+        AND COALESCE(m.type, '') <> 'internal_note'
+      ORDER BY m.timestamp ASC, m.id ASC
+      LIMIT 500`,
+    [ids, negociacionId]
+  );
+
+  return {
+    ...chat,
+    mensajes: result.rows.map((m) => ({
+      id: m.id,
+      conversation_id: m.conversation_id,
+      direccion: m.direction,
+      tipo: m.type,
+      contenido: m.content,
+      media_url: m.media_url,
+      estado: m.status,
+      fecha: m.timestamp,
+    })),
+    mensajes_total_guardados: result.rowCount,
+    capturado_en: new Date().toISOString(),
+  };
 }
 
 // Inserta zonas SIN borrar las existentes (para las que llegan de NetworkLinks).
@@ -1431,6 +1568,73 @@ exports.loadCoverage = async (req, res) => {
 exports.checkCoverage = async (req, res) => {
   try {
     const { lat, lon } = req.query;
+    const negociacionId = String(req.query.negociacion_id || '').trim();
+    let negociacionTitulo = String(req.query.negociacion_titulo || '').trim().slice(0, 300);
+    let chat = null;
+
+    if (req.query.chat) {
+      const chatRaw = String(req.query.chat);
+      if (chatRaw.length > 4000) {
+        return res.status(400).json({ status: 'error', message: 'El contexto del chat es demasiado grande.' });
+      }
+      try {
+        chat = JSON.parse(chatRaw);
+        if (!chat || Array.isArray(chat) || typeof chat !== 'object') throw new Error('formato invalido');
+        chat = {
+          conversation_id: chat.conversation_id ?? null,
+          conversation_ids: Array.isArray(chat.conversation_ids) ? chat.conversation_ids.slice(0, 20) : [],
+          bitrix_deal_id: negociacionId,
+          contact_name: chat.contact_name ? String(chat.contact_name).slice(0, 200) : null,
+          wa_number: chat.wa_number ? String(chat.wa_number).slice(0, 40) : null,
+          line_id: chat.line_id ?? null,
+          line_name: chat.line_name ? String(chat.line_name).slice(0, 120) : null,
+        };
+      } catch {
+        return res.status(400).json({ status: 'error', message: 'El contexto del chat no es JSON valido.' });
+      }
+    }
+
+    if (chat && !negociacionId) {
+      return res.status(400).json({ status: 'error', message: 'El chat requiere una negociacion asociada.' });
+    }
+    if (negociacionId && !/^\d+$/.test(negociacionId)) {
+      return res.status(400).json({ status: 'error', message: 'Selecciona una negociacion valida antes de consultar cobertura.' });
+    }
+
+    if (negociacionId) {
+      // No confiar en el titulo enviado por el navegador: confirma que el ID
+      // exista en Bitrix y conserva el titulo oficial de la negociacion.
+      try {
+      const empresa = String(req.user?.empresa || '').trim().toUpperCase();
+      const llamarBitrix = empresa === 'VELSA' ? bitrixCall : bitrixCallNovonet;
+      const bitrix = await llamarBitrix('crm.deal.get', { id: negociacionId });
+      if (!bitrix.result) {
+        return res.status(404).json({ status: 'error', message: 'La negociacion indicada no existe en Bitrix.' });
+      }
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      const esAdmin = /^ADMINISTRADOR(A)?([ _-]|$)/.test(perfil) || /^GEREN(CIA|TE)([ _-]|$)/.test(perfil);
+      if (!esAdmin) {
+        const responsableId = String(bitrix.result.ASSIGNED_BY_ID || '');
+        const usuarioBitrix = await llamarBitrix('user.get', { FILTER: { ID: responsableId } });
+        const responsable = usuarioBitrix.result?.[0];
+        const nombreResponsable = [responsable?.NAME, responsable?.LAST_NAME].filter(Boolean).join(' ');
+        if (!nombreResponsable || claveNombre(nombreResponsable) !== claveNombre(req.user?.nombreCompleto || '')) {
+          return res.status(403).json({ status: 'error', message: 'La negociacion no corresponde al asesor autenticado.' });
+        }
+      }
+      negociacionTitulo = String(bitrix.result.TITLE || negociacionTitulo).trim().slice(0, 300);
+      } catch (bitrixError) {
+        console.error('[Coverage] No se pudo validar la negociacion:', bitrixError.message);
+        return res.status(502).json({ status: 'error', message: 'No se pudo validar la negociacion en Bitrix. Intenta nuevamente.' });
+      }
+
+      try {
+        chat = await completarChatCobertura(chat, negociacionId);
+      } catch (chatError) {
+        console.error('[Coverage] No se pudo capturar la conversacion:', chatError.message);
+        return res.status(500).json({ status: 'error', message: 'No se pudo guardar la conversacion asociada. Intenta nuevamente.' });
+      }
+    }
 
     if (!lat || !lon) {
       return res.status(400).json({ status: 'error', message: 'Missing lat or lon' });
@@ -1466,14 +1670,17 @@ exports.checkCoverage = async (req, res) => {
     // cobertura: solo informa, para decidir si vale escalarlo.
     const cercana = cob.cubierto ? null : (cob.cercana ?? zonaMasCercana(longitude, latitude));
 
-    return res.status(200).json({
+    const resultado = {
       latitude, longitude,
+      negociacionId,
+      negociacionTitulo: negociacionTitulo || null,
+      chat,
       // Pregunta 1 — cobertura
       hasCoverage: cob.cubierto,
       zoneName:    cob.zona ? cob.zona.name : 'Sin cobertura',
       // Por que dio ese resultado — auditable desde la UI
       coberturaVia:     cob.via,        // 'poligono' | 'trazado' | 'agujero' | null
-      coberturaMetros:  cob.metros,     // distancia al trazado cuando via = 'trazado'
+      coberturaMetros:  cob.via === 'trazado' ? cob.metros : null,
       coberturaDetalle: cob.detalle,
       radioTrazadoM:    COVERAGE_BUFFER_M,
       zonaMasCercana: cercana,   // { nombre, metros, tipo } o null
@@ -1483,7 +1690,17 @@ exports.checkCoverage = async (req, res) => {
       peligroEtiqueta: peligro.etiqueta,  // texto para mostrar
       peligroZonas:    peligro.zonas,     // todas las zonas de peligro que contienen el punto
       timestamp:   new Date().toISOString()
-    });
+    };
+
+    // La consulta ya fue resuelta; un problema temporal al escribir el
+    // historial no debe impedir que el asesor reciba el resultado operativo.
+    try {
+      await registrarConsultaCobertura(req, resultado);
+    } catch (logError) {
+      console.error('[Coverage] No se pudo registrar la consulta:', logError);
+    }
+
+    return res.status(200).json(resultado);
 
   } catch (error) {
     console.error('[Coverage Error]', error);

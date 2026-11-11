@@ -7,9 +7,11 @@ import InboxPlantillasPicker, { rellenarPlantilla } from "../components/InboxPla
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waInboxFilters";
+import MapaCobertura, { LeyendaMapa } from "../components/MapaCobertura";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
 const API = `${ORIGIN}/api/wa`;
+const COVERAGE_API = `${ORIGIN}/api/coverage`;
 const PILOTO_API = `${ORIGIN}/api/piloto-llamadas`; // Piloto Llamadas PC
 const AGENTE_PC = "http://127.0.0.1:5005";            // agente en la PC del asesor piloto
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
@@ -176,6 +178,14 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const [coverageInput, setCoverageInput] = useState("");
+  const [coverageCoords, setCoverageCoords] = useState(null);
+  const [coverageResult, setCoverageResult] = useState(null);
+  const [coverageBusy, setCoverageBusy] = useState(false);
+  const [coverageError, setCoverageError] = useState("");
+  const [coverageCopied, setCoverageCopied] = useState(false);
+  const [coverageCopying, setCoverageCopying] = useState(false);
   const [accionesAbiertas, setAccionesAbiertas] = useState(false);
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
@@ -192,6 +202,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   const [filter, setFilter] = useState("all"); // all|active|human_takeover|closed
   const [search, setSearch] = useState("");
   const messagesEndRef = useRef(null);
+  const coverageCaptureRef = useRef(null);
   const selectedRef = useRef(null);          // evita closure viejo en el socket
   const conversationsRef = useRef([]);
   const listRequest = useRef(0);
@@ -750,6 +761,113 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     } finally { setBitrixBusy(false); }
   };
 
+  const cerrarCobertura = () => {
+    setCoverageOpen(false); setCoverageInput(""); setCoverageCoords(null);
+    setCoverageResult(null); setCoverageError(""); setCoverageCopied(false);
+  };
+
+  const abrirCobertura = (coords = null) => {
+    setCoverageInput(coords ? `${coords.lat}, ${coords.lon}` : "");
+    setCoverageCoords(coords); setCoverageResult(null); setCoverageError("");
+    setCoverageCopied(false); setCoverageOpen(true);
+  };
+
+  const contextoCobertura = () => JSON.stringify({
+    conversation_id: selected?.id,
+    conversation_ids: selected?.conversation_ids || [selected?.id].filter(Boolean),
+    bitrix_deal_id: String(selected?.bitrix_deal_id || dealId || ""),
+    contact_name: selected?.contact_name || null,
+    wa_number: selected?.wa_number || null,
+    line_id: selected?.line_id || null,
+    line_name: selected?.line_name || null,
+  });
+
+  const extraerCoordenadasCobertura = async () => {
+    if (!coverageInput.trim()) return setCoverageError("Pega la ubicacion enviada por el cliente.");
+    setCoverageBusy(true); setCoverageError(""); setCoverageResult(null);
+    try {
+      const parsed = await fetch(`${COVERAGE_API}/resolve-link`, {
+        method: "POST", headers: authH(), body: JSON.stringify({ link: coverageInput.trim() }),
+      });
+      const data = await parsed.json();
+      if (!parsed.ok) throw new Error(data.message || "No se pudieron extraer las coordenadas.");
+      setCoverageCoords({ lat: data.lat, lon: data.lon });
+    } catch (error) {
+      setCoverageCoords(null);
+      setCoverageError(error.message || "No se pudieron extraer las coordenadas.");
+    } finally { setCoverageBusy(false); }
+  };
+
+  const consultarCobertura = async () => {
+    const negociacion = String(selected?.bitrix_deal_id || dealId || "");
+    if (!negociacion) return setCoverageError("Este chat no tiene una negociacion Bitrix asociada.");
+    setCoverageBusy(true); setCoverageError(""); setCoverageResult(null);
+    try {
+      const coords = coverageCoords;
+      if (!coords) throw new Error("Primero extrae las coordenadas.");
+      const qs = new URLSearchParams({
+        lat: String(coords.lat), lon: String(coords.lon), negociacion_id: negociacion,
+        negociacion_titulo: selected?.contact_name || "", chat: contextoCobertura(),
+      });
+      const response = await fetch(`${COVERAGE_API}/check?${qs}`, { headers: authH(false) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "No se pudo consultar cobertura.");
+      setCoverageResult(data);
+    } catch (error) {
+      setCoverageError(error.message || "No se pudo consultar cobertura.");
+    } finally { setCoverageBusy(false); }
+  };
+
+  const copiarRespuestaCobertura = async () => {
+    if (!coverageResult || !coverageCaptureRef.current || coverageCopying) return;
+    setCoverageCopying(true);
+    setCoverageCopied(false);
+    setCoverageError("");
+    try {
+      if (!window.ClipboardItem || !navigator.clipboard?.write) {
+        throw new Error("Este navegador no permite copiar imagenes al portapapeles.");
+      }
+
+      const crearPng = (async () => {
+        if (!window.html2canvas) {
+          await new Promise((resolve, reject) => {
+            const existente = document.querySelector('script[data-html2canvas="coverage"]');
+            if (existente) {
+              existente.addEventListener("load", resolve, { once: true });
+              existente.addEventListener("error", reject, { once: true });
+              return;
+            }
+            const script = document.createElement("script");
+            script.src = "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js";
+            script.dataset.html2canvas = "coverage";
+            script.onload = resolve;
+            script.onerror = () => reject(new Error("No se pudo cargar el generador de imagen."));
+            document.head.appendChild(script);
+          });
+        }
+        const canvas = await window.html2canvas(coverageCaptureRef.current, {
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: "#ffffff",
+          scale: 2,
+          logging: false,
+        });
+        return new Promise((resolve, reject) => canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("No se pudo generar la imagen del mapa.")),
+          "image/png",
+        ));
+      })();
+
+      // La escritura se inicia dentro del clic para conservar el permiso del navegador.
+      await navigator.clipboard.write([new window.ClipboardItem({ "image/png": crearPng })]);
+      setCoverageCopied(true);
+    } catch (error) {
+      setCoverageError(error.message || "No se pudo copiar el mapa. Verifica los permisos del portapapeles.");
+    } finally {
+      setCoverageCopying(false);
+    }
+  };
+
   // Segunda barrera local: los eventos del socket pueden insertar/actualizar
   // conversaciones entre dos respuestas HTTP. Nunca deben saltarse los
   // filtros que el usuario ve activos en pantalla.
@@ -794,6 +912,15 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                   + ID Bitrix
                 </button>
               ))}
+              {(selected.bitrix_deal_id || dealId) && (
+                <button
+                  onClick={() => abrirCobertura()}
+                  title="Consultar cobertura para esta negociacion"
+                  className="text-xs bg-cyan-50 border border-cyan-200 text-cyan-700 px-3 py-1.5 rounded-lg hover:bg-cyan-100 transition-colors"
+                >
+                  Consultar cobertura
+                </button>
+              )}
               {IS_ADMIN && (
                 <button onClick={() => exportChatPDF({
                   wa_number: selected.wa_number,
@@ -1009,8 +1136,16 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                     {msg.type === "internal_note" && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-300">🔒 Mensaje oculto · {msg.metadata?.author || "Usuario"}</div>}
                     {msg.type === "call" && <div className="mb-1 font-semibold">{msg.metadata?.video ? "🎥" : "📞"} {msg.direction === "out" ? "Llamada del asesor" : "Llamada del cliente"}</div>}
                     {msg.type === "location" && msg.metadata?.latitude != null ? (
-                      <a href={`https://www.google.com/maps?q=${msg.metadata.latitude},${msg.metadata.longitude}`} target="_blank" rel="noopener noreferrer"
-                        className="mb-1 block rounded-lg bg-black/10 px-4 py-3 font-medium underline">📍 Ver ubicación</a>
+                      <div className="mb-1 rounded-lg bg-black/10 px-4 py-3">
+                        <a href={`https://www.google.com/maps?q=${msg.metadata.latitude},${msg.metadata.longitude}`} target="_blank" rel="noopener noreferrer"
+                          className="block font-medium underline">📍 Ver ubicación</a>
+                        {(selected.bitrix_deal_id || dealId) && (
+                          <button onClick={() => abrirCobertura({ lat: msg.metadata.latitude, lon: msg.metadata.longitude })}
+                            className="mt-2 rounded-md bg-cyan-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-cyan-700">
+                            Consultar cobertura
+                          </button>
+                        )}
+                      </div>
                     ) : msg.media_url && isImage(msg) ? (
                       <a href={mediaSrc(msg.media_url)} target="_blank" rel="noopener noreferrer">
                         <img src={mediaSrc(msg.media_url)} alt="imagen"
@@ -1144,6 +1279,82 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
       )}
 
       {/* Modal: asociar ID Bitrix a conversación existente */}
+      {coverageOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
+              <div><h3 className="font-extrabold text-slate-800">Consultar cobertura</h3><p className="text-xs text-slate-500">Negociacion #{selected?.bitrix_deal_id || dealId}</p></div>
+              <button onClick={cerrarCobertura} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
+            </div>
+            <div className="space-y-4 p-5">
+              {!coverageResult && <>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Ubicacion enviada por el cliente</label>
+                  <textarea value={coverageInput} onChange={(e) => { setCoverageInput(e.target.value); setCoverageCoords(null); }}
+                    placeholder="Pega aqui todo lo copiado desde WhatsApp: coordenadas, enlace o ambos..." rows={4} autoFocus
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100" />
+                  {coverageCoords && <div className="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-800">
+                    <p className="font-extrabold">Coordenadas exactas extraidas</p>
+                    <p className="mt-1 font-mono">Lat: {coverageCoords.lat} &nbsp;|&nbsp; Lon: {coverageCoords.lon}</p>
+                  </div>}
+                </div>
+                {coverageError && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{coverageError}</div>}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button onClick={extraerCoordenadasCobertura} disabled={coverageBusy || !coverageInput.trim()}
+                    className="rounded-xl bg-slate-700 py-3 text-sm font-extrabold text-white hover:bg-slate-800 disabled:bg-slate-300">
+                    {coverageBusy ? "Extrayendo..." : "Extraer coordenadas"}
+                  </button>
+                  <button onClick={consultarCobertura} disabled={coverageBusy || !coverageCoords}
+                    className="rounded-xl bg-cyan-600 py-3 text-sm font-extrabold text-white hover:bg-cyan-700 disabled:bg-slate-300">
+                    {coverageBusy ? "Consultando..." : "Consultar cobertura"}
+                  </button>
+                </div>
+              </>}
+              {coverageResult && <>
+                <div ref={coverageCaptureRef} className="space-y-4 bg-white p-3">
+                <div className={`rounded-xl border-2 px-4 py-4 ${coverageResult.hasCoverage ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"}`}>
+                  <p className={`text-xl font-extrabold ${coverageResult.hasCoverage ? "text-green-700" : "text-red-700"}`}>
+                    {coverageResult.hasCoverage ? "Si tiene cobertura" : "No tiene cobertura"}
+                  </p>
+                  {coverageResult.coberturaDetalle && <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Por que</p>
+                    <p className="mt-1 text-sm text-slate-700">{coverageResult.coberturaDetalle}</p>
+                  </div>}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    ["Latitud", Number(coverageResult.latitude).toFixed(6)],
+                    ["Longitud", Number(coverageResult.longitude).toFixed(6)],
+                    ["Zona", coverageResult.zoneName || "Sin zona"],
+                    ["Seguridad", coverageResult.esZonaPeligrosa ? (coverageResult.peligroEtiqueta || "Zona restringida") : "Sin restriccion"],
+                    ["Hora", new Date(coverageResult.timestamp).toLocaleString("es-EC")],
+                  ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] text-slate-500">{label}</p><p className="mt-0.5 break-words text-xs font-bold text-slate-800">{value}</p>
+                  </div>)}
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-bold text-slate-600">Ubicacion en el mapa</p>
+                  <MapaCobertura lat={coverageResult.latitude} lon={coverageResult.longitude} modo="cliente" alto={260} zoom={16} interactivo />
+                  <LeyendaMapa />
+                  <a href={`https://maps.google.com/?q=${coverageResult.latitude},${coverageResult.longitude}`} target="_blank" rel="noopener noreferrer"
+                    className="mt-2 inline-block text-xs font-semibold text-blue-600 hover:underline">Abrir en Google Maps</a>
+                </div>
+                </div>
+                {coverageError && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{coverageError}</div>}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button onClick={copiarRespuestaCobertura} disabled={coverageCopying}
+                    className="rounded-xl bg-emerald-600 py-3 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60">
+                    {coverageCopying ? "Generando imagen..." : coverageCopied ? "Mapa copiado" : "Copiar mapa"}
+                  </button>
+                  <button onClick={() => { setCoverageInput(""); setCoverageCoords(null); setCoverageResult(null); setCoverageError(""); setCoverageCopied(false); }}
+                    className="rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">Nueva consulta</button>
+                </div>
+              </>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {bitrixModal === "add" && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">

@@ -99,6 +99,43 @@ function phoneFromDeal(deal) {
   return ''
 }
 
+// Respaldo final: webhook entrante (server-side). La app OAuth a veces no ve
+// el teléfono del contacto; el webhook sí. El número nunca sale al navegador.
+async function webhookGet(base, method, id) {
+  const url = `${String(base).replace(/\/+$/, '')}/${method}.json?id=${encodeURIComponent(id)}`
+  const controller = new AbortController()
+  const t = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    const json = await res.json().catch(() => ({}))
+    return json?.result || null
+  } catch (_) {
+    return null
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+async function phoneViaWebhook(deal, cleanDealId) {
+  const base = process.env.BITRIX_NOVONET_URL || ''
+  if (!base) return { phone: '', contactName: '' }
+  const whDeal = await webhookGet(base, 'crm.deal.get', cleanDealId)
+  const contactId = validId(whDeal?.CONTACT_ID) || validId(deal?.CONTACT_ID)
+  if (contactId) {
+    const contact = await webhookGet(base, 'crm.contact.get', contactId)
+    const phone = firstValidPhone(contact?.PHONE)
+    const name = [contact?.NAME, contact?.LAST_NAME].filter(Boolean).join(' ').trim()
+    if (phone) return { phone, contactName: name }
+  }
+  const companyId = validId(whDeal?.COMPANY_ID) || validId(deal?.COMPANY_ID)
+  if (companyId) {
+    const company = await webhookGet(base, 'crm.company.get', companyId)
+    const phone = firstValidPhone(company?.PHONE)
+    if (phone) return { phone, contactName: String(company?.TITLE || '') }
+  }
+  return { phone: whDeal ? phoneFromDeal(whDeal) : '', contactName: '' }
+}
+
 async function resolveDealPhone(bitrixApp, authId, dealId) {
   const cleanDealId = validId(dealId)
   if (!cleanDealId || !authId) throw new Error('ID de negociación inválido')
@@ -131,6 +168,11 @@ async function resolveDealPhone(bitrixApp, authId, dealId) {
     if (company?.TITLE) contactName = company.TITLE
   }
   if (!phone) phone = phoneFromDeal(deal)
+  if (!phone) {
+    const fallback = await phoneViaWebhook(deal, cleanDealId)
+    phone = fallback.phone
+    if (phone && fallback.contactName) contactName = fallback.contactName
+  }
   if (!phone) throw new Error('La negociación no tiene un teléfono válido asociado')
   return { phone, contactName, dealTitle: deal.TITLE || null }
 }

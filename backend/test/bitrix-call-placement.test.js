@@ -139,3 +139,61 @@ test('registers LLAMAR as a separate Bitrix deal tab', async () => {
   } }])
 })
 
+
+test('resolveDealPhone falls back to the phone written in the deal title when contact has none', async () => {
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '700001', TITLE: 'Andres:D - BASE API 593963463480', CONTACT_ID: '55' }),
+    llamar: async () => ({ ID: '55', NAME: 'Andres', PHONE: [] }),
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '700001')
+  assert.equal(result.phone, '593963463480')
+})
+
+test('resolveDealPhone falls back to a UF_ field and still fails when nothing is valid', async () => {
+  const withUf = {
+    llamarConAuthId: async () => ({ ID: '700002', TITLE: 'Sin numero', UF_CRM_TEL: '0991234567' }),
+    llamar: async () => ({}),
+  }
+  assert.equal((await resolveDealPhone(withUf, 'auth', '700002')).phone, '593991234567')
+  const empty = {
+    llamarConAuthId: async () => ({ ID: '700003', TITLE: 'Cedula 1712345678' }),
+    llamar: async () => ({}),
+  }
+  await assert.rejects(resolveDealPhone(empty, 'auth', '700003'), /teléfono válido/)
+})
+
+test('resolveDealPhone rereads contact link with the app token when the advisor cannot see it', async () => {
+  const calls = []
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '705677', TITLE: 'Karina Rivadeneira - REDES', CONTACT_ID: null }),
+    llamar: async (method, params) => {
+      calls.push(method)
+      if (method === 'crm.deal.get') return { ID: '705677', CONTACT_ID: '334753', COMPANY_ID: '0' }
+      if (method === 'crm.contact.get') return { ID: '334753', NAME: 'Karina', PHONE: [{ VALUE: '+593991234661' }] }
+      throw new Error(`unexpected ${method}`)
+    },
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '705677')
+  assert.equal(result.phone, '593991234661')
+  assert.deepEqual(calls, ['crm.deal.get', 'crm.contact.get'])
+})
+
+test('resolveDealPhone falls back to the inbound webhook when the app cannot see the phone', async (ctx) => {
+  process.env.BITRIX_NOVONET_URL = 'https://portal.example/rest/1/key/'
+  const realFetch = global.fetch
+  ctx.after(() => { delete process.env.BITRIX_NOVONET_URL; global.fetch = realFetch })
+  global.fetch = async (url) => ({
+    json: async () => {
+      if (String(url).includes('crm.deal.get')) return { result: { ID: '702771', CONTACT_ID: '332891' } }
+      if (String(url).includes('crm.contact.get')) return { result: { NAME: 'MB', LAST_NAME: 'Cliente', PHONE: [{ VALUE: '+593991234206' }] } }
+      return {}
+    },
+  })
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '702771', TITLE: 'MB - API 484', CONTACT_ID: '332891' }),
+    llamar: async () => ({ ID: '332891', NAME: 'MB', PHONE: [] }),
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '702771')
+  assert.equal(result.phone, '593991234206')
+  assert.equal(result.contactName, 'MB Cliente')
+})

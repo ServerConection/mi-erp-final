@@ -38,6 +38,38 @@ test('consulta la base sincronizada, normaliza teléfonos y elimina duplicados',
   assert.equal(result.items[0].name, 'Ana Pérez')
 })
 
+test('automarcador incluye un solo telefono por negocio', async () => {
+  const db = { query: async () => ({ rows: [
+    { bitrix_id: '703949', phone: '0991112233, 0982223344, 0973334455', etapa: 'gestion_diaria', created_at: '2026-11-10T15:00:00Z' },
+    { bitrix_id: '703950', phone: '0964445566; 0955556677', etapa: 'volver_a_llamar', created_at: '2026-11-10T16:00:00Z' },
+  ] }) }
+
+  const result = await service.consultar(
+    { empresa: 'NOVONET', perfil: 'SUPERVISOR' },
+    { solo_pipeline_oficial: true, date_from: '2026-11-10', date_to: '2026-11-10' },
+    db
+  )
+
+  assert.equal(result.total_deals, 2)
+  assert.equal(result.unique_contacts, 2)
+  assert.deepEqual(result.items.map(item => item.variables.bitrix_id), ['703949', '703950'])
+  assert.deepEqual(result.items.map(item => item.wa_number), ['593991112233', '593964445566'])
+})
+
+test('WABOT conserva todos los telefonos del negocio', async () => {
+  const db = { query: async () => ({ rows: [
+    { bitrix_id: '10', phone: '0991112233, 0982223344', etapa: 'gestion_diaria', created_at: '2026-11-10T15:00:00Z' },
+  ] }) }
+
+  const result = await service.consultar(
+    { empresa: 'NOVONET', perfil: 'SUPERVISOR' },
+    { date_from: '2026-11-10', date_to: '2026-11-10' },
+    db
+  )
+
+  assert.equal(result.unique_contacts, 2)
+})
+
 test('sin etapas ni responsables trae todo el rango de fechas', async () => {
   const db = { query: async (sql, params) => {
     assert.doesNotMatch(sql, /ANY/)

@@ -177,3 +177,23 @@ test('resolveDealPhone rereads contact link with the app token when the advisor 
   assert.equal(result.phone, '593991234661')
   assert.deepEqual(calls, ['crm.deal.get', 'crm.contact.get'])
 })
+
+test('resolveDealPhone falls back to the inbound webhook when the app cannot see the phone', async (ctx) => {
+  process.env.BITRIX_NOVONET_URL = 'https://portal.example/rest/1/key/'
+  const realFetch = global.fetch
+  ctx.after(() => { delete process.env.BITRIX_NOVONET_URL; global.fetch = realFetch })
+  global.fetch = async (url) => ({
+    json: async () => {
+      if (String(url).includes('crm.deal.get')) return { result: { ID: '702771', CONTACT_ID: '332891' } }
+      if (String(url).includes('crm.contact.get')) return { result: { NAME: 'MB', LAST_NAME: 'Cliente', PHONE: [{ VALUE: '+593991234206' }] } }
+      return {}
+    },
+  })
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '702771', TITLE: 'MB - API 484', CONTACT_ID: '332891' }),
+    llamar: async () => ({ ID: '332891', NAME: 'MB', PHONE: [] }),
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '702771')
+  assert.equal(result.phone, '593991234206')
+  assert.equal(result.contactName, 'MB Cliente')
+})

@@ -78,6 +78,27 @@ function firstValidPhone(entries) {
   return ''
 }
 
+// Celular Ecuador (5939XXXXXXXX / 09XXXXXXXX) escrito en texto libre, p. ej. el título del deal.
+function phoneFromText(text) {
+  const match = String(text || '').match(/(?:\+?593|0)9\d{8}(?!\d)/)
+  return match ? normalizePhoneEC(match[0]) : ''
+}
+
+// Respaldo: deals creados por API sin contacto/teléfono traen el número en el título o en campos UF_.
+function phoneFromDeal(deal) {
+  const fromTitle = phoneFromText(deal?.TITLE)
+  if (fromTitle) return fromTitle
+  for (const [key, value] of Object.entries(deal || {})) {
+    if (!key.startsWith('UF_') || value == null) continue
+    const values = Array.isArray(value) ? value : [value]
+    for (const item of values) {
+      const phone = typeof item === 'object' ? normalizePhoneEC(item?.VALUE) : phoneFromText(item)
+      if (phone) return phone
+    }
+  }
+  return ''
+}
+
 async function resolveDealPhone(bitrixApp, authId, dealId) {
   const cleanDealId = validId(dealId)
   if (!cleanDealId || !authId) throw new Error('ID de negociación inválido')
@@ -100,6 +121,7 @@ async function resolveDealPhone(bitrixApp, authId, dealId) {
     phone = firstValidPhone(company?.PHONE)
     if (company?.TITLE) contactName = company.TITLE
   }
+  if (!phone) phone = phoneFromDeal(deal)
   if (!phone) throw new Error('La negociación no tiene un teléfono válido asociado')
   return { phone, contactName, dealTitle: deal.TITLE || null }
 }

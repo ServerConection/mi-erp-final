@@ -139,3 +139,25 @@ test('registers LLAMAR as a separate Bitrix deal tab', async () => {
   } }])
 })
 
+
+test('resolveDealPhone falls back to the phone written in the deal title when contact has none', async () => {
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '700001', TITLE: 'Andres:D - BASE API 593963463480', CONTACT_ID: '55' }),
+    llamar: async () => ({ ID: '55', NAME: 'Andres', PHONE: [] }),
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '700001')
+  assert.equal(result.phone, '593963463480')
+})
+
+test('resolveDealPhone falls back to a UF_ field and still fails when nothing is valid', async () => {
+  const withUf = {
+    llamarConAuthId: async () => ({ ID: '700002', TITLE: 'Sin numero', UF_CRM_TEL: '0991234567' }),
+    llamar: async () => ({}),
+  }
+  assert.equal((await resolveDealPhone(withUf, 'auth', '700002')).phone, '593991234567')
+  const empty = {
+    llamarConAuthId: async () => ({ ID: '700003', TITLE: 'Cedula 1712345678' }),
+    llamar: async () => ({}),
+  }
+  await assert.rejects(resolveDealPhone(empty, 'auth', '700003'), /teléfono válido/)
+})

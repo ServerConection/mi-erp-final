@@ -107,6 +107,15 @@ async function resolveDealPhone(bitrixApp, authId, dealId) {
 
   let phone = ''
   let contactName = deal.TITLE || `Negociación #${cleanDealId}`
+  // Sin permiso sobre contactos, Bitrix devuelve al asesor el deal sin CONTACT_ID/COMPANY_ID.
+  // Ya validado el acceso al deal, se releen los vínculos con el token de la app.
+  if (!validId(deal.CONTACT_ID) && !validId(deal.COMPANY_ID)) {
+    const appDeal = await bitrixApp.llamar('crm.deal.get', { id: cleanDealId })
+    if (appDeal) {
+      deal.CONTACT_ID = appDeal.CONTACT_ID
+      deal.COMPANY_ID = appDeal.COMPANY_ID
+    }
+  }
   if (validId(deal.CONTACT_ID)) {
     // El deal ya se validó con el AUTH_ID del asesor (arriba). El teléfono se lee con el
     // token de la app porque los asesores no tienen permiso para ver contactos en Bitrix.

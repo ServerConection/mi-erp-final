@@ -161,3 +161,19 @@ test('resolveDealPhone falls back to a UF_ field and still fails when nothing is
   }
   await assert.rejects(resolveDealPhone(empty, 'auth', '700003'), /teléfono válido/)
 })
+
+test('resolveDealPhone rereads contact link with the app token when the advisor cannot see it', async () => {
+  const calls = []
+  const bitrixApp = {
+    llamarConAuthId: async () => ({ ID: '705677', TITLE: 'Karina Rivadeneira - REDES', CONTACT_ID: null }),
+    llamar: async (method, params) => {
+      calls.push(method)
+      if (method === 'crm.deal.get') return { ID: '705677', CONTACT_ID: '334753', COMPANY_ID: '0' }
+      if (method === 'crm.contact.get') return { ID: '334753', NAME: 'Karina', PHONE: [{ VALUE: '+593991234661' }] }
+      throw new Error(`unexpected ${method}`)
+    },
+  }
+  const result = await resolveDealPhone(bitrixApp, 'auth', '705677')
+  assert.equal(result.phone, '593991234661')
+  assert.deepEqual(calls, ['crm.deal.get', 'crm.contact.get'])
+})

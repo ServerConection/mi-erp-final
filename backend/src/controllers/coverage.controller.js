@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const pool   = require('../config/db');
 const { bitrixCall, bitrixCallNovonet } = require('../services/bitrix.service');
-const { claveNombre } = require('../services/asesorMatcher.service');
+const { nombresEquivalentesParaVincular } = require('../services/usuarioBitrixIdentity.service');
 // xml2js ya NO se usa para KML — reemplazado por parser regex de bajo consumo
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -475,6 +475,99 @@ function ensureCoverageConsultasTable() {
     });
   }
   return coverageConsultasTablePromise;
+}
+
+// Asociación estable entre la cuenta ERP y el usuario responsable en Bitrix.
+// Se crea también en caliente para que el deploy no dependa del orden en que
+// Render ejecute las migraciones.
+let usuariosBitrixTablePromise = null;
+function ensureUsuariosBitrixTable() {
+  if (!usuariosBitrixTablePromise) {
+    usuariosBitrixTablePromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS public.usuarios_bitrix (
+        usuario_id      BIGINT NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+        empresa         TEXT NOT NULL,
+        bitrix_user_id  TEXT NOT NULL,
+        bitrix_nombre   TEXT,
+        vinculado_por   TEXT NOT NULL DEFAULT 'nombre_normalizado',
+        creado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (usuario_id, empresa),
+        UNIQUE (empresa, bitrix_user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_usuarios_bitrix_usuario
+        ON public.usuarios_bitrix (usuario_id);
+    `).catch((error) => {
+      usuariosBitrixTablePromise = null;
+      throw error;
+    });
+  }
+  return usuariosBitrixTablePromise;
+}
+
+async function validarOVincularUsuarioBitrix({ user, empresa, bitrixUserId, bitrixNombre, bitrixEmail }) {
+  await ensureUsuariosBitrixTable();
+  const usuarioId = user?.id;
+  const empresaNormalizada = String(empresa || '').trim().toUpperCase();
+  const responsableId = String(bitrixUserId || '').trim();
+  if (!usuarioId || !empresaNormalizada || !responsableId) return { ok: false, motivo: 'identidad_incompleta' };
+
+  const existente = await pool.query(
+    `SELECT bitrix_user_id
+       FROM public.usuarios_bitrix
+      WHERE usuario_id = $1 AND empresa = $2
+      LIMIT 1`,
+    [usuarioId, empresaNormalizada]
+  );
+  if (existente.rowCount) {
+    const coincide = String(existente.rows[0].bitrix_user_id) === responsableId;
+    if (coincide) {
+      await pool.query(
+        `UPDATE public.usuarios_bitrix
+            SET bitrix_nombre = $3, actualizado_en = NOW()
+          WHERE usuario_id = $1 AND empresa = $2`,
+        [usuarioId, empresaNormalizada, bitrixNombre || null]
+      );
+    }
+    return { ok: coincide, motivo: coincide ? 'id_bitrix' : 'id_bitrix_distinto' };
+  }
+
+  // Primera consulta de un usuario aún no vinculado. El correo exacto es la
+  // señal preferida; si falta, se acepta únicamente el nombre legal completo.
+  const usuarioErp = await pool.query(
+    `SELECT correo FROM public.usuarios WHERE id = $1 LIMIT 1`,
+    [usuarioId]
+  );
+  const correoErp = String(usuarioErp.rows[0]?.correo || '').trim().toLowerCase();
+  const correoBitrix = String(bitrixEmail || '').trim().toLowerCase();
+  const coincideCorreo = Boolean(correoErp && correoBitrix && correoErp === correoBitrix);
+  const coincideNombre = nombresEquivalentesParaVincular(user.nombreCompleto || '', bitrixNombre || '');
+  if (!coincideCorreo && !coincideNombre) {
+    return { ok: false, motivo: 'identidad_no_coincide' };
+  }
+
+  const vinculadoPor = coincideCorreo ? 'correo' : 'nombre_normalizado';
+
+  await pool.query(
+    `INSERT INTO public.usuarios_bitrix
+       (usuario_id, empresa, bitrix_user_id, bitrix_nombre, vinculado_por)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT DO NOTHING`,
+    [usuarioId, empresaNormalizada, responsableId, bitrixNombre || null, vinculadoPor]
+  );
+
+  // Releer después del INSERT resuelve correctamente carreras y evita que el
+  // mismo ID externo termine asociado a dos cuentas ERP.
+  const confirmado = await pool.query(
+    `SELECT usuario_id, bitrix_user_id
+       FROM public.usuarios_bitrix
+      WHERE empresa = $2
+        AND (usuario_id = $1 OR bitrix_user_id = $3)`,
+    [usuarioId, empresaNormalizada, responsableId]
+  );
+  const vinculo = confirmado.rows.find((r) => String(r.usuario_id) === String(usuarioId));
+  const ok = Boolean(vinculo && String(vinculo.bitrix_user_id) === responsableId);
+  return { ok, motivo: ok ? 'vinculado_automaticamente' : 'vinculo_en_conflicto' };
 }
 
 async function registrarConsultaCobertura(req, datos) {
@@ -1618,7 +1711,21 @@ exports.checkCoverage = async (req, res) => {
         const usuarioBitrix = await llamarBitrix('user.get', { FILTER: { ID: responsableId } });
         const responsable = usuarioBitrix.result?.[0];
         const nombreResponsable = [responsable?.NAME, responsable?.LAST_NAME].filter(Boolean).join(' ');
-        if (!nombreResponsable || claveNombre(nombreResponsable) !== claveNombre(req.user?.nombreCompleto || '')) {
+        const validacionResponsable = await validarOVincularUsuarioBitrix({
+          user: req.user,
+          empresa,
+          bitrixUserId: responsableId,
+          bitrixNombre: nombreResponsable,
+          bitrixEmail: responsable?.EMAIL,
+        });
+        if (!validacionResponsable.ok) {
+          console.warn('[Coverage] Responsable Bitrix no autorizado', {
+            usuarioId: req.user?.id,
+            empresa,
+            negociacionId,
+            responsableId,
+            motivo: validacionResponsable.motivo,
+          });
           return res.status(403).json({ status: 'error', message: 'La negociacion no corresponde al asesor autenticado.' });
         }
       }

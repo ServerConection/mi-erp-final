@@ -14,14 +14,16 @@ test('message history is chronological and no longer truncates at the oldest 500
   const sql = []
   const controller = loadController(async (statement) => {
     sql.push(statement)
-    if (statement.includes('FROM conversations c')) return { rows: [{ id: 'c', line_id: 'l', wa_number: '5939' }] }
+    if (statement.includes('SELECT c.*, l.created_by AS line_created_by')) {
+      return { rows: [{ id: 'c', line_id: 'l', wa_number: '5939' }] }
+    }
     return { rows: [] }
   })
   const req = { params: { id: 'c' }, user: { id: 1, perfil: 'ADMINISTRADOR' }, app: { get: () => null } }
   const res = { status() { return this }, json(body) { this.body = body } }
   await controller.getMessages(req, res)
-  const history = sql.find(s => s.includes('FROM messages WHERE conversation_id'))
-  assert.match(history, /ORDER BY timestamp ASC/)
+  const history = sql.find(s => s.includes('FROM messages m') && s.includes('ORDER BY m.timestamp ASC'))
+  assert.match(history, /ORDER BY m\.timestamp ASC/)
   assert.doesNotMatch(history, /LIMIT 500/)
   delete require.cache[controllerPath]; delete require.cache[dbPath]
 })
@@ -29,12 +31,30 @@ test('message history is chronological and no longer truncates at the oldest 500
 test('Human filter includes legacy human and current human_takeover statuses', async () => {
   let listSql = ''
   const controller = loadController(async (statement) => {
-    if (statement.includes('FROM conversations c') && statement.includes('ORDER BY c.last_msg_at')) listSql = statement
+    if (statement.includes('WITH base AS')) listSql = statement
     return { rows: [] }
   })
   const req = { query: { status: 'human_takeover' }, user: { id: 1, perfil: 'ADMINISTRADOR' } }
   const res = { status() { return this }, json(body) { this.body = body } }
   await controller.getAll(req, res)
   assert.match(listSql, /c\.status IN \('human','human_takeover'\)/)
+  delete require.cache[controllerPath]; delete require.cache[dbPath]
+})
+
+test('Inbox obtiene el ultimo mensaje una sola vez y cuenta no leidos con indices', async () => {
+  let listSql = ''
+  const controller = loadController(async (statement) => {
+    if (statement.includes('WITH base AS')) listSql = statement
+    return { rows: [] }
+  })
+  const req = { query: { limit: '500' }, user: { id: 1, perfil: 'USUARIO' } }
+  const res = { status() { return this }, json(body) { this.body = body } }
+  await controller.getAll(req, res)
+  assert.equal(res.body.success, true)
+  assert.match(listSql, /LEFT JOIN LATERAL/)
+  assert.match(listSql, /unnest\(top\.conversation_ids\)/)
+  assert.match(listSql, /m\.direction = 'in'/)
+  assert.doesNotMatch(listSql, /SELECT content FROM messages/)
+  assert.doesNotMatch(listSql, /SELECT direction FROM messages/)
   delete require.cache[controllerPath]; delete require.cache[dbPath]
 })

@@ -255,22 +255,36 @@ async function getAll(req, res) {
              l.name AS line_name,
              l.phone_number AS line_phone,
              top.conversation_ids,
-             (SELECT content FROM messages m
-              WHERE m.conversation_id = ANY(top.conversation_ids) ORDER BY timestamp DESC LIMIT 1) AS last_message,
-             (SELECT direction FROM messages m
-              WHERE m.conversation_id = ANY(top.conversation_ids) ORDER BY timestamp DESC LIMIT 1) AS last_direction,
-             (SELECT COUNT(*)::int FROM messages m
-               LEFT JOIN conversation_reads cr
-                      ON cr.conversation_id = m.conversation_id AND cr.user_id = $${pUser}
-               WHERE m.conversation_id = ANY(top.conversation_ids)
-                 AND m.direction = 'in'
-                 AND m.timestamp > NOW() - INTERVAL '30 days'
-                 AND m.timestamp > COALESCE(cr.last_read_at, TIMESTAMPTZ 'epoch')
-             ) AS unread_calc
+             ultimo.content AS last_message,
+             ultimo.direction AS last_direction,
+             COALESCE(no_leidos.total, 0)::int AS unread_calc
       FROM top
       JOIN conversations c ON c.id = top.id
       LEFT JOIN contacts ct ON c.contact_id = ct.id
       LEFT JOIN lines l ON c.line_id = l.id
+      -- Un solo recorrido indexado obtiene contenido y dirección. Antes eran
+      -- dos subconsultas idénticas por cada chat mostrado.
+      LEFT JOIN LATERAL (
+        SELECT m.content, m.direction
+        FROM unnest(top.conversation_ids) AS ids(id)
+        JOIN messages m ON m.conversation_id = ids.id
+        ORDER BY m.timestamp DESC
+        LIMIT 1
+      ) ultimo ON TRUE
+      -- El conteo toca únicamente mensajes entrantes de los chats ya
+      -- seleccionados. El JOIN explícito con unnest permite usar el índice
+      -- (conversation_id, direction, timestamp) de forma consistente.
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total
+        FROM unnest(top.conversation_ids) AS ids(id)
+        JOIN messages m
+          ON m.conversation_id = ids.id
+         AND m.direction = 'in'
+         AND m.timestamp > NOW() - INTERVAL '30 days'
+        LEFT JOIN conversation_reads cr
+          ON cr.conversation_id = ids.id AND cr.user_id = $${pUser}
+        WHERE m.timestamp > COALESCE(cr.last_read_at, TIMESTAMPTZ 'epoch')
+      ) no_leidos ON TRUE
       ORDER BY top.last_msg_at DESC NULLS LAST
     `, params)
 
@@ -282,6 +296,7 @@ async function getAll(req, res) {
 
     res.json({ success: true, data })
   } catch (err) {
+    console.error('[wa_conversations.getAll] Error listando Inbox:', err)
     res.status(500).json({ success: false, error: (process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message) })
   }
 }

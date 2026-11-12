@@ -318,6 +318,11 @@ CREATE INDEX IF NOT EXISTS idx_proxy_quemados_host ON proxy_puertos_quemados(hos
 -- Índice para que el conteo de no leídos no recorra la tabla de mensajes
 CREATE INDEX IF NOT EXISTS idx_messages_conv_dir_ts
   ON messages(conversation_id, direction, timestamp DESC);
+-- El Inbox obtiene el último mensaje de cada conversación. Este índice evita
+-- ordenar el historial completo y permite servir contenido/dirección desde el
+-- propio índice en instalaciones recientes de PostgreSQL.
+CREATE INDEX IF NOT EXISTS idx_messages_conv_ts_inbox
+  ON messages(conversation_id, timestamp DESC);
 
 -- Idempotencia para eventos nuevos sin alterar, fusionar ni borrar el historial.
 -- Los mensajes históricos conservan NULL y quedan fuera de la restricción.

@@ -16,6 +16,7 @@ const PILOTO_API = `${ORIGIN}/api/piloto-llamadas`; // Piloto Llamadas PC
 const AGENTE_PC = "http://127.0.0.1:5005";            // agente en la PC del asesor piloto
 // media_url relativo (/wa-uploads/...) → anteponer origen para mostrarlo
 const mediaSrc = (url) => (!url ? url : /^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
+const MEDIA_SIN_ARCHIVO = { image: "📷 Imagen", sticker: "🏷️ Sticker", audio: "🎤 Audio", video: "🎬 Video", document: "📎 Documento" };
 const isImage = (msg) => ["image", "sticker"].includes(msg.type) || /\.(jpe?g|png|gif|webp)$/i.test(msg.media_url || "");
 // La implementación antigua guardaba un mensaje apenas enviaba una señal
 // incompleta, aunque el teléfono nunca hubiese sonado. No mostrar esos falsos
@@ -1160,6 +1161,10 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                         className="text-xs underline text-[#027eb5]">
                         📎 Ver archivo
                       </a>
+                    ) : !msg.content && MEDIA_SIN_ARCHIVO[msg.type] ? (
+                      // El archivo se envió/recibió en WhatsApp pero el servidor no
+                      // pudo guardarlo: antes salía una burbuja vacía.
+                      <p className="text-xs italic text-[#667781]">{MEDIA_SIN_ARCHIVO[msg.type]} (no se pudo mostrar aquí; míralo en el teléfono)</p>
                     ) : null}
                     {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                     <div className={`text-[11px] mt-0.5 text-right ${msg.type === "internal_note" ? "text-slate-300" : "text-[#667781]"}`}>

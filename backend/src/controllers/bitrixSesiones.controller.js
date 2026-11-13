@@ -45,8 +45,9 @@ const BITRIX_APIS = {
 const TIMEOUT   = 15_000;
 const BATCH_MAX = 50;              // límite duro de Bitrix por llamada batch
 const CACHE_TTL = 60 * 1000;       // el tablero refresca cada 60 s
+const SOURCE_STALE_TTL = 10 * 60 * 1000; // conserva el último resultado sano ante fallos transitorios
 
-const _cache = { data: null, expira: 0 };
+const _cache = { data: null, expira: 0, fuentes: {} };
 
 const normalizar = (v) => String(v || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -109,10 +110,34 @@ async function bitrixCall(baseUrl, metodo, params = {}) {
 
   const r = await fetch(`${baseUrl}/${metodo}.json?${qs.toString()}`,
     { signal: AbortSignal.timeout(TIMEOUT) });
-  if (!r.ok) throw new Error(`${metodo} HTTP ${r.status}`);
+  if (!r.ok) {
+    const error = new Error(`${metodo} HTTP ${r.status}`);
+    error.transitorio = r.status === 429 || r.status >= 500;
+    throw error;
+  }
   const j = await r.json();
-  if (j.error) throw new Error(`${metodo}: ${j.error_description || j.error}`);
+  if (j.error) {
+    const error = new Error(`${metodo}: ${j.error_description || j.error}`);
+    error.codigoBitrix = j.error;
+    error.transitorio = ['QUERY_LIMIT_EXCEEDED', 'OPERATION_TIME_LIMIT'].includes(j.error);
+    throw error;
+  }
   return j.result;
+}
+
+async function bitrixCallConReintento(baseUrl, metodo, params = {}, intentos = 3) {
+  let ultimoError;
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      return await bitrixCall(baseUrl, metodo, params);
+    } catch (error) {
+      ultimoError = error;
+      const timeout = /timeout|aborted/i.test(`${error?.name || ''} ${error?.message || ''}`);
+      if (intento === intentos || (!error.transitorio && !timeout)) throw error;
+      await esperarMs(500 * intento + Math.floor(Math.random() * 250));
+    }
+  }
+  throw ultimoError;
 }
 
 /**
@@ -195,7 +220,7 @@ async function traerCuenta(baseUrl, cuenta, mapaEmpresas) {
   const usuarios = [];
   let start = 0;
   while (true) {
-    const res = await bitrixCall(baseUrl, 'user.get', { ACTIVE: 'Y', start });
+    const res = await bitrixCallConReintento(baseUrl, 'user.get', { ACTIVE: 'Y', start });
     const lote = Array.isArray(res) ? res : (res?.result || []);
     usuarios.push(...lote);
     if (lote.length < 50) break;
@@ -208,7 +233,7 @@ async function traerCuenta(baseUrl, cuenta, mapaEmpresas) {
   // 2 · Datos de mensajería: móvil vs escritorio
   let im = {};
   try {
-    const res = await bitrixCall(baseUrl, 'im.user.list.get', { ID: ids });
+    const res = await bitrixCallConReintento(baseUrl, 'im.user.list.get', { ID: ids });
     if (res && typeof res === 'object') im = res;
   } catch (e) {
     console.warn(`[bitrix-sesiones ${cuenta}] im.user.list.get:`, e.message);
@@ -249,6 +274,7 @@ async function traerCuenta(baseUrl, cuenta, mapaEmpresas) {
       nombre,
       cuenta:       empresaClasificada,
       portalCuenta: cuenta,
+      timemanDisponible,
       cargo:        u.WORK_POSITION || null,
       email:        u.EMAIL || null,
       online:       u.IS_ONLINE === 'Y' || imu.status === 'online',
@@ -284,9 +310,24 @@ async function recolectar({ forzar = false } = {}) {
   if (!forzar && _cache.data && Date.now() < _cache.expira) return _cache.data;
 
   const mapaEmpresas = await mapaEmpresasUsuarios();
+  const consultarFuente = async (cuenta) => {
+    try {
+      const fresca = await traerCuenta(BITRIX_APIS[cuenta], cuenta, mapaEmpresas);
+      _cache.fuentes[cuenta] = { data: fresca, guardada: Date.now() };
+      return fresca;
+    } catch (e) {
+      const anterior = _cache.fuentes[cuenta];
+      if (anterior && Date.now() - anterior.guardada <= SOURCE_STALE_TTL) {
+        console.warn(`[bitrix-sesiones ${cuenta}] ${e.message}; usando último resultado sano`);
+        return { ...anterior.data, error: e.message, datosEnCache: true };
+      }
+      return { cuenta, usuarios: [], timemanDisponible: false, error: e.message, datosEnCache: false };
+    }
+  };
+
   const [nov, vel] = await Promise.all([
-    traerCuenta(BITRIX_APIS.NOVONET, 'NOVONET', mapaEmpresas).catch(e => ({ cuenta: 'NOVONET', usuarios: [], timemanDisponible: false, error: e.message })),
-    traerCuenta(BITRIX_APIS.VELSA,   'VELSA', mapaEmpresas).catch(e => ({ cuenta: 'VELSA',   usuarios: [], timemanDisponible: false, error: e.message })),
+    consultarFuente('NOVONET'),
+    consultarFuente('VELSA'),
   ]);
 
   // La licencia NOVONET es corporativa y puede devolver también personas de
@@ -301,8 +342,8 @@ async function recolectar({ forzar = false } = {}) {
     usuarios,
     timemanDisponible: nov.timemanDisponible || vel.timemanDisponible,
     fuentes: {
-      NOVONET: { usuarios: nov.usuarios.length, timeman: nov.timemanDisponible, error: nov.error || null },
-      VELSA:   { usuarios: vel.usuarios.length, timeman: vel.timemanDisponible, error: vel.error || null },
+      NOVONET: { usuarios: nov.usuarios.length, timeman: nov.timemanDisponible, error: nov.error || null, datosEnCache: !!nov.datosEnCache },
+      VELSA:   { usuarios: vel.usuarios.length, timeman: vel.timemanDisponible, error: vel.error || null, datosEnCache: !!vel.datosEnCache },
     },
     generado: new Date().toISOString(),
   };
@@ -391,6 +432,16 @@ const getLive = async (req, res) => {
   try {
     const base = await recolectar();
     const universo = universoPara(base, req.user);
+    const empresa = empresaVisible(req.user);
+    // VELSA también puede venir del portal corporativo NOVONET; por eso ambas
+    // fuentes son relevantes para ese usuario. NOVONET solo depende de la suya.
+    const nombresFuentes = empresa === 'VELSA' ? ['NOVONET', 'VELSA'] : ['NOVONET'];
+    const fuentes = Object.fromEntries(nombresFuentes.map(k => [k, base.fuentes[k]]));
+    const fuentesConError = Object.entries(fuentes)
+      .filter(([, v]) => v?.error)
+      // El detalle queda en logs; al navegador no se filtran mensajes del
+      // proveedor que puedan incluir información técnica de la integración.
+      .map(([cuenta, v]) => ({ cuenta, datosEnCache: !!v.datosEnCache }));
     const filtrados = aplicarFiltros(universo, { ...req.query, cuenta: empresaVisible(req.user) });
 
     const conJornada = filtrados.filter(u => u.conectadoSeg != null);
@@ -401,8 +452,11 @@ const getLive = async (req, res) => {
     res.json({
       success: true,
       generado: base.generado,
-      timemanDisponible: base.timemanDisponible,
-      empresa: empresaVisible(req.user),
+      timemanDisponible: universo.some(u => u.timemanDisponible),
+      consultaDegradada: fuentesConError.length > 0,
+      sinDatosPorError: universo.length === 0 && fuentesConError.length === nombresFuentes.length,
+      fuentesConError,
+      empresa,
       puedeCerrarJornada: puedeCerrarJornada(req.user),
       // Las opciones salen del universo COMPLETO, no del filtrado: si vinieran
       // del filtrado, al elegir un valor desaparecerían los demás y el usuario

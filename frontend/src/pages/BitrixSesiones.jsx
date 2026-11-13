@@ -248,8 +248,25 @@ export default function BitrixSesiones() {
         </div>
       </header>
 
+      {/* Un fallo de consulta no significa que el registro de jornada esté apagado. */}
+      {res?.consultaDegradada && (
+        <div className="ui-card ui-in px-4 py-3.5 flex gap-3" style={{ borderColor: "#f2d5da", background: "#fffafb" }}>
+          <span style={{ color: "var(--ui-bad)" }} className="mt-0.5 shrink-0">{I.alert}</span>
+          <div>
+            <div className="ui-strong">
+              {res.sinDatosPorError ? "Bitrix no respondió a esta consulta" : "Algunos datos de Bitrix no se pudieron actualizar"}
+            </div>
+            <p className="ui-body mt-1 leading-relaxed">
+              {res.fuentesConError?.some(x => x.datosEnCache)
+                ? "Se conserva el último resultado correcto para evitar mostrar el panel vacío. Intenta actualizar nuevamente en un momento."
+                : "No se reemplazarán datos válidos por ceros. Intenta actualizar nuevamente en un momento."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Aviso: jornada laboral apagada ── */}
-      {res && !res.timemanDisponible && (
+      {res && !res.timemanDisponible && !res.consultaDegradada && (
         <div className="ui-card ui-in px-4 py-3.5 flex gap-3" style={{ borderColor: "#f0e0c0", background: "#fffcf5" }}>
           <span style={{ color: "var(--ui-warn)" }} className="mt-0.5 shrink-0">{I.alert}</span>
           <div>
@@ -420,7 +437,7 @@ export default function BitrixSesiones() {
                 );
               })}
 
-              {!filas.length && !loading && (
+              {!filas.length && !loading && !res?.sinDatosPorError && (
                 <tr><td colSpan={res?.puedeCerrarJornada ? 8 : 7} style={{ padding: "56px 16px", textAlign: "center" }}>
                   <div className="ui-body">Ningún usuario coincide con estos filtros.</div>
                   {fichas.length > 0 && (
@@ -428,6 +445,12 @@ export default function BitrixSesiones() {
                       Limpiar {fichas.length === 1 ? "el filtro" : `los ${fichas.length} filtros`}
                     </button>
                   )}
+                </td></tr>
+              )}
+              {!filas.length && !loading && res?.sinDatosPorError && (
+                <tr><td colSpan={res?.puedeCerrarJornada ? 8 : 7} style={{ padding: "56px 16px", textAlign: "center" }}>
+                  <div className="ui-body">No fue posible obtener usuarios desde Bitrix en este momento.</div>
+                  <button onClick={() => cargar(true)} className="ui-btn ui-t mt-3">Reintentar</button>
                 </td></tr>
               )}
               {loading && !filas.length && (

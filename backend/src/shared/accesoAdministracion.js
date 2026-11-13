@@ -14,7 +14,7 @@ function puedeAccederAdministracion(perfil) { return perfilAdministracion(perfil
 function puedeAccederComisiones(perfil) {
   const normalizado = String(perfil || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .trim().replace(/\s+/g, ' ').toUpperCase();
-  return puedeAccederAdministracion(normalizado) || normalizado === 'ANALISTA';
+  return puedeAccederAdministracion(normalizado) || ['ANALISTA', 'CONTABILIDAD'].includes(normalizado);
 }
 
 function soloAdministracion(req, res, next) {

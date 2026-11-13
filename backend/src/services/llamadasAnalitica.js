@@ -29,15 +29,39 @@ function validDate(value, time=false) {
   const d=new Date(time ? value.replace(' ','T')+'Z' : value+'T00:00:00Z');
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0,time?19:10).replace('T',' ')===value;
 }
+// XLSX del proveedor: primera hoja, fechas Excel -> 'YYYY-MM-DD HH:MM:SS', números -> texto.
+function xlsxTable(buffer) {
+  const XLSX=require('xlsx');
+  let wb;
+  try {wb=XLSX.read(buffer,{type:'buffer',cellDates:false,raw:true});} catch {throw invalid('No se pudo leer el Excel.');}
+  const sheet=wb.Sheets[wb.SheetNames[0]];
+  if(!sheet) throw invalid('El Excel no tiene hojas.');
+  const pad=n=>String(n).padStart(2,'0');
+  const data=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:'',blankrows:false});
+  if(data.length>MAX_ROWS+1) throw invalid('Máximo 100.000 filas por archivo.');
+  const headers=(data[0]||[]).map(normal),fechaCol=headers.indexOf('FECHA');
+  return data.map((row,i)=>row.map((v,j)=>{
+    if(i>0 && j===fechaCol && typeof v==='number') {
+      const d=XLSX.SSF.parse_date_code(v);
+      return d ? `${d.y}-${pad(d.m)}-${pad(d.d)} ${pad(d.H)}:${pad(d.M)}:${pad(Math.floor(d.S))}` : String(v);
+    }
+    return typeof v==='number' ? (Number.isInteger(v)?v.toFixed(0):String(v)) : String(v ?? '');
+  })).filter(row=>row.some(v=>v.trim()));
+}
 function parseFile(file) {
   const name=file.originalname;
-  const match=/^(?:cdr_)?(inbound|outbound)_(Netlife|Ecuanet)_(\d{8})_(\d{8})\.csv$/i.exec(name);
-  if(!match) throw invalid('Nombre inválido: use inbound_Netlife_YYYYMMDD_YYYYMMDD.csv (o outbound/Ecuanet, con cdr_ opcional).');
+  const match=/^(?:cdr_)?(inbound|outbound)_(Netlife|Ecuanet)_(\d{8})_(\d{8})(?: ?\(\d+\))?\.(csv|xlsx)$/i.exec(name);
+  if(!match) throw invalid('Nombre inválido: use inbound_Netlife_YYYYMMDD_YYYYMMDD.xlsx o .csv (o outbound/Ecuanet, con cdr_ opcional).');
   if(file.buffer.length>10*1024*1024) throw invalid('Máximo 10 MB por archivo.');
   const empresa=match[2].toUpperCase(),direccion=match[1].toLowerCase();
-  const text=new TextDecoder('utf-8',{fatal:true}); let decoded;
-  try {decoded=text.decode(file.buffer);} catch {throw invalid('El CSV debe estar codificado en UTF-8.');}
-  const table=csv(decoded),headers=table.shift()?.map(normal);
+  let table;
+  if(match[5].toLowerCase()==='xlsx') table=xlsxTable(file.buffer);
+  else {
+    const text=new TextDecoder('utf-8',{fatal:true}); let decoded;
+    try {decoded=text.decode(file.buffer);} catch {throw invalid('El CSV debe estar codificado en UTF-8.');}
+    table=csv(decoded);
+  }
+  const headers=table.shift()?.map(normal);
   const required=['FECHA','NOMBRE AGENTE',direccion==='inbound'?'ORIGEN':'DESTINO','DURACION','SEGUNDOS FACTURADOS','DISPOSICION','COSTO',...(direccion==='inbound'?['TIEMPO ESPERA']:[])];
   if(!headers || new Set(headers).size!==headers.length || required.some(h=>!headers.includes(h))) throw invalid('Columnas incompletas o duplicadas para '+direccion+'.');
   const rows=[],errores=[]; let rechazadas=0;

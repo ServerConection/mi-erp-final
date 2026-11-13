@@ -340,7 +340,7 @@ export default function WaCampanas() {
           {PUEDE_VER_REPORTE && (
             <button onClick={() => setVerReporte(true)}
               className="border border-blue-600 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-              📊 Reporte de uso
+              📊 Reporte de campañas
             </button>
           )}
           <button onClick={openNew}

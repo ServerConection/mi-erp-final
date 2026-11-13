@@ -264,11 +264,22 @@ async function getAll(req, res) {
       LEFT JOIN lines l ON c.line_id = l.id
       -- Un solo recorrido indexado obtiene contenido y dirección. Antes eran
       -- dos subconsultas idénticas por cada chat mostrado.
+      -- Último mensaje: primero el último de CADA conversación (índice
+      -- conversation_id, timestamp DESC → 1 fila por chat) y luego el más
+      -- reciente entre ellas. La forma anterior (JOIN + ORDER BY timestamp)
+      -- dejaba al planificador recorrer messages por fecha hacia atrás y en
+      -- producción superaba los 90 s ("Query read timeout").
       LEFT JOIN LATERAL (
-        SELECT m.content, m.direction
+        SELECT u.content, u.direction
         FROM unnest(top.conversation_ids) AS ids(id)
-        JOIN messages m ON m.conversation_id = ids.id
-        ORDER BY m.timestamp DESC
+        CROSS JOIN LATERAL (
+          SELECT m.content, m.direction, m.timestamp
+          FROM messages m
+          WHERE m.conversation_id = ids.id
+          ORDER BY m.timestamp DESC
+          LIMIT 1
+        ) u
+        ORDER BY u.timestamp DESC
         LIMIT 1
       ) ultimo ON TRUE
       -- El conteo toca únicamente mensajes entrantes de los chats ya

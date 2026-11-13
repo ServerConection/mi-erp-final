@@ -34,6 +34,14 @@ const MODULOS_GERENCIALES = [
   MODULOS.COMISIONES,
 ];
 
+// CONTABILIDAD es transversal a la empresa y tiene una lista cerrada.
+// Inicio y NOVONET ACCESS no requieren un permiso de modulo; se habilitan
+// directamente en el frontend y en las rutas autenticadas correspondientes.
+const MODULOS_CONTABILIDAD = [
+  MODULOS.BILLETERA,
+  MODULOS.COMISIONES,
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PERFIL TTHH (Talento Humano) — transversal a las dos empresas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,6 +226,10 @@ function obtenerPermisosUsuario(empresa, perfil) {
   // referencia desde afuera.
   if (perfilNorm === 'TTHH') {
     return [...MODULOS_TTHH];
+  }
+
+  if (perfilNorm === 'CONTABILIDAD') {
+    return [...MODULOS_CONTABILIDAD];
   }
 
   if (!PERMISOS_POR_EMPRESA_PERFIL[empresaNorm]) {

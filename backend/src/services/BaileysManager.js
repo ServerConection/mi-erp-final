@@ -1530,8 +1530,14 @@ class BaileysManager {
     const waMsgId = msg.key.id
     // No duplicar los que el propio ERP acaba de enviar
     if (this.sentByErp.has(waMsgId)) return
-    const dup = await query(`SELECT 1 FROM messages WHERE wa_msg_id=$1 LIMIT 1`, [waMsgId])
-    if (dup.rows.length) return
+    const dup = await query(
+      `SELECT id,conversation_id,wa_number,type,media_url FROM messages WHERE wa_msg_id=$1 LIMIT 1`,
+      [waMsgId]
+    )
+    const existente = dup.rows[0] || null
+    // Un duplicado multimedia sin URL no está completo: puede reaparecer en la
+    // sincronización de historial cuando WhatsApp ya permite descargarlo.
+    if (existente && (existente.media_url || !['image', 'document', 'audio', 'video', 'sticker'].includes(existente.type))) return
 
     const text = (
       msg.message?.conversation ||
@@ -1562,6 +1568,7 @@ class BaileysManager {
 
     // Descargar media si la hay (para verla en el Inbox)
     let mediaUrl = null
+    let mediaError = null
     if (['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
       try {
         const buffer = await this._bajarMedia(lineId, msg)
@@ -1572,7 +1579,10 @@ class BaileysManager {
         const fname = `out-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
         fs.writeFileSync(path.join(dir, fname), buffer)
         mediaUrl = `/wa-uploads/${fname}`
-      } catch (e) { /* sin media */ }
+      } catch (e) {
+        mediaError = e.message || 'No se pudo descargar el archivo'
+        console.warn(`[Line ${lineId}] Media saliente ${waMsgId} pendiente de recuperar:`, mediaError)
+      }
     }
 
     const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
@@ -1583,7 +1593,28 @@ class BaileysManager {
     const metadata = location ? {
       latitude: location.degreesLatitude, longitude: location.degreesLongitude,
       name: location.name, address: location.address,
-    } : {}
+    } : mediaError ? { media_pending: true, media_error: mediaError } : {}
+
+    if (existente) {
+      const pendiente = mediaError ? { media_pending: true, media_error: mediaError } : {}
+      const actualizado = await query(
+        `UPDATE messages
+            SET media_url=COALESCE($1,media_url),
+                metadata=(COALESCE(metadata,'{}'::jsonb) - 'media_pending' - 'media_error') || $2::jsonb
+          WHERE id=$3
+          RETURNING id,conversation_id,line_id,wa_number,direction,type,content,media_url,status,timestamp,wa_msg_id,metadata`,
+        [mediaUrl, JSON.stringify(pendiente), existente.id]
+      )
+      const row = actualizado.rows[0]
+      if (row) await this._emitInbox(lineId, 'message:new', { ...row, lineId, waNumber })
+      if (mediaError) {
+        this._programarRecuperacionMediaSaliente({
+          lineId, msg, waMsgId, msgType,
+          convId: existente.conversation_id, waNumber: existente.wa_number || waNumber,
+        })
+      }
+      return
+    }
 
     const conv = await this._getOrCreateConversation(lineId, waNumber, remoteJid)
     await query(
@@ -1603,6 +1634,46 @@ class BaileysManager {
       wa_msg_id: waMsgId,
       timestamp: new Date().toISOString(),
     })
+    if (mediaError && ['image', 'document', 'audio', 'video', 'sticker'].includes(msgType)) {
+      this._programarRecuperacionMediaSaliente({ lineId, msg, waMsgId, msgType, convId: conv.id, waNumber })
+    }
+  }
+
+  _programarRecuperacionMediaSaliente({ lineId, msg, waMsgId, msgType, convId, waNumber }) {
+    const ejecutar = async (intento = 0) => {
+      try {
+        const buffer = await this._bajarMedia(lineId, msg)
+        const dir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads')
+        fs.mkdirSync(dir, { recursive: true })
+        const ext = msgType === 'image' ? '.jpg' : msgType === 'audio' ? '.ogg'
+          : msgType === 'video' ? '.mp4' : msgType === 'sticker' ? '.webp'
+          : (path.extname(msg.message?.documentMessage?.fileName || '') || '.bin')
+        const fname = `out-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+        fs.writeFileSync(path.join(dir, fname), buffer)
+        const mediaUrl = `/wa-uploads/${fname}`
+        const actualizado = await query(
+          `UPDATE messages
+              SET media_url=$1,
+                  metadata=COALESCE(metadata,'{}'::jsonb) - 'media_pending' - 'media_error'
+            WHERE wa_msg_id=$2
+            RETURNING id,conversation_id,line_id,wa_number,direction,type,content,media_url,status,timestamp,wa_msg_id,metadata`,
+          [mediaUrl, waMsgId]
+        )
+        const row = actualizado.rows[0]
+        if (row) await this._emitInbox(lineId, 'message:new', { ...row, lineId, waNumber, conversation_id: convId })
+        console.log(`[Line ${lineId}] Media saliente recuperada: ${waMsgId} -> ${fname}`)
+      } catch (error) {
+        const esperas = [15000, 45000, 120000]
+        if (intento >= esperas.length) {
+          console.warn(`[Line ${lineId}] Media saliente no recuperada ${waMsgId}:`, error.message)
+          return
+        }
+        const timer = setTimeout(() => ejecutar(intento + 1), esperas[intento])
+        timer.unref?.()
+      }
+    }
+    const timer = setTimeout(() => ejecutar(0), 5000)
+    timer.unref?.()
   }
 
   // ── Acks de campañas: marca delivered/read en campaign_recipients ──

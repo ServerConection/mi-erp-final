@@ -1,4 +1,46 @@
 const pool = require('../config/db');
+
+// Ejecutar muchos scans grandes a la vez hace que compitan por I/O y que cada
+// uno alcance el query_timeout de 90 s. Este ejecutor conserva el orden de los
+// resultados, limita la concurrencia y deja el nombre exacto en los logs.
+async function ejecutarLoteDashboard(tareas, concurrencia = 4) {
+    const resultados = new Array(tareas.length);
+    let siguiente = 0;
+    const worker = async () => {
+        while (true) {
+            const indice = siguiente++;
+            if (indice >= tareas.length) return;
+            const tarea = tareas[indice];
+            const inicio = Date.now();
+            try {
+                resultados[indice] = await pool.query(tarea.sql, tarea.values);
+                const ms = Date.now() - inicio;
+                if (ms >= 5000) console.log(`[DASHBOARD SQL] ${tarea.nombre}: ${ms} ms`);
+            } catch (error) {
+                const ms = Date.now() - inicio;
+                console.error(`[DASHBOARD SQL] ${tarea.nombre} fallo tras ${ms} ms:`, error.message);
+                error.message = `${tarea.nombre}: ${error.message}`;
+                throw error;
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrencia, tareas.length) }, worker));
+    return resultados;
+}
+
+function calcularMetasGlobalesDesdeDetalle(filas = []) {
+    let totalTerceraEdad = 0;
+    let totalTarjeta = 0;
+    for (const fila of filas) {
+        if (String(fila.FORMA_PAGO || '').trim().toUpperCase() === 'TARJETA DE CREDITO.') totalTarjeta += 1;
+        const activo = String(fila.ESTADO_NETLIFE || '').trim().toUpperCase() === 'ACTIVO';
+        const conPlan = String(fila.TIPO_PLAN || '').trim() !== '';
+        if (activo && conPlan && String(fila.APLICA_DESCUENTO || '').trim().toUpperCase() === 'SI POR TERCERA EDAD') {
+            totalTerceraEdad += 1;
+        }
+    }
+    return { totalTerceraEdad, totalTarjeta, totalJotform: filas.length };
+}
 const { filtroOrigenBitrix, dealNovonet } = require('../shared/origenIndicadores');
 const { fuenteJotNovonet } = require('../shared/fuenteJotNovonet');
 const filtroOrigenNovonet = (values, origenes = [], alias = 'mb') => filtroOrigenBitrix({ empresa: 'novonet', deal: dealNovonet(alias), origenes, values });
@@ -1162,24 +1204,6 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // ── Optimización: TerceraEdad + Tarjeta en un solo scan de tabla ──────────────
         // Antes eran 2 queries separadas con el mismo WHERE → ahora 1 sola query
-        const queryMetasGlobales = `
-            SELECT
-                COUNT(*) FILTER (
-                    WHERE mb.j_aplica_descuento_3ra_edad = 'SI POR TERCERA EDAD'
-                    AND ${ACTIVACION_CON_PLAN}
-                ) AS total_tercera_edad,
-                COUNT(*) FILTER (
-                    WHERE ${ACTIVACION_CON_PLAN}
-                ) AS total_activos,
-                COUNT(*) FILTER (
-                    WHERE mb.j_forma_pago = 'TARJETA DE CREDITO.'
-                ) AS total_tarjeta,
-                COUNT(*) AS total_jotform
-            FROM public.vw_mestra_novonet_live mb
-            WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
-            ${filtersNoJoin}
-        `;
-
         // ── Lote 1: KPIs + agregaciones (6 queries) ─ Lote 2: tablas + backlogs ──
         // 2026-10-06 (a pedido): "DETALLE BASE JOTFORM" debe reflejar al
         // instante lo que se guarda/edita en envios_ventas. Si el resto del
@@ -1193,6 +1217,7 @@ const getIndicadoresDashboard = async (req, res) => {
                 pool.query(queryOrigenesEtapasDia, values),
             ]);
             const kpiPlanes = calcularPlanesHasta600(resNetVivo.rows);
+            const metasVivas = calcularMetasGlobalesDesdeDetalle(resNetVivo.rows);
             const graficoEmbudoVivo = resEmbudoVivo.rows.map(r => ({
                 name: r.etapa, value: Number(r.total || 0), etapa: r.etapa, total: Number(r.total || 0),
             }));
@@ -1203,6 +1228,10 @@ const getIndicadoresDashboard = async (req, res) => {
             return res.json({
                 ...cached,
                 ...kpiPlanes,
+                porcentajeTerceraEdad: metasVivas.totalJotform > 0
+                    ? Number(((metasVivas.totalTerceraEdad / metasVivas.totalJotform) * 100).toFixed(2)) : 0,
+                porcentajeTarjeta: metasVivas.totalJotform > 0
+                    ? Number(((metasVivas.totalTarjeta / metasVivas.totalJotform) * 100).toFixed(2)) : 0,
                 dataNetlife: resNetVivo.rows,
                 graficoEmbudo: graficoEmbudoVivo,
                 graficoEmbudoPorDia: graficoEmbudoPorDiaVivo,
@@ -1212,18 +1241,17 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // Dividir en 2 lotes para no agotar el pool (max 15 conexiones).
         // queryMetasGlobales reemplaza a queryTerceraEdad + queryTarjeta (−1 query, −1 scan).
-        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resMetasGlobales, resOrigenesEtapasDia]] = await Promise.all([
+        const [etapasCache, [resSup, resAses, resEstados, resEmbudo, resEmbudoDia, resDia, resOrigenesEtapasDia]] = await Promise.all([
             getEtapasCache(),
-            Promise.all([
-                pool.query(queryKPI('e.supervisor'), values),
-                pool.query(queryKPI('mb.b_persona_responsable'), values),
-                pool.query(queryEstados, values),
-                pool.query(queryEmbudo, values),
-                pool.query(queryEmbudoPorDia, values),
-                pool.query(queryPorDia, values),
-                pool.query(queryMetasGlobales, values),
-                pool.query(queryOrigenesEtapasDia, values),
-            ]),
+            ejecutarLoteDashboard([
+                { nombre: 'kpi-supervisores', sql: queryKPI('e.supervisor'), values },
+                { nombre: 'kpi-asesores', sql: queryKPI('mb.b_persona_responsable'), values },
+                { nombre: 'estados-netlife', sql: queryEstados, values },
+                { nombre: 'embudo-crm', sql: queryEmbudo, values },
+                { nombre: 'embudo-crm-dia', sql: queryEmbudoPorDia, values },
+                { nombre: 'jotform-por-dia', sql: queryPorDia, values },
+                { nombre: 'origenes-etapas-dia', sql: queryOrigenesEtapasDia, values },
+            ], 4),
         ]);
 
         // Lote 2: tablas + backlogs + activaciones + ventas del día (self-join)
@@ -1346,21 +1374,19 @@ const getIndicadoresDashboard = async (req, res) => {
             LIMIT 3000
         `;
 
-        const [resCRM, resNet, resBacklogSup, resBacklogAses, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones, resBacklogDetalle] = await Promise.all([
-            pool.query(queryCRM, values),
-            pool.query(queryJotform, values),
-            pool.query(queryBacklog('e.supervisor'), values),
-            pool.query(queryBacklog('mb.b_persona_responsable'), values),
-            pool.query(queryActivacionesPorDia, values),
-            pool.query(queryVentasDiaSup, valuesDia),
-            pool.query(queryVentasDiaAsesor, valuesDia),
-            pool.query(queryIngresosDiaSup, valuesDia),
-            pool.query(queryIngresosDiaAsesor, valuesDia),
-            pool.query(queryPlanesPorCategoria, values),
-            pool.query(queryVentasActivasMes, values),
-            pool.query(queryRegularizaciones, values),
-            pool.query(queryBacklogDetalle, values),
-        ]);
+        const [resCRM, resNet, resActivacionesDia, resVDASup, resVDAsesor, resIngDiaSup, resIngDiaAsesor, resPlanesDash, resVentasActivasMes, resRegularizaciones, resBacklogDetalle] = await ejecutarLoteDashboard([
+            { nombre: 'detalle-crm', sql: queryCRM, values },
+            { nombre: 'detalle-jotform', sql: queryJotform, values },
+            { nombre: 'activaciones-dia', sql: queryActivacionesPorDia, values },
+            { nombre: 'ventas-dia-supervisor', sql: queryVentasDiaSup, values: valuesDia },
+            { nombre: 'ventas-dia-asesor', sql: queryVentasDiaAsesor, values: valuesDia },
+            { nombre: 'ingresos-dia-supervisor', sql: queryIngresosDiaSup, values: valuesDia },
+            { nombre: 'ingresos-dia-asesor', sql: queryIngresosDiaAsesor, values: valuesDia },
+            { nombre: 'planes-categoria', sql: queryPlanesPorCategoria, values },
+            { nombre: 'ventas-activas', sql: queryVentasActivasMes, values },
+            { nombre: 'regularizaciones', sql: queryRegularizaciones, values },
+            { nombre: 'backlog-detalle', sql: queryBacklogDetalle, values },
+        ], 4);
 
         // BACKLOG derivado: ACTIVAS TOTALES − ACTIVA MES.
         // Ya no se usa queryBacklog: aquella consulta filtraba por fecha de
@@ -1374,9 +1400,13 @@ const getIndicadoresDashboard = async (req, res) => {
 
         // Merge ventas del día (self-join) + calcular venta_seguimiento
         // VENTA SEGUIMIENTO = ingresos Jot − INGRESOS DEL DÍA (jot cuyo lead se creó el mismo día)
-        const mergeVentasDia = (filas, vdRows, ingRows) => filas.map(row => {
-            const vd  = vdRows.find(v => v.nombre_grupo === row.nombre_grupo);
-            const ing = (ingRows || []).find(v => v.nombre_grupo === row.nombre_grupo);
+        const mergeVentasDia = (filas, vdRows, ingRows) => {
+            // Evita buscar de nuevo en todos los resultados por cada fila (O(n²)).
+            const ventasPorGrupo = new Map((vdRows || []).map(v => [v.nombre_grupo, v]));
+            const ingresosPorGrupo = new Map((ingRows || []).map(v => [v.nombre_grupo, v]));
+            return filas.map(row => {
+            const vd  = ventasPorGrupo.get(row.nombre_grupo);
+            const ing = ingresosPorGrupo.get(row.nombre_grupo);
             const ventas_del_dia_real = vd  ? Number(vd.ventas_del_dia)    : 0;
             const ingresos_del_dia    = ing ? Number(ing.ingresos_del_dia) : 0;
             return {
@@ -1387,7 +1417,8 @@ const getIndicadoresDashboard = async (req, res) => {
                 // V. SEGUIMIENTO = INGRESOS JOT − VENTAS DEL DÍA
                 venta_seguimiento: Math.max(0, Number(row.ingresos_reales ?? row.ingresos_jot ?? 0) - ventas_del_dia_real),
             };
-        });
+            });
+        };
 
         const supervisoresConBacklog = mergeVentasDia(mergeBacklog(resSup.rows),  resVDASup.rows,    resIngDiaSup.rows);
         const asesoresConBacklog     = mergeVentasDia(mergeBacklog(resAses.rows), resVDAsesor.rows, resIngDiaAsesor.rows);
@@ -1413,10 +1444,10 @@ const getIndicadoresDashboard = async (req, res) => {
         }));
 
         // ── Desempaquetar la query consolidada de metas globales ────────────────
-        const rowMetas = resMetasGlobales.rows[0] || {};
-        const totalTerceraEdad    = Number(rowMetas.total_tercera_edad || 0);
-        const totalTarjeta        = Number(rowMetas.total_tarjeta       || 0);
-        const totalJotformTarjeta = Number(rowMetas.total_jotform       || 0);
+        const metasGlobales = calcularMetasGlobalesDesdeDetalle(resNet.rows);
+        const totalTerceraEdad    = metasGlobales.totalTerceraEdad;
+        const totalTarjeta        = metasGlobales.totalTarjeta;
+        const totalJotformTarjeta = metasGlobales.totalJotform;
 
         // Todos los porcentajes comerciales usan Ingresos Tot. Jot como base.
         const porcentajeTerceraEdad = totalJotformTarjeta > 0

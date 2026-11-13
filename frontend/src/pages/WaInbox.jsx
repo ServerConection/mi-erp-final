@@ -1160,6 +1160,10 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                         className="text-xs underline text-[#027eb5]">
                         📎 Ver archivo
                       </a>
+                    ) : msg.metadata?.media_pending && ["image", "audio", "video", "document", "sticker"].includes(msg.type) ? (
+                      <div className="mb-1 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                        Recuperando {msg.type === "audio" ? "audio" : msg.type === "image" ? "imagen" : "archivo"} de WhatsAppâ€¦
+                      </div>
                     ) : null}
                     {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}
                     <div className={`text-[11px] mt-0.5 text-right ${msg.type === "internal_note" ? "text-slate-300" : "text-[#667781]"}`}>

@@ -5,6 +5,7 @@ const {
   getAggregateVotesInPollMessage,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
+  getWAUploadToServer,
   normalizeMessageContent,
   WAMessageStubType,
   makeCacheableSignalKeyStore,
@@ -1338,14 +1339,25 @@ class BaileysManager {
       msgContent.audio = buffer
       msgContent.mimetype = mimetype
     }
+    if (!buffer?.length) throw new Error('El archivo está vacío o no se pudo leer')
+    const opciones = messageId ? { messageId } : {}
     let result
     try {
-      result = await inst.sock.sendMessage(jid, msgContent, messageId ? { messageId } : {})
+      result = await inst.sock.sendMessage(jid, msgContent, opciones)
     } catch (e) {
-      // Log explícito: así se ve en Render si falla la subida del archivo
-      // (proxy caído, archivo vacío, tamaño, etc.).
-      console.error(`[Line ${lineId}] ❌ No se pudo enviar ${type} (${buffer?.length || 0} bytes, proxy media: ${this.mediaDispatchers[lineId] ? 'sí' : 'no'}):`, e.message)
-      throw e
+      // Log explícito: así se ve en Render si falla la subida del archivo.
+      console.error(`[Line ${lineId}] ❌ No se pudo enviar ${type} (${buffer.length} bytes, proxy media: ${this.mediaDispatchers[lineId] ? 'sí' : 'no'}):`, e.message)
+      // Reintento definitivo: la SUBIDA del archivo al CDN de WhatsApp sale
+      // directa (sin proxy); el mensaje en sí sigue yendo por el socket de la
+      // línea (con su proxy). Así un proxy lento o caído para archivos no
+      // impide mandar fotos/PDF/audios.
+      if (!this.mediaDispatchers[lineId] || typeof inst.sock.refreshMediaConn !== 'function') throw e
+      const subidaDirecta = getWAUploadToServer(
+        { customUploadHosts: [], fetchAgent: undefined, logger: silentLogger, options: {} },
+        inst.sock.refreshMediaConn,
+      )
+      result = await inst.sock.sendMessage(jid, msgContent, { ...opciones, upload: subidaDirecta })
+      console.warn(`[Line ${lineId}] 📤 ${type} enviado con subida directa (sin proxy)`)
     }
     this._markSentByErp(result?.key?.id)
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id, inboxNoteId)

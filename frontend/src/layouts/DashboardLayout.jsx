@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
-import { puedeAccederAdministracion, puedeAccederComisiones, puedeVerMenuAdministracion } from '../utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones, puedeVerMenuAdministracion } from '../utils/accesoAdministracion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -335,8 +335,11 @@ const rutaRepartoTV = (usuario = '') => {
   if (login === 'tvvelsa') return '/gestionables-velsa';
   return null;
 };
-const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA']);
+const PERFILES_MENU_RESTRINGIDO = new Set(['ATC', 'ANALISTA', 'CONTABILIDAD']);
+const RUTAS_CONTABILIDAD = new Set(['/', '/comisiones', '/billetera', RUTA_NOVONET_ACCESS]);
 const rutaPermitidaPerfilRestringido = (perfil, ruta) => {
+  // CONTABILIDAD conserva Soporte, pero no puede ver ni abrir Carpeta Compartida.
+  if (perfil === 'CONTABILIDAD') return RUTAS_CONTABILIDAD.has(ruta) || ruta === RUTA_SOPORTE;
   if (ruta === RUTA_NOVONET_ACCESS) return true;
   if (ruta === RUTA_SOPORTE) return true;
   if (ruta === RUTA_CARPETA_COMPARTIDA) return true;
@@ -449,7 +452,7 @@ const ALL_MENU_ITEMS = [
     accessCheck: (p) => puedeVerMenuAdministracion(p) },
   { name: "RRHH",       path: "/rrhh",       icon: "👥",
     accessCheck: (p) => p === 'TTHH' || p === 'ADMINISTRADOR',  isChild: true, group: "administracion" },
-  { name: "Billetera",  path: "/billetera",  icon: "💳", accessCheck: (p) => puedeAccederAdministracion(p), isChild: true, group: "administracion" },
+  { name: "Billetera",  path: "/billetera",  icon: "💳", accessCheck: (p) => puedeAccederBilletera(p), isChild: true, group: "administracion" },
   { name: "Modalidad de asistencia", path: "/configuracion-asistencia", icon: "🕘",
     accessCheck: (p) => p === 'ADMINISTRADOR', isChild: true, group: "administracion" },
   { name: "Comisiones", path: "/comisiones", icon: "💰",
@@ -634,7 +637,7 @@ export default function DashboardLayout() {
     // ATC trabaja exclusivamente en Indicadores y Backoffice; ANALISTA,
     // exclusivamente en Indicadores. Esto también bloquea URLs escritas a mano.
     if (!rutaPermitidaPerfilRestringido(p, location.pathname)) {
-      navigate('/indicadores', { replace: true });
+      navigate(p === 'CONTABILIDAD' ? '/' : '/indicadores', { replace: true });
       return;
     }
 
@@ -697,6 +700,9 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (perfil === 'CONTABILIDAD') {
+      return !!item.path && (RUTAS_CONTABILIDAD.has(item.path) || item.path === RUTA_SOPORTE);
+    }
     if (item.path === RUTA_NOVONET_ACCESS) return true;
     if (item.path === RUTA_SOPORTE) return true;
     if (item.path === RUTA_CARPETA_COMPARTIDA) return true;

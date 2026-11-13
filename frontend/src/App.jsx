@@ -6,7 +6,7 @@ import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 import LogoLoader from "./components/LogoLoader";
 import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
-import { puedeAccederAdministracion, puedeAccederComisiones } from './utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones } from './utils/accesoAdministracion';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -152,6 +152,15 @@ const ComisionesRoute = ({ children }) => {
   return children;
 };
 
+const BilleteraRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  let userProfile = null;
+  try { userProfile = JSON.parse(localStorage.getItem("userProfile") || "null"); } catch (_) { userProfile = null; }
+  if (!token) return <Navigate to="/login" replace />;
+  if (!puedeAccederBilletera(userProfile?.perfil)) return <Navigate to="/" replace />;
+  return children;
+};
+
 const GestionablesRoute = ({ children, empresa }) => {
   if (!puedeAccederGestionables(empresa)) return <Navigate to="/" replace />;
   return children;
@@ -165,7 +174,7 @@ const FloatingWidgets = () => {
   if (location.pathname.startsWith("/embed/")) return null;
   try {
     const perfil = (JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").trim().toUpperCase();
-    if (perfil === "ANALISTA") return null;
+    if (['ANALISTA', 'CONTABILIDAD'].includes(perfil)) return null;
   } catch (_) { /* una sesión inválida será atendida por ProtectedRoute */ }
   return (
     <>
@@ -196,7 +205,7 @@ export default function App() {
             <Route path="rrhh"                      element={<TalentoHumano />} />
             <Route path="horarios"                  element={<AdministracionRoute><Horarios /></AdministracionRoute>} />
             <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
-            <Route path="billetera"                 element={<AdministracionRoute><BilleteraDigital /></AdministracionRoute>} />
+            <Route path="billetera"                 element={<BilleteraRoute><BilleteraDigital /></BilleteraRoute>} />
             <Route path="comisiones"                element={<ComisionesRoute><Comisiones /></ComisionesRoute>} />
             <Route path="rol-pagos"                 element={<AdministracionRoute><RolPagos /></AdministracionRoute>} />
             <Route path="forecast-novonet"          element={<AdministracionRoute><ForecastFinanciero empresa="novonet" /></AdministracionRoute>} />

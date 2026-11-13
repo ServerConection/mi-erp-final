@@ -1161,9 +1161,11 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                         className="text-xs underline text-[#027eb5]">
                         📎 Ver archivo
                       </a>
+                    ) : msg.metadata?.media_pending && ["image", "audio", "video", "document", "sticker"].includes(msg.type) ? (
+                      <div className="mb-1 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                        Recuperando {msg.type === "audio" ? "audio" : msg.type === "image" ? "imagen" : "archivo"} de WhatsApp…
+                      </div>
                     ) : !msg.content && MEDIA_SIN_ARCHIVO[msg.type] ? (
-                      // El archivo se envió/recibió en WhatsApp pero el servidor no
-                      // pudo guardarlo: antes salía una burbuja vacía.
                       <p className="text-xs italic text-[#667781]">{MEDIA_SIN_ARCHIVO[msg.type]} (no se pudo mostrar aquí; míralo en el teléfono)</p>
                     ) : null}
                     {msg.content && <p className="whitespace-pre-wrap">{msg.content}</p>}

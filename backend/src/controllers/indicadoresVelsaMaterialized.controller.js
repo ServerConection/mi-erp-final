@@ -1,4 +1,42 @@
 const pool = require('../config/db');
+
+async function ejecutarLoteDashboardVelsa(tareas, concurrencia = 4) {
+  const resultados = new Array(tareas.length);
+  let siguiente = 0;
+  const worker = async () => {
+    while (true) {
+      const indice = siguiente++;
+      if (indice >= tareas.length) return;
+      const tarea = tareas[indice];
+      const inicio = Date.now();
+      try {
+        resultados[indice] = await pool.query(tarea.sql, tarea.values);
+        const ms = Date.now() - inicio;
+        if (ms >= 5000) console.log(`[DASHBOARD VELSA SQL] ${tarea.nombre}: ${ms} ms`);
+      } catch (error) {
+        const ms = Date.now() - inicio;
+        console.error(`[DASHBOARD VELSA SQL] ${tarea.nombre} fallo tras ${ms} ms:`, error.message);
+        error.message = `${tarea.nombre}: ${error.message}`;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrencia, tareas.length) }, worker));
+  return resultados;
+}
+
+function calcularMetasGlobalesVelsa(filas = []) {
+  let totalTercera = 0;
+  let totalTarjeta = 0;
+  for (const fila of filas) {
+    const formaPago = String(fila.FORMA_PAGO || '').trim().toUpperCase();
+    if (formaPago.includes('TARJETA DE CREDITO')) totalTarjeta += 1;
+    const activo = String(fila.ESTADO_NETLIFE || '').trim().toUpperCase() === 'ACTIVO';
+    const conPlan = String(fila.TIPO_PLAN || '').trim() !== '';
+    if (activo && conPlan && String(fila.APLICA_DESCUENTO || '').toUpperCase().includes('TERCERA EDAD')) totalTercera += 1;
+  }
+  return { totalTercera, totalTarjeta, totalJotform: filas.length };
+}
 const { fuenteDetalleJotform, columnasDetalleJotform, joinsDetalleJotform, calcularPlanesHasta600, calcularTerceraEdadProyectada, consultarDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
 const {
   enPeriodoSeleccionadoExpr,
@@ -775,20 +813,6 @@ async function getIndicadoresDashboardVelsa(req, res) {
       GROUP BY 1
       ORDER BY total DESC, origen ASC
     `;
-    const qTercera = `
-      SELECT
-        COUNT(*) FILTER (WHERE mv.aplica_descuento ILIKE '%TERCERA EDAD%' AND ${VENTA_SERVICIO_VELSA_MV}) AS total_tercera,
-        COUNT(*) FILTER (WHERE ${VENTA_SERVICIO_VELSA_MV}) AS total_activos
-      FROM ${MV}
-      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
-    `;
-    const qTarjeta = `
-      SELECT
-        COUNT(*) FILTER (WHERE mv.forma_pago ILIKE '%TARJETA DE CREDITO%') AS total_tarjeta,
-        COUNT(*) AS total_jotform
-      FROM ${MV}
-      WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
-    `;
     // 2026-10-06: lee DIRECTO de envios_ventas (sin la MV). Ver
     // shared/detalleJotformEnviosVentas.js. La subconsulta expone los mismos
     // nombres mv.* que usa buildFilters(), asi los filtros no cambian.
@@ -957,9 +981,14 @@ LIMIT 6000
         pool.query(qEmbudoPorDia, valuesMain),
         pool.query(qOrigenesEtapasDia, valuesMain),
       ]);
+      const metasVivas = calcularMetasGlobalesVelsa(resNetVivo.rows);
       return res.json({
         ...cached,
         ...calcularPlanesHasta600(resNetVivo.rows),
+        porcentajeTerceraEdad: metasVivas.totalJotform > 0
+          ? Number(((metasVivas.totalTercera / metasVivas.totalJotform) * 100).toFixed(2)) : 0,
+        porcentajeTarjeta: metasVivas.totalJotform > 0
+          ? Number(((metasVivas.totalTarjeta / metasVivas.totalJotform) * 100).toFixed(2)) : 0,
         dataNetlife: resNetVivo.rows,
         graficoEmbudo: resEmbudoVivo.rows,
         graficoEmbudoPorDia: resEmbudoDiaVivo.rows,
@@ -970,42 +999,39 @@ LIMIT 6000
     const [
       resSup, resAses, resBkSup, resBkAses,
       resEstados, resEmbudo, resEmbudoDia, resDia,
-      resEtapasCRM, resEtapasJot, resTercera, resTarjeta,
+      resEtapasCRM, resEtapasJot,
       resNetlife, resActivacionesDia, resPlanesDash, resVentasActivasMes,
       resOrigenes, resPorRegularizar, resBacklogDetalle, resOrigenesEtapasDia,
-    ] = await Promise.all([
-      pool.query(queryKPI('mv.supervisor', filters), valuesMain),
-      pool.query(queryKPI('mv.asesor',     filters), valuesMain),
-      pool.query(queryBacklog('mv.supervisor', filtersBk), valuesBk),
-      pool.query(queryBacklog('mv.asesor',     filtersBk), valuesBk),
-      pool.query(qEstados,   valuesMain),
-      pool.query(qEmbudo,    valuesMain),
-      pool.query(qEmbudoPorDia, valuesMain),
-      pool.query(qPorDia,    valuesMain),
-      pool.query(qEtapasCRM),
-      pool.query(qEtapasJot),
-      pool.query(qTercera,   valuesMain),
-      pool.query(qTarjeta,   valuesMain),
-      pool.query(qNetlife,   valuesMain),
-      pool.query(qActivacionesPorDia, valuesMain), // NUEVO: activaciones por fecha_activacion_date
-      pool.query(qPlanesDash, valuesMain),
-      pool.query(qVentasActivasMes, valuesMain),
-      pool.query(qOrigenes),
-      pool.query(qPorRegularizar, valuesMain),
-      pool.query(qBacklogDetalle, valuesMain),
-      pool.query(qOrigenesEtapasDia, valuesMain),
-    ]);
+    ] = await ejecutarLoteDashboardVelsa([
+      { nombre: 'kpi-supervisores', sql: queryKPI('mv.supervisor', filters), values: valuesMain },
+      { nombre: 'kpi-asesores', sql: queryKPI('mv.asesor', filters), values: valuesMain },
+      { nombre: 'backlog-supervisores', sql: queryBacklog('mv.supervisor', filtersBk), values: valuesBk },
+      { nombre: 'backlog-asesores', sql: queryBacklog('mv.asesor', filtersBk), values: valuesBk },
+      { nombre: 'estados-netlife', sql: qEstados, values: valuesMain },
+      { nombre: 'embudo-crm', sql: qEmbudo, values: valuesMain },
+      { nombre: 'embudo-crm-dia', sql: qEmbudoPorDia, values: valuesMain },
+      { nombre: 'jotform-por-dia', sql: qPorDia, values: valuesMain },
+      { nombre: 'etapas-crm', sql: qEtapasCRM, values: [] },
+      { nombre: 'etapas-jotform', sql: qEtapasJot, values: [] },
+      { nombre: 'detalle-jotform', sql: qNetlife, values: valuesMain },
+      { nombre: 'activaciones-dia', sql: qActivacionesPorDia, values: valuesMain },
+      { nombre: 'planes-categoria', sql: qPlanesDash, values: valuesMain },
+      { nombre: 'ventas-activas', sql: qVentasActivasMes, values: valuesMain },
+      { nombre: 'origenes', sql: qOrigenes, values: [] },
+      { nombre: 'por-regularizar', sql: qPorRegularizar, values: valuesMain },
+      { nombre: 'backlog-detalle', sql: qBacklogDetalle, values: valuesMain },
+      { nombre: 'origenes-etapas-dia', sql: qOrigenesEtapasDia, values: valuesMain },
+    ], 4);
 
     const supervisores = mergeBacklog(resSup.rows,  resBkSup.rows);
     const asesores     = mergeBacklog(resAses.rows, resBkAses.rows);
 
-    const tRow = resTercera.rows[0] || {};
-    const taRow = resTarjeta.rows[0] || {};
+    const metasGlobales = calcularMetasGlobalesVelsa(resNetlife.rows);
     // Todos los porcentajes comerciales usan Ingresos Tot. Jot como base.
-    const porcentajeTerceraEdad = Number(taRow.total_jotform) > 0
-      ? parseFloat(((Number(tRow.total_tercera) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
-    const porcentajeTarjeta = Number(taRow.total_jotform) > 0
-      ? parseFloat(((Number(taRow.total_tarjeta) / Number(taRow.total_jotform)) * 100).toFixed(2)) : 0;
+    const porcentajeTerceraEdad = metasGlobales.totalJotform > 0
+      ? Number(((metasGlobales.totalTercera / metasGlobales.totalJotform) * 100).toFixed(2)) : 0;
+    const porcentajeTarjeta = metasGlobales.totalJotform > 0
+      ? Number(((metasGlobales.totalTarjeta / metasGlobales.totalJotform) * 100).toFixed(2)) : 0;
     const { totalPlanesHasta600, porcentajePlanesHasta600 } = calcularPlanesHasta600(resNetlife.rows);
     const {
       totalBaseTerceraEdadProyectada,

@@ -114,10 +114,10 @@ export default function HomeModules() {
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE'] },
     { title: "Billetera Digital", path: "/billetera", icon: CreditCard, accent: "cian", cat: "equipo",
       desc: "Gestión de saldos, pagos corporativos y transferencias.",
-      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE'] },
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'CONTABILIDAD'] },
     { title: "Comisiones", path: "/comisiones", icon: Coins, accent: "ambar", cat: "equipo",
       desc: "Cálculo automatizado de incentivos y bonos por desempeño.",
-      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'ANALISTA'] },
+      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'ANALISTA', 'CONTABILIDAD'] },
     { title: "Rol de Pagos", path: "/rol-pagos", icon: FileSpreadsheet, accent: "ambar", cat: "equipo",
       desc: "Rol de comisiones por asesor: ingresos, descuentos y valor a pagar del mes.",
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE'] },
@@ -181,6 +181,10 @@ export default function HomeModules() {
         if (empresa === 'NOVONET') return modules.filter(m => ['/vista-asesor', '/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
         if (empresa === 'VELSA') return modules.filter(m => ['/vista-asesor-velsa', '/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
         return modules.filter(m => ['/llamadas', '/inventario-activos', '/evaluaciones', '/soporte', '/carpeta-compartida'].includes(m.path));
+      }
+      if (perfil === 'CONTABILIDAD') {
+        return modules.filter(m => ['/billetera', '/comisiones'].includes(m.path))
+          .filter(m => !q || (m.title + ' ' + m.desc).toLowerCase().includes(q));
       }
     } catch (e) {
       // ignore parse errors and fall back to normal filtering

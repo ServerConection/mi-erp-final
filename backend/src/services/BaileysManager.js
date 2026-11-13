@@ -524,7 +524,12 @@ class BaileysManager {
           socketOptions.agent = new HttpsProxyAgent(proxyUrl)
           // Media (fotos, audios, documentos): Baileys usa fetch con
           // 'dispatcher'; sin esto salían por la IP del servidor.
-          try {
+          // WA_MEDIA_SIN_PROXY=1 → la media sale directa (el chat sigue por
+          // proxy). Interruptor de emergencia si el proxy falla con archivos.
+          if (process.env.WA_MEDIA_SIN_PROXY === '1') {
+            delete this.mediaDispatchers[lineId]
+            console.warn(`[Line ${lineId}] 📎 Media SIN proxy (WA_MEDIA_SIN_PROXY=1)`)
+          } else try {
             const { ProxyAgent } = require('undici')
             const dispatcher = new ProxyAgent(proxyUrl)
             socketOptions.fetchAgent = dispatcher
@@ -1333,7 +1338,15 @@ class BaileysManager {
       msgContent.audio = buffer
       msgContent.mimetype = mimetype
     }
-    const result = await inst.sock.sendMessage(jid, msgContent, messageId ? { messageId } : {})
+    let result
+    try {
+      result = await inst.sock.sendMessage(jid, msgContent, messageId ? { messageId } : {})
+    } catch (e) {
+      // Log explícito: así se ve en Render si falla la subida del archivo
+      // (proxy caído, archivo vacío, tamaño, etc.).
+      console.error(`[Line ${lineId}] ❌ No se pudo enviar ${type} (${buffer?.length || 0} bytes, proxy media: ${this.mediaDispatchers[lineId] ? 'sí' : 'no'}):`, e.message)
+      throw e
+    }
     this._markSentByErp(result?.key?.id)
     await this._saveOutboundMessage(lineId, this._cleanNumber(to), type, caption || filename, mediaUrl, result?.key?.id, inboxNoteId)
     return result
@@ -1369,6 +1382,15 @@ class BaileysManager {
       if (espera) await new Promise(res => setTimeout(res, espera))
       try {
         return await downloadMediaMessage(msg, 'buffer', { dispatcher: this.mediaDispatchers[lineId] }, ctx)
+      } catch (e) { ultimo = e }
+    }
+    // Último intento directo (sin proxy): descargar un archivo del CDN de
+    // WhatsApp no expone el número; es preferible a perder la foto del cliente.
+    if (this.mediaDispatchers[lineId]) {
+      try {
+        const buf = await downloadMediaMessage(msg, 'buffer', {}, ctx)
+        console.warn(`[Line ${lineId}] 📥 Media descargada SIN proxy (el proxy falló: ${ultimo?.message})`)
+        return buf
       } catch (e) { ultimo = e }
     }
     throw ultimo

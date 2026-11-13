@@ -148,14 +148,14 @@ class BaileysManager {
 
   async _emitInbox(lineId, evento, payload) {
     try {
-      if (isAdminOnlyNumber(payload?.waNumber || payload?.wa_number)) {
-        this.io.to('broadcast:all').emit(evento, payload)
-        return
-      }
       const aud = await this._audienciaLinea(lineId)
       // Línea privada (ej. bpineda): el evento va SOLO a su dueño.
       if (aud && aud.ownerId && isPrivateOwner(aud.ownerUsuario)) {
         this.io.to('user:' + aud.ownerId).emit(evento, payload)
+        return
+      }
+      if (isAdminOnlyNumber(payload?.waNumber || payload?.wa_number)) {
+        this.io.to('broadcast:all').emit(evento, payload)
         return
       }
       if (!aud || !aud.ownerId) { this.io.emit(evento, payload); return }

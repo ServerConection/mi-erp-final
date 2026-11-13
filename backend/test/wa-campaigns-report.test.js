@@ -40,3 +40,15 @@ test('gerencia ve el reporte solo de su empresa', async () => {
   await svc.reporteUso({ desde: '2026-11-01', hasta: '2026-11-07', empresa: 'TODAS' }, db, { perfil: 'ADMINISTRADOR' })
   assert.equal(params[2], '')
 })
+
+test('supervisor ve el reporte solo de su empresa', async () => {
+  assert.equal(svc.puedeVerReporte({ perfil: 'SUPERVISOR', empresa: 'VELSA' }), true)
+  assert.equal(svc.puedeVerReporte({ perfil: 'ASESOR', empresa: 'VELSA' }), false)
+  const vistos = []
+  const db = { query: async (_sql, p) => { vistos.push(p[2]); return { rows: [] } } }
+  const r = await svc.reporteUso({ desde: '2026-11-01', hasta: '2026-11-13', empresa: 'TODAS' }, db, { perfil: 'SUPERVISOR', empresa: 'velsa' })
+  assert.ok(vistos.length >= 8) // resumen + 7 consultas de detalle
+  assert.ok(vistos.every(e => e === 'VELSA'))
+  assert.deepEqual(r.tiempo_lectura.map(t => t.leidos), [0, 0, 0, 0, 0, 0])
+  assert.equal(r.embudo.enviados, 0)
+})

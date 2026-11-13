@@ -773,13 +773,21 @@ export default function ReporteComercialCore({
         try {
           const res = await fetchConSesion(urlDashboard, { signal: ctrl.signal });
           const json = await res.json();
-          if (!res.ok || !json.success) throw new Error(json.error || `Error HTTP ${res.status}`);
+          if (!res.ok || !json.success) {
+            const errorHttp = new Error(json.error || `Error HTTP ${res.status}`);
+            errorHttp.status = res.status;
+            throw errorHttp;
+          }
           result = json;
           break;
         } catch (error) {
           if (error.name === 'AbortError') throw error;
           ultimoError = error;
-          if (intento === 0) await new Promise(resolve => setTimeout(resolve, 350));
+          // Reintentar solo fallos transitorios. Un 4xx/500 determinístico
+          // ejecutaba dos veces el dashboard pesado y agravaba la saturación.
+          const esTransitorio = !error.status || [502, 503, 504].includes(error.status);
+          if (intento === 0 && esTransitorio) await new Promise(resolve => setTimeout(resolve, 350));
+          else break;
         }
       }
       if (!result) throw ultimoError || new Error('No se pudo cargar el dashboard');

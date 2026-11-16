@@ -8,6 +8,7 @@
 // ============================================================
 
 const express = require('express');
+const { randomInt } = require('node:crypto');
 const router = express.Router();
 const pool = require('../config/db');
 const { verificarToken, noAsesor } = require('../middleware/auth');
@@ -534,6 +535,14 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 const intervaloWelcome = () => Math.floor(Math.random() * 3) + 5;
+const mezclarVariantesWelcome = (variantes) => {
+  const mezcladas = [...variantes];
+  for (let i = mezcladas.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [mezcladas[i], mezcladas[j]] = [mezcladas[j], mezcladas[i]];
+  }
+  return mezcladas;
+};
 async function reprogramarColaWelcome(client, inicio) {
   const pendientes = await client.query(
     `SELECT id FROM welcome_notifications WHERE status IN ('pending','failed') ORDER BY scheduled_at,id FOR UPDATE`
@@ -651,6 +660,24 @@ router.post('/welcome/programar', async (req, res) => {
     }
 
     const programaciones = [];
+    const variantesActivas = (await client.query(
+      `SELECT id FROM welcome_variants WHERE active=true ORDER BY sort_order,id`
+    )).rows;
+    let mazoVariantes = [];
+    let ultimaVarianteId = null;
+    const siguienteVarianteId = () => {
+      if (!variantesActivas.length) return null;
+      if (!mazoVariantes.length) {
+        mazoVariantes = mezclarVariantesWelcome(variantesActivas);
+        const indiceSiguiente = mazoVariantes.length - 1;
+        if (mazoVariantes.length > 1 && mazoVariantes[indiceSiguiente].id === ultimaVarianteId) {
+          [mazoVariantes[0], mazoVariantes[indiceSiguiente]] = [mazoVariantes[indiceSiguiente], mazoVariantes[0]];
+        }
+      }
+      const elegida = mazoVariantes.pop();
+      ultimaVarianteId = elegida.id;
+      return elegida.id;
+    };
     let fechaProgramada = new Date(inicio);
     for (let indice = 0; indice < seleccionados.rows.length; indice += 1) {
       const registroId = seleccionados.rows[indice].id;
@@ -660,8 +687,7 @@ router.post('/welcome/programar', async (req, res) => {
       if (intervaloAnteriorMinutos !== null) {
         fechaProgramada = new Date(fechaProgramada.getTime() + intervaloAnteriorMinutos * 60 * 1000);
       }
-      const variante = await client.query(`SELECT id FROM welcome_variants WHERE active=true ORDER BY sort_order,id`);
-      const varianteId = variante.rows.length ? variante.rows[indice % variante.rows.length].id : null;
+      const varianteId = siguienteVarianteId();
       await client.query(
         `INSERT INTO welcome_notifications
            (registro_id, scheduled_at, status, email_sent, whatsapp_sent, attempts, last_error, created_by, updated_at, completed_at,variant_id,delivery_status,response_status,response_text,responded_at,attended)

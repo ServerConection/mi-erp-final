@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { randomInt } = require('node:crypto');
 
 // Línea dedicada para las notificaciones del submódulo Welcome.
 // La comparación en la consulta es exacta (ignorando mayúsculas y espacios).
@@ -131,7 +132,7 @@ async function prepararWhatsappBienvenida(registro, variantId = null) {
     const resultado = await pool.query(
       `SELECT id, code, name, body FROM welcome_variants WHERE active=true ORDER BY sort_order, id`
     ).catch(() => ({ rows: [] }));
-    if (resultado.rows.length) variante = resultado.rows[Math.abs(Number(registro?.id) || 0) % resultado.rows.length];
+    if (resultado.rows.length) variante = resultado.rows[randomInt(resultado.rows.length)];
   }
 
   return {

@@ -182,7 +182,7 @@ class SchedulerService {
 
           if (!whatsappSent) {
             try {
-              const preparado = await prepararWhatsappBienvenida(registro)
+              const preparado = await prepararWhatsappBienvenida(registro, tarea.variant_id)
               if (!preparado.ok) throw new Error(preparado.motivo)
               const enviado = await this.baileysManager.sendText(
                 preparado.linea_id,

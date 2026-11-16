@@ -4,11 +4,21 @@ const path = require('node:path');
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 
 const migration = read('src/migrations/20261012_welcome_operacion_completa.sql');
+const variantesPdf = read('src/migrations/20261116_welcome_variantes_pdf.sql');
 const routes = read('src/routes/backoffice.routes.js');
 const scheduler = read('src/services/wa_scheduler.service.js');
 const service = read('src/services/welcomeWhatsapp.service.js');
 
 for (const code of ['WELCOME_A','WELCOME_B','WELCOME_C','WELCOME_D','WELCOME_E']) assert.match(migration, new RegExp(code));
+for (const code of ['WELCOME_A','WELCOME_B','WELCOME_C','WELCOME_D','WELCOME_E']) assert.match(variantesPdf, new RegExp(code));
+assert.match(variantesPdf, /ON CONFLICT \(code\) DO UPDATE/);
+assert.match(variantesPdf, /📌 Facturación y pago:\n1️⃣ El servicio/);
+assert.match(variantesPdf, /📱 Netlife Access\n/);
+assert.match(scheduler, /prepararWhatsappBienvenida\(registro, tarea\.variant_id\)/);
+assert.match(routes, /mezclarVariantesWelcome/);
+assert.match(routes, /const varianteId = siguienteVarianteId\(\)/);
+assert.doesNotMatch(routes, /indice % variante\.rows\.length/);
+assert.match(service, /randomInt\(resultado\.rows\.length\)/);
 assert.match(migration, /welcome_config/);
 assert.match(migration, /response_status/);
 assert.match(routes, /welcome\/pausar/);

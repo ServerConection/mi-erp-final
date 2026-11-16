@@ -86,6 +86,7 @@ const iniciarWhatsApp = async (appInstance) => {
     // lenta o una tabla está ocupada, se avisa y WhatsApp arranca igual.
     await migrarSinBloquear('whatsapp_schema.sql');
     await migrarSinBloquear('20261012_welcome_operacion_completa.sql');
+    await migrarSinBloquear('20261116_welcome_variantes_pdf.sql');
     await migrarSinBloquear('20261007_wa_presentation_variants.sql');
     await migrarSinBloquear('wabot_bitrix.sql');
     await migrarSinBloquear('wa_line_downtime.sql');

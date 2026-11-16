@@ -163,6 +163,22 @@ const noAsesor = (req, res, next) => {
   next();
 };
 
+/** Acceso de mando al Automarcador y sus reportes. */
+const soloAutomarcador = (req, res, next) => {
+  const perfil = String(req.user?.perfil || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim().replace(/\s+/g, ' ').toUpperCase();
+  const permitido = ['ADMINISTRADOR', 'SUPERVISOR', 'COORDINADOR', 'ANALISTA'].includes(perfil)
+    || /^GEREN(CIA|TE|TA|CIAL)(?:[ _-].*)?$/.test(perfil);
+  if (!permitido) {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. No tiene permiso para usar el Automarcador.'
+    });
+  }
+  next();
+};
+
 /**
  * Middleware: solo permite acceso a usuarios con perfil TTHH (Talento Humano).
  * TTHH es transversal: ve datos de Novonet y Velsa sin importar su propia
@@ -179,4 +195,4 @@ const soloTTHH = (req, res, next) => {
   next();
 };
 
-module.exports = { verificarToken, soloAdmin, noAsesor, soloTTHH, invalidarUsuarioCache, usuarioFresco };
+module.exports = { verificarToken, soloAdmin, noAsesor, soloAutomarcador, soloTTHH, invalidarUsuarioCache, usuarioFresco };

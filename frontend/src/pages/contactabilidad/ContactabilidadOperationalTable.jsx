@@ -9,7 +9,8 @@ const td = { padding: 10, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap
 
 const COLUMNAS = ['Gravedad', 'Esperando', 'Empresa', 'ID', 'Cliente', 'Asesor', 'Origen', 'Etapa',
   'Msg. cliente', 'Msg. asesor', 'MSG cliente WaBot', 'MSG asesor WaBot',
-  'Últ. cliente', 'Últ. asesor', 'Pendiente', 'Chat', ''];
+  'Últ. cliente', 'Últ. asesor', 'Últ. cliente WaBot', 'Últ. asesor WaBot',
+  'Pendiente', 'Chat', ''];
 
 /**
  * Tabla operativa.
@@ -105,6 +106,14 @@ export default function ContactabilidadOperationalTable({
                 <td style={td} title={fmt(fila.ultimo_mensaje_asesor_at)}>
                   {formatRelative(fila.ultimo_mensaje_asesor_at, ahora)}
                   <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_asesor_at)}</div>
+                </td>
+                <td style={td} title={fmt(fila.ultimo_mensaje_cliente_wabot_at)}>
+                  {formatRelative(fila.ultimo_mensaje_cliente_wabot_at, ahora)}
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_cliente_wabot_at)}</div>
+                </td>
+                <td style={td} title={fmt(fila.ultimo_mensaje_asesor_wabot_at)}>
+                  {formatRelative(fila.ultimo_mensaje_asesor_wabot_at, ahora)}
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_asesor_wabot_at)}</div>
                 </td>
                 <td style={td}>{fila.pendiente_por || '—'}</td>
                 <td style={td}>

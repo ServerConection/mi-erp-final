@@ -22,6 +22,7 @@ const dashboardCtrl = require('../controllers/wa_dashboard.controller');
 const statsCtrl    = require('../controllers/wa_stats.controller');
 const presentationCtrl = require('../controllers/wa_presentations.controller');
 const atcConfigCtrl = require('../controllers/wa_atc_config.controller');
+const usoCtrl       = require('../controllers/wa_uso.controller');
 
 // Upload de archivos multimedia
 const uploadsDir = process.env.WA_UPLOADS_DIR || path.join(__dirname, '../../wa_uploads');
@@ -35,6 +36,9 @@ const upload = multer({
 
 // Todas las rutas requieren autenticación
 router.use(verificarToken);
+
+// Analítica transversal de uso y cobertura.
+router.get ('/uso/reporte', usoCtrl.reporte);
 
 // ── LÍNEAS ────────────────────────────────────────────────────
 // OJO: /lines/dashboard va ANTES de /lines/:id, si no Express lo captura como id

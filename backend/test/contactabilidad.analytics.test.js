@@ -36,6 +36,9 @@ test('devuelve todos los bloques del contrato analitico', async () => {
   assert.ok(calls.some((call) => call.sql.includes("AT TIME ZONE 'America/Guayaquil'")));
   const operativoQuery = calls.find((call) => call.sql.includes('LIMIT 100')).sql;
   assert.match(operativoQuery, /ORDER BY u\.fecha_creacion DESC NULLS LAST/);
+  assert.match(operativoQuery, /MAX\(m\.timestamp\) FILTER \(\s*WHERE m\.direction = 'in'/);
+  assert.match(operativoQuery, /AS ultimo_mensaje_cliente_wabot_at/);
+  assert.match(operativoQuery, /AS ultimo_mensaje_asesor_wabot_at/);
 });
 
 test('los filtros operativos se parametrizan y validan', () => {

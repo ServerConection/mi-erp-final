@@ -524,6 +524,20 @@ async function sendMessage(req, res) {
       sent = await bm.sendText(c.line_id, c.wa_number, text, { inboxNoteId: inboxNote?.id, messageId: inboxNote?.waMsgId })
     }
     whatsappSent = true
+    // Atribución explícita para el reporte de uso. Los registros históricos
+    // conservan el fallback al propietario de la línea.
+    if (sent?.key?.id) {
+      await query(
+        `UPDATE messages
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+          WHERE line_id=$2 AND wa_msg_id=$3`,
+        [JSON.stringify({
+          author_id: req.user.id,
+          author: req.user.nombre || req.user.username || req.user.usuario || 'Usuario',
+          source: 'wabot_inbox',
+        }), c.line_id, sent.key.id]
+      )
+    }
     try { await notes.confirm(inboxNote, sent?.key?.id) }
     catch (_) {
       // The worker recovers from the receipt stored with the outbound message.

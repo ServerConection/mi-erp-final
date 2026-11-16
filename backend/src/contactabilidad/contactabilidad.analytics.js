@@ -238,6 +238,8 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
              u.mensajes_cliente_total, u.mensajes_asesor_total,
              COALESCE(wb.msg_cliente_wabot, 0)::int AS msg_cliente_wabot,
              COALESCE(wb.msg_asesor_wabot, 0)::int AS msg_asesor_wabot,
+             wb.ultimo_mensaje_cliente_wabot_at,
+             wb.ultimo_mensaje_asesor_wabot_at,
              u.ultimo_mensaje_cliente_at, u.ultimo_mensaje_asesor_at, u.pendiente_por,
              u.temperatura, ${chatId}, u.ultima_sincronizacion_at,
              u.tiempo_primera_respuesta_seg,
@@ -248,7 +250,13 @@ async function obtenerAnalytics(pool, query = {}, opciones = {}) {
         SELECT COUNT(m.id) FILTER (WHERE m.direction = 'in')::int AS msg_cliente_wabot,
                COUNT(m.id) FILTER (
                  WHERE m.direction = 'out' AND m.type IS DISTINCT FROM 'system'
-               )::int AS msg_asesor_wabot
+               )::int AS msg_asesor_wabot,
+               MAX(m.timestamp) FILTER (
+                 WHERE m.direction = 'in'
+               ) AS ultimo_mensaje_cliente_wabot_at,
+               MAX(m.timestamp) FILTER (
+                 WHERE m.direction = 'out' AND m.type IS DISTINCT FROM 'system'
+               ) AS ultimo_mensaje_asesor_wabot_at
         FROM conversations c
         JOIN lines wl ON wl.id = c.line_id
         JOIN usuarios wu ON wu.id = wl.created_by

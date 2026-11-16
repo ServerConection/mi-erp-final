@@ -37,6 +37,14 @@ async function consultarDetallePipelineWebhook(empresa, categoria, distribuidor,
   agregar(query.loginNetlife, `''`);
   agregar(query.idBitrix, `COALESCE(w.bitrix_id::text, '')`);
   agregar(query.busquedaGeneral, `COALESCE(w.responsible, '') || ' ' || COALESCE(w.bitrix_id::text, '') || ' ' || COALESCE(w.etapa_bitrix, w.etapa, '')`);
+  if (query.fechaActivacionDesde) {
+    values.push(query.fechaActivacionDesde);
+    filtros += ` AND public.parse_fecha_flex(NULLIF(w.fecha_venta_subida, '')) >= $${values.length}::date`;
+  }
+  if (query.fechaActivacionHasta) {
+    values.push(query.fechaActivacionHasta);
+    filtros += ` AND public.parse_fecha_flex(NULLIF(w.fecha_venta_subida, '')) <= $${values.length}::date`;
+  }
   const filtroCategoria = empresa === 'semillero'
     ? `(BTRIM(COALESCE(w.categoria_id, '')) = $4 OR (
          NULLIF(BTRIM(w.categoria_id), '') IS NULL

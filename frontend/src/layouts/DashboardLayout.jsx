@@ -507,6 +507,8 @@ const ALL_MENU_ITEMS = [
   // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
   { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
+  { name: "Uso y cobertura", path: "/whatsapp/uso", icon: "📈", isChild: true, group: "wabot",
+    accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'ANALISTA', 'SUPERVISOR', 'COORDINADOR'].includes((p || '').toUpperCase()) },
 
   // ── Archivos compartidos (planillas colaborativas) ──────────────────────────
   // Visible para todos menos CONSULTOR: quien no tenga archivos compartidos

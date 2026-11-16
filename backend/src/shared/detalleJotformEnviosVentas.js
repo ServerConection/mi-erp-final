@@ -296,9 +296,13 @@ async function consultarDetalleJotform(pool, empresa, query = {}) {
   agregar(query.estadoRegularizacion, `COALESCE(${alias}.estatus_regularizacion, '')`);
   agregar(query.etapaCRM, `COALESCE(${alias}.etapa_bitrix, '')`);
   agregar(query.canal || query.origen, `COALESCE(${alias}.origen_bitrix, '')`);
-  if (query.fechaActivacionDesde && query.fechaActivacionHasta) {
-    values.push(query.fechaActivacionDesde, query.fechaActivacionHasta);
-    filtros += ` AND COALESCE(${alias}.f_act, public.parse_fecha_flex(${alias}.fecha_activacion_netlife::text)) BETWEEN $${values.length - 1}::date AND $${values.length}::date`;
+  if (query.fechaActivacionDesde) {
+    values.push(query.fechaActivacionDesde);
+    filtros += ` AND COALESCE(${alias}.f_act, public.parse_fecha_flex(${alias}.fecha_activacion_netlife::text)) >= $${values.length}::date`;
+  }
+  if (query.fechaActivacionHasta) {
+    values.push(query.fechaActivacionHasta);
+    filtros += ` AND COALESCE(${alias}.f_act, public.parse_fecha_flex(${alias}.fecha_activacion_netlife::text)) <= $${values.length}::date`;
   }
 
   const result = await pool.query(`

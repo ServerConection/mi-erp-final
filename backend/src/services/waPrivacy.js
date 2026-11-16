@@ -11,6 +11,7 @@ const isAdminOnlyNumber = value => protectedNumbers().includes(clean(value))
 // Ni otros administradores, ni supervisores, ni gerencia.
 const privateOwners = () => [...new Set([
   'bpineda',
+  'kchala',
   ...String(process.env.WA_PRIVATE_OWNERS || '').split(','),
 ].map(v => String(v || '').trim().toLowerCase()).filter(Boolean))]
 

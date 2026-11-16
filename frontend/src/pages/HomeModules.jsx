@@ -9,6 +9,7 @@ import {
   Flag, UserCircle2, Flame, Bell, Radio, ClipboardList, PieChart,
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
   CheckSquare, FileSpreadsheet, LifeBuoy, FolderOpen, MessageCircle, GraduationCap, Laptop,
+  Activity,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -93,6 +94,9 @@ export default function HomeModules() {
       desc: "Consulta y compara todos los planes Netlife por segmento y forma de pago. Se actualiza sola cada mes." },
     { title: "Cobertura", path: "/cobertura", icon: MapPin, accent: "cian", cat: "ventas",
       desc: "Verifica si una dirección tiene cobertura de internet. Soporta enlaces de WhatsApp y Google Maps." },
+    { title: "Uso y Cobertura", path: "/whatsapp/uso", icon: Activity, accent: "azul", cat: "analitica",
+      desc: "Uso diario de Wabot y cumplimiento de consultas de cobertura por gestionable.",
+      rolesPermitidos: ['ADMINISTRADOR', 'SUPERVISOR', 'ANALISTA', 'GERENCIA', 'GERENTE', 'COORDINADOR'] },
 
     // El acceso NO depende del perfil sino de tener área y cargo asignados
     // (los asesores comerciales no los tienen). Se consulta al backend.

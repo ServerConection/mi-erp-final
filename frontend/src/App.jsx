@@ -81,6 +81,7 @@ const WaPlantillasInbox    = lazy(() => import("./pages/WaPlantillasInbox"));
 const WaInbox              = lazy(() => import("./pages/WaInbox"));
 const WaRespaldos          = lazy(() => import("./pages/WaRespaldos"));
 const WaPresentacion       = lazy(() => import("./pages/WaPresentacion"));
+const UsoHerramientas      = lazy(() => import("./pages/UsoHerramientas"));
 const LlamadasWhatsApp     = lazy(() => import("./pages/LlamadasWhatsApp"));
 const AsistenteERP         = lazy(() => import("./pages/AsistenteERP"));
 const ReporteDetalle       = lazy(() => import("./pages/ReporteDetalle"));
@@ -284,6 +285,7 @@ export default function App() {
             <Route path="whatsapp/inbox"            element={<WaInbox />} />
             <Route path="whatsapp/respaldos"        element={<AdminOnlyRoute><WaRespaldos /></AdminOnlyRoute>} />
             <Route path="whatsapp/presentacion"      element={<WaPresentacion />} />
+            <Route path="whatsapp/uso"               element={<RolesAllowedRoute allowed={["ADMINISTRADOR", "SUPERVISOR", "GERENCIA", "GERENTE", "ANALISTA", "COORDINADOR"]}><UsoHerramientas /></RolesAllowedRoute>} />
             <Route path="whatsapp/llamadas"         element={<AdminOnlyRoute><LlamadasWhatsApp /></AdminOnlyRoute>} />
             <Route path="asistente"                 element={<AsistenteERP />} />
             <Route path="reporte-detalle-novonet"   element={<ReporteDetalle empresa="novonet" />} />

@@ -85,7 +85,14 @@ const BENEFICIOS_LEY = ["SI", "NO"];
 
 // Supervisores por distribuidor (filtra el dropdown según Distribuidor seleccionado)
 const SUPERVISORES = {
-  NOVONET: ["ANDRÉS RODRÍGUEZ", "JAVIER NAVARRETE", "ADRIANA SALVATORE", "JONATHAN ZIMBAÑA"],
+  NOVONET: [
+    "ANDRÉS RODRÍGUEZ",
+    "JAVIER NAVARRETE",
+    "ADRIANA SALVATORE",
+    "JONATHAN ZIMBAÑA",
+    "SANTIAGO PINTADO",
+    "MARCELO PIJAL",
+  ],
   VELSA: ["ALEXANDRA PACHECO", "DARIANA"],
   SEMILLERO: ["ADRIANA SALVATORE"],
 };

@@ -131,6 +131,11 @@ const esCorreoValido = (correo) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(corr
  * El cliente es el destinatario principal y Backoffice recibe siempre copia.
  */
 async function enviarBienvenidaWelcome(registro) {
+  // Welcome queda temporalmente en modo SOLO WHATSAPP. Para reactivar el
+  // correo debe configurarse explícitamente WELCOME_EMAIL_ENABLED=true.
+  if (String(process.env.WELCOME_EMAIL_ENABLED || '').trim().toLowerCase() !== 'true') {
+    return { enviado: false, desactivado: true, motivo: 'solo_whatsapp' };
+  }
   const correoCliente = String(registro?.email_cliente || '').trim().toLowerCase();
   const tieneCorreoCliente = esCorreoValido(correoCliente);
   const nombreCompleto = String(registro?.nombre_cliente_completo || '').trim() || 'Cliente';

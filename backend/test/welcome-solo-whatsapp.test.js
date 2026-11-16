@@ -5,6 +5,7 @@ const leer = relativo => fs.readFileSync(path.join(__dirname, '..', relativo), '
 const rutas = leer('src/routes/backoffice.routes.js');
 const scheduler = leer('src/services/wa_scheduler.service.js');
 const welcomeWhatsapp = leer('src/services/welcomeWhatsapp.service.js');
+const emailService = leer('src/services/email.service.js');
 
 assert.doesNotMatch(rutas, /require\('\.\.\/services\/email\.service'\)/);
 assert.doesNotMatch(rutas, /await enviarBienvenidaWelcome/);
@@ -17,4 +18,6 @@ assert.match(rutas, /Math\.floor\(Math\.random\(\) \* 3\) \+ 5/);
 assert.match(rutas, /intervalo_minutos: \{ minimo: 5, maximo: 7 \}/);
 assert.doesNotMatch(rutas, /indice \* 3 \* 60 \* 1000/);
 assert.match(welcomeWhatsapp, /const primerNombre = partes\.length >= 3 \? partes\[2\] : partes\[1\]/);
+assert.match(emailService, /WELCOME_EMAIL_ENABLED/);
+assert.match(emailService, /motivo: 'solo_whatsapp'/);
 console.log('OK Welcome: envío exclusivo por WhatsApp');

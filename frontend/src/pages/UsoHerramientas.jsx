@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, CalendarDays, CheckCircle2, ChevronDown, Download, MapPin,
+  Activity, CalendarDays, CheckCircle2, Download, MapPin,
   MessageCircle, RefreshCw, Search, ShieldAlert, Users, XCircle,
 } from 'lucide-react';
 
@@ -16,6 +16,21 @@ const pct = (a, b) => b ? Math.round((a / b) * 100) : 0;
 const POR_PAGINA = 20;
 const fechaCorta = (v) => new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: 'short' })
   .format(new Date(`${v}T12:00:00`));
+const fechaMatriz = (v) => new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: '2-digit' })
+  .format(new Date(`${v}T12:00:00`));
+const diaSemana = (v) => new Intl.DateTimeFormat('es-EC', { weekday: 'short' })
+  .format(new Date(`${v}T12:00:00`)).replace('.', '');
+const rangoFechas = (desde, hasta) => {
+  if (!desde || !hasta || desde > hasta) return [];
+  const fechas = [];
+  const actual = new Date(`${desde}T12:00:00Z`);
+  const fin = new Date(`${hasta}T12:00:00Z`);
+  while (actual <= fin && fechas.length < 93) {
+    fechas.push(actual.toISOString().slice(0, 10));
+    actual.setUTCDate(actual.getUTCDate() + 1);
+  }
+  return fechas;
+};
 
 function Kpi({ icon: Icon, label, value, detail, tone = 'blue' }) {
   const tonos = {
@@ -69,6 +84,9 @@ export default function UsoHerramientas() {
   const [error, setError] = useState('');
   const [paginaUso, setPaginaUso] = useState(1);
   const [paginaCobertura, setPaginaCobertura] = useState(1);
+  const [anchoMatriz, setAnchoMatriz] = useState(0);
+  const scrollMatrizArriba = useRef(null);
+  const scrollMatrizContenido = useRef(null);
 
   const cargar = async () => {
     setLoading(true); setError('');
@@ -87,13 +105,64 @@ export default function UsoHerramientas() {
   const uso = useMemo(() => (data?.uso?.wabot || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha}`.toLowerCase().includes(q)), [data, q]);
   const cobertura = useMemo(() => (data?.cobertura || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha}`.toLowerCase().includes(q)), [data, q]);
   const usoPagina = uso.slice((paginaUso - 1) * POR_PAGINA, paginaUso * POR_PAGINA);
-  const coberturaPagina = cobertura.slice((paginaCobertura - 1) * POR_PAGINA, paginaCobertura * POR_PAGINA);
+  const fechasMatriz = useMemo(() => rangoFechas(
+    data?.cobertura_desde && data.cobertura_desde > filtros.desde ? data.cobertura_desde : filtros.desde,
+    filtros.hasta,
+  ), [data?.cobertura_desde, filtros.desde, filtros.hasta]);
+  const usuariosMatriz = useMemo(() => {
+    const mapa = new Map();
+    for (const fila of cobertura) {
+      const clave = `${fila.empresa}|${fila.usuario}`;
+      if (!mapa.has(clave)) mapa.set(clave, { usuario: fila.usuario, empresa: fila.empresa, dias: new Map(), gestionables: 0, consultados: 0 });
+      const usuario = mapa.get(clave);
+      usuario.dias.set(fila.fecha, fila);
+      usuario.gestionables += Number(fila.gestionables || 0);
+      usuario.consultados += Number(fila.consultados || 0);
+    }
+    return [...mapa.values()].sort((a, b) =>
+      (b.gestionables - b.consultados) - (a.gestionables - a.consultados) || a.usuario.localeCompare(b.usuario));
+  }, [cobertura]);
+  const usuariosPagina = usuariosMatriz.slice((paginaCobertura - 1) * POR_PAGINA, paginaCobertura * POR_PAGINA);
+  const totalesDia = useMemo(() => {
+    const mapa = new Map(fechasMatriz.map((fecha) => [fecha, { gestionables: 0, consultados: 0 }]));
+    for (const fila of cobertura) {
+      const t = mapa.get(fila.fecha);
+      if (!t) continue;
+      t.gestionables += Number(fila.gestionables || 0);
+      t.consultados += Number(fila.consultados || 0);
+    }
+    return mapa;
+  }, [cobertura, fechasMatriz]);
   const totalUso = uso.reduce((s, f) => s + Number(f.usos), 0);
   const totalChats = uso.reduce((s, f) => s + Number(f.conversaciones), 0);
   const usuariosActivos = new Set(uso.map((f) => `${f.empresa}|${f.usuario}`)).size;
   const tot = data?.totales || { gestionables: 0, consultados: 0, no_consultados: 0 };
+  useEffect(() => {
+    const contenido = scrollMatrizContenido.current;
+    if (!contenido) return undefined;
+    const medir = () => setAnchoMatriz(contenido.scrollWidth);
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(contenido);
+    return () => observer.disconnect();
+  }, [tab, fechasMatriz.length, usuariosPagina.length, loading]);
+
+  const sincronizarScroll = (origen, destinoRef) => {
+    if (destinoRef.current && destinoRef.current.scrollLeft !== origen.currentTarget.scrollLeft) {
+      destinoRef.current.scrollLeft = origen.currentTarget.scrollLeft;
+    }
+  };
 
   return <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
+    <style>{`
+      .matriz-scroll-superior::-webkit-scrollbar { height: 18px; }
+      .matriz-scroll-superior::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 999px; }
+      .matriz-scroll-superior::-webkit-scrollbar-thumb { background: #2563eb; border: 3px solid #e2e8f0; border-radius: 999px; }
+      .matriz-scroll-superior::-webkit-scrollbar-thumb:hover { background: #1d4ed8; }
+      .matriz-scroll-superior { scrollbar-color: #2563eb #e2e8f0; scrollbar-width: auto; }
+      .matriz-scroll-contenido { scrollbar-width: none; }
+      .matriz-scroll-contenido::-webkit-scrollbar { display: none; }
+    `}</style>
     <div className="mx-auto max-w-[1500px] space-y-5">
       <header className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-6 text-white shadow-xl sm:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -131,8 +200,37 @@ export default function UsoHerramientas() {
         {data?.cobertura_desde && data.cobertura_desde > filtros.desde && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><CalendarDays className="mr-2 inline" size={18} /><b>Período comparable desde {fechaCorta(data.cobertura_desde)}.</b> El historial de consultas no existía antes; esos días se excluyen para no marcar falsos incumplimientos.</div>}
         <section className="grid gap-3 sm:grid-cols-4"><Kpi icon={CalendarDays} label="Gestionables" value={num(tot.gestionables)} detail="Según etapa actual del CRM" /><Kpi icon={CheckCircle2} label="Consultados" value={num(tot.consultados)} detail={`${pct(tot.consultados, tot.gestionables)}% de cumplimiento`} tone="emerald" /><Kpi icon={XCircle} label="Sin consultar" value={num(tot.no_consultados)} detail="Requieren seguimiento" tone="rose" /><Kpi icon={MapPin} label="Adopción" value={`${pct(tot.consultados, tot.gestionables)}%`} detail="Gestionables con consulta" tone="amber" /></section>
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-black text-slate-900">Cobertura por usuario y día</h2><p className="text-xs text-slate-500">Cruce exacto por ID de negociación.</p></div><button onClick={() => exportarCsv(`cobertura-uso-${filtros.desde}-${filtros.hasta}.csv`, cobertura.map(({ detalle_no_consultados, ...f }) => ({ ...f, ids_no_consultados: detalle_no_consultados.join(' | ') })))} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Descargar CSV"><Download size={18} /></button></div>
-          {loading ? <Empty><RefreshCw className="mb-2 animate-spin" />Cruzando gestionables…</Empty> : cobertura.length ? <><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Fecha / usuario</th><th className="px-4 py-3 text-right">Gestionables</th><th className="px-4 py-3 text-right">Consultados</th><th className="px-4 py-3 text-right">Sin consultar</th><th className="min-w-40 px-4 py-3">Cumplimiento</th><th className="px-4 py-3">IDs pendientes</th></tr></thead><tbody className="divide-y divide-slate-100">{coberturaPagina.map((f, i) => { const p = pct(f.consultados, f.gestionables); return <tr key={`${f.fecha}-${f.empresa}-${f.usuario}-${i}`} className={f.no_consultados ? 'bg-rose-50/25' : 'hover:bg-emerald-50/30'}><td className="px-4 py-3"><div className="font-bold text-slate-900">{f.usuario}</div><div className="text-xs text-slate-500">{fechaCorta(f.fecha)} · {f.empresa}</div></td><td className="px-4 py-3 text-right font-bold">{f.gestionables}</td><td className="px-4 py-3 text-right font-black text-emerald-700">{f.consultados}</td><td className="px-4 py-3 text-right font-black text-rose-700">{f.no_consultados}</td><td className="px-4 py-3"><div className="mb-1 flex justify-between text-xs font-bold"><span>{p}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${p === 100 ? 'bg-emerald-500' : p >= 50 ? 'bg-amber-400' : 'bg-rose-500'}`} style={{ width: `${p}%` }} /></div></td><td className="max-w-xs px-4 py-3">{f.detalle_no_consultados.length ? <details><summary className="cursor-pointer font-bold text-rose-700">Ver {f.detalle_no_consultados.length} <ChevronDown className="inline" size={14} /></summary><p className="mt-2 break-words text-xs text-slate-600">{f.detalle_no_consultados.join(', ')}</p></details> : <span className="text-xs font-bold text-emerald-700">Completo</span>}</td></tr>; })}</tbody></table></div><Paginacion pagina={paginaCobertura} total={cobertura.length} onChange={setPaginaCobertura} /></> : <Empty>No hay gestionables asignados en el período seleccionado.</Empty>}
+          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-black text-slate-900">Matriz diaria de cobertura</h2><p className="text-xs text-slate-500">Cada celda muestra <b>gestionables / consultas</b>. Desplázate horizontalmente para comparar días.</p></div><div className="flex items-center gap-3"><div className="hidden items-center gap-3 text-[11px] font-bold text-slate-600 lg:flex"><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded bg-rose-400" />Sin consultar</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded bg-amber-400" />Parcial</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded bg-emerald-500" />Completo</span></div><button onClick={() => exportarCsv(`cobertura-uso-${filtros.desde}-${filtros.hasta}.csv`, cobertura.map(({ detalle_no_consultados, ...f }) => ({ ...f, ids_no_consultados: detalle_no_consultados.join(' | ') })))} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Descargar CSV"><Download size={18} /></button></div></div>
+          {loading ? <Empty><RefreshCw className="mb-2 animate-spin" />Cruzando gestionables…</Empty> : usuariosMatriz.length ? <>
+            <div className="border-b border-slate-200 bg-slate-50 px-3 pb-2 pt-3">
+              <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-slate-500"><span>Desplazar fechas</span><span>← derecha / izquierda →</span></div>
+              <div ref={scrollMatrizArriba} onScroll={(e) => sincronizarScroll(e, scrollMatrizContenido)} className="matriz-scroll-superior h-6 max-w-full overflow-x-scroll overflow-y-hidden rounded-full">
+                <div style={{ width: anchoMatriz, height: 1 }} />
+              </div>
+            </div>
+            <div ref={scrollMatrizContenido} onScroll={(e) => sincronizarScroll(e, scrollMatrizArriba)} className="matriz-scroll-contenido max-w-full overflow-x-auto">
+              <table className="min-w-max border-separate border-spacing-0 text-sm">
+                <thead><tr>
+                  <th className="sticky left-0 z-30 min-w-64 border-b border-r border-slate-200 bg-slate-100 px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-600">Usuario</th>
+                  <th className="min-w-24 border-b border-r border-slate-200 bg-slate-100 px-3 py-3 text-center text-xs font-black uppercase tracking-wide text-slate-600">Total</th>
+                  {fechasMatriz.map((fecha) => <th key={fecha} className="min-w-24 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-center"><span className="block text-[10px] font-bold uppercase text-slate-400">{diaSemana(fecha)}</span><span className="text-xs font-black text-slate-700">{fechaMatriz(fecha)}</span></th>)}
+                </tr></thead>
+                <tbody>
+                  <tr className="bg-blue-50">
+                    <td className="sticky left-0 z-20 border-b border-r border-blue-100 bg-blue-50 px-4 py-3"><span className="font-black text-blue-900">TOTAL DIARIO</span><span className="block text-[10px] text-blue-600">gestionables / consultas</span></td>
+                    <td className="border-b border-r border-blue-100 px-2 py-2 text-center"><span className="text-base font-black text-blue-950">{tot.gestionables}</span><span className="mx-1 text-blue-300">/</span><span className="font-black text-blue-700">{tot.consultados}</span></td>
+                    {fechasMatriz.map((fecha) => { const t = totalesDia.get(fecha); return <td key={fecha} className="border-b border-r border-blue-100 px-2 py-2 text-center"><span className="font-black text-blue-950">{t?.gestionables || 0}</span><span className="mx-1 text-blue-300">/</span><span className="font-black text-blue-700">{t?.consultados || 0}</span></td>; })}
+                  </tr>
+                  {usuariosPagina.map((u) => <tr key={`${u.empresa}-${u.usuario}`} className="group hover:bg-slate-50">
+                    <td className="sticky left-0 z-20 border-b border-r border-slate-100 bg-white px-4 py-3 group-hover:bg-slate-50"><span className="block max-w-56 truncate font-bold text-slate-900" title={u.usuario}>{u.usuario}</span><span className="text-[10px] font-bold text-slate-400">{u.empresa}</span></td>
+                    <td className="border-b border-r border-slate-100 px-2 py-2 text-center"><span className="text-base font-black text-slate-900">{u.gestionables}</span><span className="mx-1 text-slate-300">/</span><span className="font-black text-emerald-700">{u.consultados}</span></td>
+                    {fechasMatriz.map((fecha) => { const d = u.dias.get(fecha); const g = Number(d?.gestionables || 0); const c = Number(d?.consultados || 0); const estado = !g ? 'bg-slate-50 text-slate-300' : !c ? 'bg-rose-50 text-rose-700 ring-rose-100' : c >= g ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-amber-50 text-amber-800 ring-amber-100'; return <td key={fecha} className="border-b border-r border-slate-100 p-1.5"><div className={`rounded-lg px-2 py-2 text-center ring-1 ring-inset ${estado}`} title={g ? `${u.usuario}: ${g} gestionables, ${c} consultas` : 'Sin gestionables'}>{g ? <><span className="text-base font-black">{g}</span><span className="mx-1 opacity-40">/</span><span className="font-black">{c}</span></> : <span className="font-bold">—</span>}</div></td>; })}
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion pagina={paginaCobertura} total={usuariosMatriz.length} onChange={setPaginaCobertura} />
+          </> : <Empty>No hay gestionables asignados en el período seleccionado.</Empty>}
         </section>
       </>}
     </div>

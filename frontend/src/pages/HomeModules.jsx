@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode';
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista } from '../utils/accesoAnalista';
+import { puedeAccederAutomarcador } from '../utils/accesoAutomarcador';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -157,7 +158,7 @@ export default function HomeModules() {
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA'] },
     { title: "Automarcador", path: "/automarcador", icon: PhoneCall, accent: "rosa", cat: "equipo",
       desc: "Sistema de llamadas automáticas. Gestiona campañas y marcaciones desde el panel central.",
-      rolesPermitidos: ['SUPERVISOR', 'ANALISTA', 'ADMINISTRADOR', 'COORDINADOR', 'GERENCIA'] },
+      accessCheck: (perfil) => puedeAccederAutomarcador(perfil) },
 
     { title: "Chat Interno", path: "/chat", icon: MessageCircle, accent: "azul", cat: "comunicacion",
       desc: "Mensajería directa y grupos con tu equipo, en tiempo real." },
@@ -210,9 +211,11 @@ export default function HomeModules() {
       if (mod.requiereTareas) {
         if (!accesoTareas) return false;
       } else {
-        const allowed = userRol === 'CONSULTOR'
-          ? mod.rolesPermitidos?.includes('CONSULTOR')
-          : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
+        const allowed = mod.accessCheck
+          ? mod.accessCheck(userRol)
+          : userRol === 'CONSULTOR'
+            ? mod.rolesPermitidos?.includes('CONSULTOR')
+            : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
         const empresaGestionables = mod.path === '/gestionables-asesores'
           ? 'NOVONET'
           : mod.path === '/gestionables-velsa' ? 'VELSA' : null;

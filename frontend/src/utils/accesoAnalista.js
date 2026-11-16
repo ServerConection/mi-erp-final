@@ -10,6 +10,7 @@ export const RUTAS_ANALISTA = new Set([
   '/vista-asesor', '/vista-asesor-velsa', '/seguimiento-ventas', '/seguimiento-velsa',
   '/redes', '/redes-velsa', '/ventas', '/nueva-venta',
   '/gestionables-asesores', ...RUTAS_WABOT_MASIVOS,
+  '/automarcador',
   '/archivos-compartidos', '/evaluaciones',
   '/comisiones',
 ]);

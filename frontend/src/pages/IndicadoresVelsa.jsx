@@ -1917,6 +1917,8 @@ function ConsultaDescargaVelsa() {
   const hoy = new Date().toISOString().split('T')[0];
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [fechaActivacionDesde, setFechaActivacionDesde] = useState('');
+  const [fechaActivacionHasta, setFechaActivacionHasta] = useState('');
   const [asesor, setAsesor] = useState('');
   const [loginNetlife, setLoginNetlife] = useState('');
   const [idBitrix, setIdBitrix] = useState('');
@@ -1927,9 +1929,15 @@ function ConsultaDescargaVelsa() {
   const [error,      setError]      = useState(null);
 
   const consultar = async () => {
+    if (fechaActivacionDesde && fechaActivacionHasta && fechaActivacionDesde > fechaActivacionHasta) {
+      setError('La fecha inicial de activación no puede ser posterior a la fecha final.');
+      return;
+    }
     setLoading(true); setError(null); setRows(null);
     try {
       const params = new URLSearchParams({ fechaDesde, fechaHasta });
+      if (fechaActivacionDesde) params.set('fechaActivacionDesde', fechaActivacionDesde);
+      if (fechaActivacionHasta) params.set('fechaActivacionHasta', fechaActivacionHasta);
       if (asesor.trim()) params.set('asesor', asesor.trim());
       if (loginNetlife.trim()) params.set('loginNetlife', loginNetlife.trim());
       if (idBitrix.trim()) params.set('idBitrix', idBitrix.trim());
@@ -1963,7 +1971,10 @@ function ConsultaDescargaVelsa() {
     ws['!cols'] = COLUMNAS_CONSULTA_VELSA.map(() => ({ wch: 22 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Velsa');
-    XLSX.writeFile(wb, `Consulta_Velsa_${fechaDesde}_${fechaHasta}.xlsx`);
+    const sufijoActivacion = fechaActivacionDesde || fechaActivacionHasta
+      ? `_Activacion_${fechaActivacionDesde || 'inicio'}_${fechaActivacionHasta || 'fin'}`
+      : '';
+    XLSX.writeFile(wb, `Consulta_Velsa_${fechaDesde}_${fechaHasta}${sufijoActivacion}.xlsx`);
   };
 
   return (
@@ -1972,7 +1983,7 @@ function ConsultaDescargaVelsa() {
       <div className="bg-[#1A3A6E] text-white p-5 rounded-2xl flex justify-between items-center shadow-xl border-b-4 border-[#0f2550]">
         <div>
           <h2 className="text-lg font-black italic tracking-tighter flex items-center gap-2 uppercase">📥 CONSULTA Y DESCARGA — VELSA</h2>
-          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">Vista: vw_jotform_velsa_netlife_completo · Filtro por Fecha de Carga a JOT</p>
+          <p className="text-[9px] font-bold text-blue-300 tracking-[0.2em] uppercase mt-1">VELSA · Carga JOT + activación</p>
         </div>
         <div className="text-right text-[9px] text-blue-300">
           {rows !== null && <div className="text-lg font-black text-white">{rows.length.toLocaleString()} registros</div>}
@@ -1981,6 +1992,30 @@ function ConsultaDescargaVelsa() {
 
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="mr-1 self-center">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800">Fecha de activación</p>
+              <p className="text-[9px] text-amber-700">Opcional; filtra la consulta y el Excel.</p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Desde</label>
+              <input type="date" value={fechaActivacionDesde} onChange={e => setFechaActivacionDesde(e.target.value)}
+                className="border border-amber-300 bg-white rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Hasta</label>
+              <input type="date" value={fechaActivacionHasta} onChange={e => setFechaActivacionHasta(e.target.value)}
+                className="border border-amber-300 bg-white rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100" />
+            </div>
+            {(fechaActivacionDesde || fechaActivacionHasta) && (
+              <button type="button" onClick={() => { setFechaActivacionDesde(''); setFechaActivacionHasta(''); }}
+                className="h-[38px] px-4 rounded-xl text-[9px] font-black uppercase text-amber-800 hover:bg-amber-100 transition-colors">
+                Limpiar activación
+              </button>
+            )}
+          </div>
+        </div>
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-[9px] font-black text-stone-500 uppercase tracking-widest">Fecha Inicio (JOT)</label>
@@ -2088,7 +2123,7 @@ function ConsultaDescargaVelsa() {
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-blue-50">📥</div>
           <div className="text-sm font-black text-stone-500">Selecciona el período y presiona "Consultar"</div>
-          <div className="text-xs text-stone-400 text-center max-w-sm">Los datos provienen de <span className="font-black text-[#1A3A6E]">vw_jotform_velsa_netlife_completo</span> y se filtran por la fecha de carga en JOT.</div>
+          <div className="text-xs text-stone-400 text-center max-w-sm">Filtra por fecha de carga en JOT y, opcionalmente, por fecha de activación.</div>
         </div>
       )}
     </div>

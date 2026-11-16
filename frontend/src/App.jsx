@@ -7,6 +7,7 @@ import LogoLoader from "./components/LogoLoader";
 import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
 import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones } from './utils/accesoAdministracion';
+import { puedeAccederAutomarcador } from './utils/accesoAutomarcador';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
 import Login          from "./pages/Login";
@@ -135,6 +136,14 @@ const RolesAllowedRoute = ({ children, allowed = [] }) => {
   return children;
 };
 
+const AutomarcadorRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  if (!token) return <Navigate to="/login" replace />;
+  let perfil = '';
+  try { perfil = JSON.parse(localStorage.getItem('userProfile') || '{}').perfil || ''; } catch (_) { /* sesión inválida */ }
+  return puedeAccederAutomarcador(perfil) ? children : <Navigate to="/" replace />;
+};
+
 const AdministracionRoute = ({ children }) => {
   const token = localStorage.getItem("token");
   if (!token) return <Navigate to="/login" replace />;
@@ -231,7 +240,7 @@ export default function App() {
             <Route path="guia-planes"               element={<AdminOnlyRoute><Guiaplanesmarzo /></AdminOnlyRoute>} />
             <Route path="cobertura"                element={<CoverageChecker />} />
             <Route path="llamadas" element={<Llamadas />} />
-            <Route path="automarcador"             element={<Automarcador />} />
+            <Route path="automarcador"             element={<AutomarcadorRoute><Automarcador /></AutomarcadorRoute>} />
             <Route path="gestionables-asesores" element={<GestionablesRoute empresa="NOVONET"><GestionablesAsesores key="novonet" /></GestionablesRoute>} />
             <Route path="gestionables-velsa" element={<GestionablesRoute empresa="VELSA"><GestionablesAsesores key="velsa" empresa="velsa" /></GestionablesRoute>} />
             <Route path="gestionables-semillero" element={<GestionablesRoute empresa="SEMILLERO"><GestionablesAsesores key="semillero" empresa="semillero" /></GestionablesRoute>} />

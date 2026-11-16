@@ -24,11 +24,13 @@ const nombreMes = (mes) => {
 };
 
 function CampoMonto({ concepto, editable, onGuardar }) {
-  const [texto, setTexto] = useState(concepto.ajustado ? String(concepto.valor) : '');
+  const esCantidad = concepto.unidad === 'cantidad';
+  const guardado = esCantidad ? String(concepto.cantidad || '') : (concepto.ajustado ? String(concepto.valor) : '');
+  const [texto, setTexto] = useState(guardado);
   const [guardando, setGuardando] = useState(false);
-  useEffect(() => { setTexto(concepto.ajustado ? String(concepto.valor) : ''); }, [concepto.valor, concepto.ajustado]);
+  useEffect(() => { setTexto(guardado); }, [guardado]);
   const guardar = async () => {
-    const original = concepto.ajustado ? String(concepto.valor) : '';
+    const original = guardado;
     if (texto.trim() === original) return;
     setGuardando(true);
     await onGuardar(concepto.clave, texto.trim() === '' ? null : texto.trim());
@@ -40,17 +42,18 @@ function CampoMonto({ concepto, editable, onGuardar }) {
         <div className="text-xs font-semibold text-slate-700">{concepto.etiqueta}</div>
         {concepto.automatico && <span className="text-[10px] font-bold uppercase text-blue-600">automático</span>}
         {concepto.auto && concepto.ajustado && <span className="text-[10px] font-bold uppercase text-amber-600">ajustado a mano</span>}
+        {esCantidad && <span className="text-[10px] font-semibold text-slate-500">{concepto.cantidad || 0} × {dinero(concepto.tarifa)} = {dinero(concepto.valor)}</span>}
       </div>
       {editable ? (
         <input
-          type="number" step="0.01" inputMode="decimal" disabled={guardando}
-          value={texto} placeholder={concepto.automatico || !concepto.ajustado ? String(concepto.valor.toFixed(2)) : '0.00'}
+          type="number" step={esCantidad ? '1' : '0.01'} min={esCantidad ? '0' : undefined} inputMode={esCantidad ? 'numeric' : 'decimal'} disabled={guardando}
+          value={texto} placeholder={esCantidad ? 'N° tarjetas' : (concepto.automatico || !concepto.ajustado ? String(concepto.valor.toFixed(2)) : '0.00')}
           onChange={(e) => setTexto(e.target.value)} onBlur={guardar}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-          title={concepto.auto ? 'Vacío = valor automático' : 'Vacío = 0'}
+          title={esCantidad ? 'Cantidad de tarjetas recaudadas (Netlife)' : concepto.auto ? 'Vacío = valor automático' : 'Vacío = 0'}
           className="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold text-slate-800 placeholder:font-semibold placeholder:text-slate-400 disabled:opacity-50 print:border-0"
         />
-      ) : <span className="text-sm font-bold text-slate-800">{dinero(concepto.valor)}</span>}
+      ) : <span className="text-sm font-bold text-slate-800">{esCantidad ? `${concepto.cantidad || 0} TC · ` : ''}{dinero(concepto.valor)}</span>}
     </div>
   );
 }
@@ -88,7 +91,7 @@ function RolAsesor({ rol, mes, editable, onGuardar }) {
         <span className="text-sm font-black uppercase text-slate-700">Valor a pagar</span>
         <span className={`text-3xl font-black ${rol.valor_a_pagar < 0 ? 'text-red-600' : 'text-slate-900'}`}>{dinero(rol.valor_a_pagar)}</span>
       </div>
-      <p className="mt-3 text-[11px] text-slate-500">Solo ventas REGULARIZADAS del mes por fecha de activación. Con asegurado, los $550 cubren las primeras 35 ventas y la comisión es solo desde la venta 36; el asegurado ya se pagó, por eso se descuenta como asegurado pagado. El anticipo 40% es sobre la comisión. Retención 8%: pendiente de definir con Sergio.</p>
+      <p className="mt-3 text-[11px] text-slate-500">Solo ventas REGULARIZADAS del mes por fecha de activación. Con asegurado, los $550 cubren las primeras 35 ventas y la comisión es solo desde la venta 36; el asegurado ya se pagó, por eso se descuenta como asegurado pagado. El 40% pagado es sobre la comisión. Retención 8% (se devuelve en el mes 14): NOVONET solo sobre la comisión; VELSA sobre asegurado y comisión. Tarjeta recaudada: NOVONET $5, VELSA $3. El impulso se cuenta sobre todas las activas regularizadas.</p>
     </div>
   );
 }

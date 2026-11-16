@@ -11,6 +11,9 @@ const service = read('src/services/welcomeWhatsapp.service.js');
 
 for (const code of ['WELCOME_A','WELCOME_B','WELCOME_C','WELCOME_D','WELCOME_E']) assert.match(migration, new RegExp(code));
 for (const code of ['WELCOME_A','WELCOME_B','WELCOME_C','WELCOME_D','WELCOME_E']) assert.match(variantesPdf, new RegExp(code));
+assert.doesNotMatch(variantesPdf, /Sr\.\/Sra\. Cliente/);
+assert.doesNotMatch(variantesPdf, /Estimado\/a cliente/i);
+assert.equal((variantesPdf.match(/\{\{nombre\}\}/g) || []).length, 5);
 assert.match(variantesPdf, /ON CONFLICT \(code\) DO UPDATE/);
 assert.match(variantesPdf, /📌 Facturación y pago:\n1️⃣ El servicio/);
 assert.match(variantesPdf, /📱 Netlife Access\n/);

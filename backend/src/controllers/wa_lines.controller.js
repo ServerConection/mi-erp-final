@@ -273,11 +273,12 @@ async function create(req, res) {
            bot_id = $1,
            proxy_enabled = $2,
            proxy_config = $3,
+           created_by = $4,
            updated_at = NOW()
-         WHERE id = $4 RETURNING *`,
-        [bot_id || previa.rows[0].bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), previa.rows[0].id]
+         WHERE id = $5 RETURNING *`,
+        [bot_id || previa.rows[0].bot_id || null, usaProxy, JSON.stringify(cfgProxy || {}), req.user.id, previa.rows[0].id]
       )
-      console.log(`[wa_lines] Línea "${nombre}" reactivada (id ${previa.rows[0].id}) — campañas e historial intactos`)
+      console.log(`[wa_lines] Línea "${nombre}" reactivada (id ${previa.rows[0].id}) por usuario ${req.user.id} — campañas e historial intactos`)
     } else {
       result = await query(
         `INSERT INTO lines (name, bot_id, proxy_enabled, proxy_config, created_by)

@@ -5409,11 +5409,12 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   }, [token]);
 
   useEffect(() => {
-    // Welcome solo trabaja con activaciones que ya están ACTIVAS.
-    const activas = (todas || []).filter(
+    // Welcome solo trabaja con ventas ACTIVAS que ya están REGULARIZADAS.
+    const activasRegularizadas = (todas || []).filter(
       (r) => normalizarEstado(r?.netlife_estatus_real) === "ACTIVO"
+        && bloqueDeRegistro(r) === "REGULARIZADO"
     );
-    setRows(ordenarWelcome(activas));
+    setRows(ordenarWelcome(activasRegularizadas));
   }, [todas]);
 
   useEffect(() => {
@@ -5741,7 +5742,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 Welcome
               </h2>
               <p style={{ margin: "7px 0 0", fontSize: 12.5, color: "#64748b" }}>
-                Solo activaciones con <b>Estatus Netlife = ACTIVO</b>, ordenadas de la más antigua a la más reciente.
+                Solo registros con <b>Estatus Netlife = ACTIVO</b> y <b>Estado de regularización = REGULARIZADO</b>, ordenados del más antiguo al más reciente.
               </p>
             </div>
 

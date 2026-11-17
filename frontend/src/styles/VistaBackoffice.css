@@ -87,6 +87,323 @@
   gap: 10px;
 }
 
+.bo-welcome-response-filter {
+  appearance: none;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid #fdba74;
+  border-radius: 14px;
+  background: #fff7ed;
+  color: #9a3412;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.bo-welcome-response-filter:hover {
+  transform: translateY(-1px);
+  border-color: #f97316;
+  box-shadow: 0 8px 20px rgba(154, 52, 18, .12);
+}
+
+.bo-welcome-response-filter:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, .25);
+  outline-offset: 2px;
+}
+
+.bo-welcome-response-filter.is-active {
+  border-color: #ea580c;
+  background: #ffedd5;
+  box-shadow: inset 0 0 0 1px #ea580c, 0 8px 20px rgba(154, 52, 18, .12);
+}
+
+.bo-welcome-response-filter__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bo-welcome-response-filter__badge {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #c2410c;
+  color: #fff;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.bo-welcome-response-filter__count {
+  margin-top: 8px;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.bo-welcome-response-filter__hint {
+  margin-top: 7px;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.bo-welcome-active-filter {
+  margin: 0 18px 18px;
+  padding: 11px 14px;
+  border: 1px solid #fdba74;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.bo-welcome-active-filter button {
+  padding: 6px 10px;
+  border: 1px solid #fb923c;
+  border-radius: 8px;
+  background: #fff;
+  color: #c2410c;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bo-kanban-grid--responses > div {
+  width: min(720px, 100%);
+  min-height: 260px !important;
+}
+
+.bo-welcome-response {
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.bo-welcome-response.is-attended {
+  border-color: #ddd6fe;
+  background: #faf5ff;
+  color: #5b21b6;
+}
+
+.bo-welcome-response__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bo-welcome-response__alert {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ea580c;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 900;
+  flex: none;
+}
+
+.bo-welcome-response.is-attended .bo-welcome-response__alert {
+  background: #7c3aed;
+}
+
+.bo-welcome-response__title {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.bo-welcome-response__date {
+  margin-top: 1px;
+  color: #78716c;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.bo-welcome-response__text {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .75);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.bo-welcome-response__button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.bo-welcome-response__button:hover {
+  background: rgba(255, 255, 255, .55);
+}
+
+.bo-welcome-chat-button {
+  width: 100%;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid #c4b5fd;
+  border-radius: 9px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.bo-welcome-chat-button:hover:not(:disabled) {
+  border-color: #8b5cf6;
+  background: #ede9fe;
+}
+
+.bo-welcome-chat-button:disabled {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.bo-welcome-chat-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  padding: 24px;
+  background: rgba(15, 23, 42, .62);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: bo-welcome-backdrop-in .16s ease-out;
+}
+
+.bo-welcome-chat-modal {
+  width: min(1540px, calc(100vw - 48px));
+  height: min(900px, calc(100vh - 48px));
+  min-height: 560px;
+  border: 1px solid #c4b5fd;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .38);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: bo-welcome-modal-in .18s ease-out;
+}
+
+.bo-welcome-chat-modal__header {
+  min-height: 68px;
+  padding: 12px 16px 12px 20px;
+  border-bottom: 1px solid #ddd6fe;
+  background: linear-gradient(135deg, #faf5ff, #f5f3ff);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+}
+
+.bo-welcome-chat-modal__eyebrow {
+  color: #7c3aed;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.bo-welcome-chat-modal__header h3 {
+  margin: 4px 0 0;
+  color: #1e1b4b;
+  font-size: 17px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bo-welcome-chat-modal__close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  background: #fff;
+  color: #6d28d9;
+  font-size: 27px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.bo-welcome-chat-modal__close:hover {
+  border-color: #8b5cf6;
+  background: #ede9fe;
+}
+
+.bo-welcome-chat-modal__close:focus-visible {
+  outline: 3px solid rgba(124, 58, 237, .22);
+  outline-offset: 2px;
+}
+
+.bo-welcome-chat-modal__body {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.bo-welcome-chat-modal__body > * {
+  height: 100%;
+}
+
+/* WaInbox normalmente vive dentro del layout general y usa márgenes negativos
+   para ocupar el padding de la página. En el modal esos márgenes cortaban el
+   primer avatar y las acciones del extremo derecho. */
+.bo-welcome-chat-modal__body > div {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.bo-welcome-chat-modal__body button,
+.bo-welcome-chat-modal__body a {
+  flex-shrink: 0;
+}
+
+@keyframes bo-welcome-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bo-welcome-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Welcome y Validación de Estado comparten una cabecera con acciones arriba y
    filtros debajo. Se mantiene todo en el flujo para evitar superposiciones. */
 .bo-header:has(.bo-floating-filters) {
@@ -170,6 +487,16 @@
   .bo-header:has(.bo-floating-filters) .bo-floating-filters {
     grid-template-columns: minmax(220px, 1fr) minmax(285px, 1fr) repeat(2, max-content);
   }
+
+  .bo-welcome-chat-backdrop {
+    padding: 14px;
+  }
+
+  .bo-welcome-chat-modal {
+    width: calc(100vw - 28px);
+    height: calc(100vh - 28px);
+    min-height: 0;
+  }
 }
 
 @media (max-width: 780px) {
@@ -227,10 +554,32 @@
     justify-content: flex-end;
     flex-wrap: wrap;
   }
+
+  .bo-welcome-active-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bo-welcome-chat-backdrop {
+    padding: 0;
+  }
+
+  .bo-welcome-chat-modal {
+    width: 100vw;
+    height: 100vh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .bo-skeleton::after {
+    animation: none;
+  }
+
+  .bo-welcome-chat-backdrop,
+  .bo-welcome-chat-modal {
     animation: none;
   }
 }

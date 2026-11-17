@@ -5106,6 +5106,9 @@ function TarjetaWelcome({
   tituloSeleccion = "Seleccionar para programar",
   bloquearArrastre = false,
   onEditarCampo,
+  respuestaWelcome = null,
+  notificacionWelcome = null,
+  onAbrirChatWelcome,
 }) {
   const estaMoviendose = moviendo === row.id;
   const [edicion, setEdicion] = useState(null);
@@ -5251,6 +5254,54 @@ function TarjetaWelcome({
         {row.codigo_asesor && <div>Asesor: {row.codigo_asesor}</div>}
         {edicion && <div style={{ marginTop: 4, color: guardando ? "#0369a1" : "#64748b", fontSize: 10.5, fontWeight: 700 }}>{guardando ? "Guardando…" : "Enter o clic fuera para guardar · Esc para cancelar"}</div>}
       </div>
+
+      {respuestaWelcome && (
+        <div
+          className={`bo-welcome-response ${respuestaWelcome.attended ? "is-attended" : "is-pending"}`}
+          role="status"
+          aria-label="El cliente respondió el mensaje Welcome"
+        >
+          <div className="bo-welcome-response__header">
+            <span className="bo-welcome-response__alert" aria-hidden="true">!</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="bo-welcome-response__title">
+                {respuestaWelcome.attended ? "Cliente respondió" : "Nueva respuesta"}
+              </div>
+              <div className="bo-welcome-response__date">
+                {mostrarFechaHoraWelcome(respuestaWelcome.responded_at)}
+              </div>
+            </div>
+          </div>
+          <div className="bo-welcome-response__text">
+            {respuestaWelcome.response_text || "El cliente envió un mensaje."}
+          </div>
+          <button
+            type="button"
+            className="bo-welcome-response__button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAbrirChatWelcome?.(respuestaWelcome);
+            }}
+          >
+            💬 Ir al chat
+          </button>
+        </div>
+      )}
+
+      {!respuestaWelcome && notificacionWelcome && (
+        <button
+          type="button"
+          className="bo-welcome-chat-button"
+          disabled={!notificacionWelcome.conversation_id}
+          title={notificacionWelcome.conversation_id ? "Abrir conversación del cliente" : "La conversación todavía no está disponible"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAbrirChatWelcome?.(notificacionWelcome);
+          }}
+        >
+          💬 {notificacionWelcome.conversation_id ? "Ver chat" : "Chat no disponible"}
+        </button>
+      )}
     </div>
   );
 }
@@ -5379,6 +5430,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [respuestasWelcome, setRespuestasWelcome] = useState([]);
   const [mostrarChatWelcome, setMostrarChatWelcome] = useState(false);
   const [chatConversacionId, setChatConversacionId] = useState(null);
+  const [chatClienteWelcome, setChatClienteWelcome] = useState("");
+  const [filtrarRespondieron, setFiltrarRespondieron] = useState(false);
   const token = localStorage.getItem("token");
 
   const cargarOperacionWelcome = useCallback(async () => {
@@ -5426,6 +5479,29 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
 
   useEffect(() => { cargarProgramaciones(); cargarOperacionWelcome(); }, [cargarProgramaciones, cargarOperacionWelcome]);
 
+  // Refleja una respuesta entrante sin obligar al usuario a esperar el refresco
+  // periódico. El endpoint sigue siendo la fuente de verdad de texto, fecha y chat.
+  useEffect(() => {
+    const socket = getSocketCompartido();
+    const actualizarRespuestas = () => cargarOperacionWelcome();
+    socket.on("welcome:respuesta", actualizarRespuestas);
+    return () => socket.off("welcome:respuesta", actualizarRespuestas);
+  }, [cargarOperacionWelcome]);
+
+  useEffect(() => {
+    if (!mostrarChatWelcome) return undefined;
+    const overflowAnterior = document.body.style.overflow;
+    const cerrarConEscape = (evento) => {
+      if (evento.key === "Escape") setMostrarChatWelcome(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      window.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [mostrarChatWelcome]);
+
   // El worker cambia PENDIENTE → NOTIFICADO sin depender del navegador.
   // Esta actualización periódica refleja esos cambios en el Kanban abierto.
   useEffect(() => {
@@ -5461,14 +5537,36 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     } catch (e) { setAviso(`❌ ${e.message}`); }
   };
 
-  const positivas = respuestasWelcome.filter((r) => r.response_status === "POSITIVA").length;
-  const dudas = respuestasWelcome.filter((r) => r.response_status === "DUDA");
-  const abrirDudaWelcome = async (duda) => {
-    setChatConversacionId(duda.conversation_id);
+  const notificacionPorRegistro = useMemo(() => {
+    const mapa = new Map();
+    for (const notificacion of respuestasWelcome) {
+      const clave = String(notificacion.registro_id);
+      // El endpoint llega del más reciente al más antiguo.
+      if (!mapa.has(clave)) mapa.set(clave, notificacion);
+    }
+    return mapa;
+  }, [respuestasWelcome]);
+
+  const respuestaPorRegistro = useMemo(() => {
+    const mapa = new Map();
+    for (const [registroId, notificacion] of notificacionPorRegistro) {
+      if (notificacion.response_status) mapa.set(registroId, notificacion);
+    }
+    return mapa;
+  }, [notificacionPorRegistro]);
+
+  const abrirChatRespuestaWelcome = async (respuesta) => {
+    if (!respuesta.conversation_id) {
+      setAviso("⚠️ La conversación de este cliente todavía no está disponible.");
+      return;
+    }
+    setChatConversacionId(respuesta.conversation_id);
+    setChatClienteWelcome(respuesta.nombre_cliente_completo || "Cliente");
     setMostrarChatWelcome(true);
+    if (!respuesta.response_status) return;
     try {
-      await fetch(`${API}/api/backoffice/welcome/respuestas/${duda.id}/atender`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
-      setRespuestasWelcome((actuales) => actuales.map((r) => String(r.id) === String(duda.id) ? {...r,attended:true} : r));
+      await fetch(`${API}/api/backoffice/welcome/respuestas/${respuesta.id}/atender`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      setRespuestasWelcome((actuales) => actuales.map((r) => String(r.id) === String(respuesta.id) ? {...r,attended:true} : r));
     } catch { /* el chat debe abrir incluso si falla la marca de atención */ }
   };
 
@@ -5493,6 +5591,23 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   for (const row of filtradas) {
     porBloque[estadoWelcome(row)].push(row);
   }
+  const respuestasNotificados = porBloque.NOTIFICADOS
+    .map((row) => respuestaPorRegistro.get(String(row.id)))
+    .filter(Boolean);
+  const respondieron = respuestasNotificados.length;
+  const sinAtender = respuestasNotificados.filter((respuesta) => !respuesta.attended).length;
+  const positivas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "POSITIVA").length;
+  const dudas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "DUDA");
+  const porBloqueVisible = {
+    ...porBloque,
+    NOTIFICADOS: filtrarRespondieron
+      ? porBloque.NOTIFICADOS.filter((row) => respuestaPorRegistro.has(String(row.id)))
+      : porBloque.NOTIFICADOS,
+  };
+
+  const bloquesWelcomeVisibles = filtrarRespondieron
+    ? BLOQUES_WELCOME.filter((bloque) => bloque.id === "NOTIFICADOS")
+    : BLOQUES_WELCOME;
 
   const cambiarSeleccion = (id, marcado) => {
     setSeleccionados((actuales) => {
@@ -5782,9 +5897,6 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                 <button type="button" onClick={cambiarPausaWelcome} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #f59e0b",background:configWelcome?.paused?"#ecfdf5":"#fffbeb",color:configWelcome?.paused?"#047857":"#b45309",fontWeight:800,cursor:"pointer" }}>
                   {configWelcome?.paused ? "▶ Reanudar envíos" : "⏸ Pausar envíos"}
                 </button>
-                <button type="button" onClick={() => setMostrarChatWelcome((v) => !v)} style={{ padding:"9px 14px",borderRadius:10,border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6d28d9",fontWeight:800,cursor:"pointer" }}>
-                  💬 Chat Welcome
-                </button>
               </div>
             </div>
           </div>
@@ -5856,11 +5968,24 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#047857" }}>{positivas}</div>
             <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Confirmadas por chatbot</div>
           </div>
-          <div style={{ padding: 18, borderRadius: 14, background: "#fff7ed", border: "1px solid #fdba74" }}>
-            <div style={{ fontSize:11,fontWeight:800,color:"#c2410c",textTransform:"uppercase" }}>Clientes con duda</div>
-            <div style={{ marginTop:8,fontSize:32,lineHeight:1,fontWeight:900,color:"#c2410c" }}>{dudas.filter((r) => !r.attended).length}</div>
-            <div style={{ marginTop:7,fontSize:11.5,color:"#64748b" }}>Pendientes de atención</div>
-          </div>
+          <button
+            type="button"
+            className={`bo-welcome-response-filter ${filtrarRespondieron ? "is-active" : ""}`}
+            aria-pressed={filtrarRespondieron}
+            onClick={() => setFiltrarRespondieron((activo) => !activo)}
+            title={filtrarRespondieron ? "Volver al tablero completo" : "Abrir bandeja de clientes que respondieron"}
+          >
+            <div className="bo-welcome-response-filter__label">
+              <span>Clientes que respondieron</span>
+              {sinAtender > 0 && <span className="bo-welcome-response-filter__badge">{sinAtender} nuevo{sinAtender === 1 ? "" : "s"}</span>}
+            </div>
+            <div className="bo-welcome-response-filter__count">{respondieron}</div>
+            <div className="bo-welcome-response-filter__hint">
+              {respondieron === 0
+                ? "Clic para abrir la bandeja"
+                : filtrarRespondieron ? "Filtro activo · clic para mostrar todos" : "Clic para filtrar Notificados"}
+            </div>
+          </button>
         </div>
 
         <div style={{ margin:"0 18px 18px",padding:"10px 14px",borderRadius:12,border:"1px solid #e2e8f0",background:"#f8fafc",display:"flex",gap:18,alignItems:"center",flexWrap:"wrap",fontSize:12 }}>
@@ -5875,8 +6000,51 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         </div>
 
         {mostrarChatWelcome && (
-          <div style={{ margin:"0 18px 18px",height:"70vh",minHeight:560,border:"1px solid #c4b5fd",borderRadius:14,overflow:"hidden",background:"#fff" }}>
-            <WaInbox fixedLineName={configWelcome?.line_name || "NOTI_BACK"} initialConversationId={chatConversacionId} />
+          <div
+            className="bo-welcome-chat-backdrop"
+            role="presentation"
+            onMouseDown={() => setMostrarChatWelcome(false)}
+          >
+            <section
+              className="bo-welcome-chat-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bo-welcome-chat-title"
+              onMouseDown={(evento) => evento.stopPropagation()}
+            >
+              <header className="bo-welcome-chat-modal__header">
+                <div style={{ minWidth: 0 }}>
+                  <div className="bo-welcome-chat-modal__eyebrow">Inbox · {configWelcome?.line_name || "NOTI_BACK"}</div>
+                  <h3 id="bo-welcome-chat-title">Chat de {chatClienteWelcome || "cliente"}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="bo-welcome-chat-modal__close"
+                  aria-label="Cerrar chat"
+                  title="Cerrar (Esc)"
+                  autoFocus
+                  onClick={() => setMostrarChatWelcome(false)}
+                >
+                  ×
+                </button>
+              </header>
+              <div className="bo-welcome-chat-modal__body">
+                <WaInbox
+                  key={chatConversacionId}
+                  fixedLineName={configWelcome?.line_name || "NOTI_BACK"}
+                  initialConversationId={chatConversacionId}
+                />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {filtrarRespondieron && (
+          <div className="bo-welcome-active-filter" role="status">
+            <div>
+              <b>Filtro activo:</b> mostrando {porBloqueVisible.NOTIFICADOS.length} cliente{porBloqueVisible.NOTIFICADOS.length === 1 ? "" : "s"} que {porBloqueVisible.NOTIFICADOS.length === 1 ? "respondió" : "respondieron"} en Notificados.
+            </div>
+            <button type="button" onClick={() => setFiltrarRespondieron(false)}>Mostrar todos</button>
           </div>
         )}
 
@@ -5941,10 +6109,10 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
 
         <div style={{ padding: "0 18px 18px" }}>
-          <div className="bo-kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
-            {BLOQUES_WELCOME.map((bloque) => {
+          <div className={`bo-kanban-grid ${filtrarRespondieron ? "bo-kanban-grid--responses" : ""}`} style={{ display: "grid", gridTemplateColumns: filtrarRespondieron ? "minmax(0, 1fr)" : "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+            {bloquesWelcomeVisibles.map((bloque) => {
               const activo = sobreBloque === bloque.id;
-              const listaBloque = porBloque[bloque.id];
+              const listaBloque = porBloqueVisible[bloque.id];
 
               return (
                 <div
@@ -5988,7 +6156,11 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {listaBloque.length === 0 ? (
                       <div style={{ padding: "30px 12px", textAlign: "center", fontSize: 12, color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: 10 }}>
-                        {arrastrando ? "Suelta aquí" : "No hay registros en este bloque."}
+                        {arrastrando
+                          ? "Suelta aquí"
+                          : filtrarRespondieron && bloque.id === "NOTIFICADOS"
+                            ? "Todavía ningún cliente ha respondido el mensaje Welcome."
+                            : "No hay registros en este bloque."}
                       </div>
                     ) : (
                       listaBloque.map((row) => (
@@ -6007,6 +6179,9 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             tituloSeleccion={modoExportacion ? "Seleccionar para exportar" : "Seleccionar para programar"}
                             bloquearArrastre={modoExportacion}
                             onEditarCampo={editarCampoWelcome}
+                            respuestaWelcome={bloque.id === "NOTIFICADOS" ? respuestaPorRegistro.get(String(row.id)) : null}
+                            notificacionWelcome={bloque.id === "NOTIFICADOS" ? notificacionPorRegistro.get(String(row.id)) : null}
+                            onAbrirChatWelcome={abrirChatRespuestaWelcome}
                           />
                           {bloque.id === "SIN_NOTIFICAR" && (
                             <button
@@ -6069,7 +6244,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         )}
         {dudas.find((r) => !r.attended) && (() => {
           const duda = dudas.find((r) => !r.attended);
-          return <button type="button" onClick={() => abrirDudaWelcome(duda)} style={{position:"fixed",right:82,bottom:96,zIndex:80,width:340,textAlign:"left",padding:"14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 16px 40px rgba(124,45,18,.24)",cursor:"pointer",color:"#7c2d12"}}>
+          return <button type="button" onClick={() => abrirChatRespuestaWelcome(duda)} style={{position:"fixed",right:82,bottom:96,zIndex:80,width:340,textAlign:"left",padding:"14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 16px 40px rgba(124,45,18,.24)",cursor:"pointer",color:"#7c2d12"}}>
             <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
             <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
             <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>

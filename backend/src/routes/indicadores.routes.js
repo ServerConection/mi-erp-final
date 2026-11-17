@@ -117,7 +117,7 @@ router.get('/monitoreo-diario', getMonitoreoDiario);
 router.get('/reporte180', getReporte180);
 router.get('/consulta-descarga', getConsultaDescargaNovonet);
 router.get('/detalle-crm-master', async (req, res) => {
-  if (normalizarPerfil(req.user?.perfil) !== 'ADMINISTRADOR') {
+  if (String(req.user?.usuario || '').trim().toLowerCase() !== 'jasimbana') {
     return res.status(403).json({ success: false, error: 'No tiene permisos para consultar el detalle CRM master' });
   }
   const { fechaDesde, fechaHasta } = req.query;

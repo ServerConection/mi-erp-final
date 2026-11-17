@@ -588,7 +588,7 @@ export default function ReporteComercialCore({
   const puedeVerDetalleCRMMaster = useMemo(() => {
     try {
       const perfil = JSON.parse(localStorage.getItem('userProfile') || localStorage.getItem('user') || '{}');
-      return String(perfil.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR';
+      return String(perfil.usuario || perfil.username || '').trim().toLowerCase() === 'jasimbana';
     } catch { return false; }
   }, []);
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoEmbudoPorDia: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });

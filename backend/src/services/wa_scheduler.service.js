@@ -192,8 +192,8 @@ class SchedulerService {
               whatsappSent = true
               await query(
                 `UPDATE welcome_notifications SET whatsapp_sent=true,variant_id=COALESCE(variant_id,$2),
-                 wa_message_id=$3,delivery_status='SENT',updated_at=NOW() WHERE id=$1`,
-                [tarea.id, preparado.variante_id, enviado?.key?.id || null]
+                 wa_message_id=$3,conversation_id=COALESCE(conversation_id,$4),delivery_status='SENT',updated_at=NOW() WHERE id=$1`,
+                [tarea.id, preparado.variante_id, enviado?.key?.id || null, enviado?.conversation_id || null]
               )
             } catch (error) {
               errores.push(`WhatsApp: ${error.message}`)

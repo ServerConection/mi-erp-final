@@ -612,10 +612,25 @@ router.post('/welcome/reanudar', async (req, res) => {
 router.get('/welcome/respuestas', async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT wn.*,ev.nombre_cliente_completo,ev.telf_celular_pin,ev.telf_celular_2,ev.numero_identificacion,wv.name AS variante
+      `SELECT wn.*,ev.nombre_cliente_completo,ev.telf_celular_pin,ev.telf_celular_2,ev.numero_identificacion,wv.name AS variante,
+              COALESCE(wn.conversation_id::text,chat.conversation_id::text) AS conversation_id
        FROM welcome_notifications wn JOIN envios_ventas ev ON ev.id=wn.registro_id
        LEFT JOIN welcome_variants wv ON wv.id=wn.variant_id
-       WHERE wn.response_status IS NOT NULL ORDER BY wn.responded_at DESC LIMIT 300`
+       LEFT JOIN LATERAL (
+         SELECT m.conversation_id
+         FROM messages m
+         JOIN lines l ON l.id=m.line_id
+         WHERE UPPER(TRIM(l.name))=(SELECT UPPER(TRIM(line_name)) FROM welcome_config WHERE id=1)
+           AND m.direction='out'
+           AND (
+             (wn.wa_message_id IS NOT NULL AND m.wa_msg_id=wn.wa_message_id)
+             OR right(regexp_replace(m.wa_number,'[^0-9]','','g'),9)=right(regexp_replace(COALESCE(ev.telf_celular_pin,ev.telf_celular_2,ev.telf_fijo),'[^0-9]','','g'),9)
+           )
+         ORDER BY (m.wa_msg_id=wn.wa_message_id) DESC,m.timestamp DESC
+         LIMIT 1
+       ) chat ON true
+       WHERE wn.status='completed'
+       ORDER BY COALESCE(wn.responded_at,wn.completed_at) DESC LIMIT 1000`
     );
     res.json({success:true,data:rows});
   } catch (error) { res.status(500).json({success:false,error:error.message}); }

@@ -1288,7 +1288,8 @@ class BaileysManager {
     await this._simulateTyping(inst.sock, jid, (text || '').length)
     const result = await inst.sock.sendMessage(jid, { text }, messageId ? { messageId } : {})
     this._markSentByErp(result?.key?.id)
-    await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id, inboxNoteId)
+    const conversacion = await this._saveOutboundMessage(lineId, this._cleanNumber(to), 'text', text, null, result?.key?.id, inboxNoteId)
+    if (conversacion?.id) result.conversation_id = conversacion.id
     return result
   }
 
@@ -1839,7 +1840,7 @@ class BaileysManager {
   }
 
   async _saveOutboundMessage(lineId, waNumber, type, content, mediaUrl = null, waMsgId = null, inboxNoteId = null) {
-    if (!content && !mediaUrl) return   // no guardar burbujas vacías
+    if (!content && !mediaUrl) return null   // no guardar burbujas vacías
     try {
       const conv = await this._getOrCreateConversation(lineId, waNumber, this._toJid(waNumber))
       await query(
@@ -1857,7 +1858,10 @@ class BaileysManager {
         wa_msg_id: waMsgId,
         timestamp: new Date().toISOString(),
       })
-    } catch (e) {}
+      return conv
+    } catch (e) {
+      return null
+    }
   }
 
   async _updateLineStatus(lineId, status) {

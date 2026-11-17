@@ -2,7 +2,7 @@
 -- El UPSERT actualiza instalaciones existentes y conserva los IDs referenciados.
 INSERT INTO public.welcome_variants (code, name, body, active, sort_order)
 VALUES
-('WELCOME_A', 'Opción A', $$¡Muy buenas, Sr./Sra. Cliente! 👋
+('WELCOME_A', 'Opción A', $$¡Muy buenas, {{nombre}}! 👋
 
 Reciba un cordial saludo de NETLIFE, su servicio de Internet. Queremos darle la bienvenida y compartirle información importante para que pueda aprovechar mejor el servicio contratado.
 
@@ -30,7 +30,7 @@ Por ley de protección de datos, desde este número ya no podemos acceder a su i
 
 ('WELCOME_B', 'Opción B', $$¡Bienvenido a NETLIFE! 👋
 
-Muy buenas, Sr./Sra. Cliente. Le saludamos cordialmente de NETLIFE, su servicio de Internet. Nuestro objetivo es darle la bienvenida y brindarle información importante relacionada con el servicio contratado.
+Muy buenas, {{nombre}}. Le saludamos cordialmente de NETLIFE, su servicio de Internet. Nuestro objetivo es darle la bienvenida y brindarle información importante relacionada con el servicio contratado.
 
 💳 Información de facturación y pago
 • El servicio funciona bajo modalidad de previo pago, es decir, se cancela antes de consumir. El período inicia desde el primer día de activación y finaliza el último día del mes.
@@ -55,7 +55,7 @@ Esperamos que disfrute de su servicio. ¡Bienvenido a NETLIFE! 🙌$$, true, 2),
 
 ('WELCOME_C', 'Opción C', $$👋 ¡Bienvenido a NETLIFE!
 
-Estimado/a cliente, le saludamos de NETLIFE, su servicio de Internet, y le damos la bienvenida a nuestro servicio. A continuación, compartimos información importante sobre su servicio contratado.
+Estimado/a {{nombre}}, le saludamos de NETLIFE, su servicio de Internet, y le damos la bienvenida a nuestro servicio. A continuación, compartimos información importante sobre su servicio contratado.
 
 📌 Facturación y pago
 El servicio es previo pago: se paga antes de consumir y corre desde el primer día de activación hasta el último día del mes.
@@ -81,7 +81,7 @@ Gracias por su atención. ¡Disfrute su servicio NETLIFE! 😊$$, true, 3),
 
 ('WELCOME_D', 'Opción D', $$¡Muy buenas! 👋
 
-Sr./Sra. Cliente, reciba un cordial saludo de NETLIFE, su servicio de Internet. Nos complace darle la bienvenida y dejarle algunos datos importantes para que pueda aprovechar mejor el servicio contratado.
+{{nombre}}, reciba un cordial saludo de NETLIFE, su servicio de Internet. Nos complace darle la bienvenida y dejarle algunos datos importantes para que pueda aprovechar mejor el servicio contratado.
 
 🔹 1. Facturación y pago
 El servicio es previo pago, es decir, se paga antes de consumir y corre desde el primer día de activación hasta el último día del mes.
@@ -105,7 +105,7 @@ Para atención puede utilizar los siguientes canales:
 
 ¡Gracias por su tiempo y bienvenido a NETLIFE! 🙌$$, true, 4),
 
-('WELCOME_E', 'Opción E', $$👋 Estimado/a cliente: ¡Bienvenido a NETLIFE!
+('WELCOME_E', 'Opción E', $$👋 Estimado/a {{nombre}}: ¡Bienvenido a NETLIFE!
 
 Le saludamos cordialmente de NETLIFE, su servicio de Internet. Queremos darle la bienvenida y compartir con usted información que le permitirá conocer mejor el servicio contratado.
 

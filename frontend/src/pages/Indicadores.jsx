@@ -425,7 +425,7 @@ const normalizarFilaDetalleJotform = (fila = {}) => {
   return salida;
 };
 
-function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtroBadge = null }) {
+function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtroBadge = null, extraAction = null }) {
   const [open, setOpen] = useState(false);
   const esDetalleJotform = title.includes("DETALLE BASE JOTFORM");
   const dataVisible = esDetalleJotform ? data.map(normalizarFilaDetalleJotform) : data;
@@ -450,11 +450,14 @@ function DataVisor({ title, data = [], onDownload, color = "bg-slate-600", filtr
           {filtroBadge}
           <span className="bg-white/20 px-2 py-0.5 rounded-full text-[8px] ml-1">{data.length} REGISTROS</span>
         </button>
+        <div className="flex items-center gap-2">
+        {extraAction}
         {onDownload && (
           <button onClick={onDownload} className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all border border-white/20">
             ↓ EXCEL
           </button>
         )}
+        </div>
       </div>
       {open && (
         <div className="overflow-x-auto max-h-72 overflow-y-auto">
@@ -581,6 +584,13 @@ export default function ReporteComercialCore({
   const [dashboardError, setDashboardError] = useState('');
   const [alertas, setAlertas]           = useState([]);
   const [diaFiltrado, setDiaFiltrado]   = useState(null);
+  const [consultaMasterCRM, setConsultaMasterCRM] = useState({ abierta: false, loading: false, rows: [], error: '' });
+  const puedeVerDetalleCRMMaster = useMemo(() => {
+    try {
+      const perfil = JSON.parse(localStorage.getItem('userProfile') || localStorage.getItem('user') || '{}');
+      return String(perfil.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR';
+    } catch { return false; }
+  }, []);
   const [data, setData]                 = useState({ supervisores: [], asesores: [], dataCRM: [], dataNetlife: [], estadosNetlife: [], graficoEmbudo: [], graficoEmbudoPorDia: [], graficoBarrasDia: [], graficoActivacionesDia: [], etapasCRM: [], etapasJotform: [], porcentajeTerceraEdad: 0, porcentajeTarjeta: 0 });
   const [monitoreoData, setMonitoreoData]     = useState({ supervisores: [], asesores: [] });
   const [reporte180Data, setReporte180Data]   = useState({ kpis: { ingresos_jot: 0, ventas_activas: 0, pct_descarte: 0, pct_efectividad: 0, pct_tercera_edad: 0 }, embudoCRM: [], embudoJotform: [], mapaCalor: [] });
@@ -1524,6 +1534,30 @@ ${asesoresPDF.length>0?`
     XLSX.writeFile(wb, `Reporte_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const abrirConsultaMasterCRM = async () => {
+    setConsultaMasterCRM({ abierta: true, loading: true, rows: [], error: '' });
+    try {
+      const params = new URLSearchParams({
+        fechaDesde: filtrosAplicados.fechaDesde,
+        fechaHasta: filtrosAplicados.fechaHasta,
+      });
+      const res = await fetchConSesion(`${import.meta.env.VITE_API_URL}/api/indicadores/detalle-crm-master?${params}`);
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || `Error HTTP ${res.status}`);
+      setConsultaMasterCRM({ abierta: true, loading: false, rows: result.rows || [], error: '' });
+    } catch (error) {
+      setConsultaMasterCRM({ abierta: true, loading: false, rows: [], error: error.message || 'No se pudo cargar la consulta master' });
+    }
+  };
+
+  const descargarConsultaMasterCRM = () => {
+    if (!consultaMasterCRM.rows.length) return;
+    const ws = XLSX.utils.json_to_sheet(consultaMasterCRM.rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CRM MASTER');
+    XLSX.writeFile(wb, `Detalle_CRM_Master_${filtrosAplicados.fechaDesde}_${filtrosAplicados.fechaHasta}.xlsx`);
+  };
+
   // Las tarjetas usan el mismo nivel de detalle que la tabla por asesor,
   // referencia operativa validada. Evita divergencias por mapeos de supervisor.
   const stats = useMemo(() => calcularStatsIndicadores(data), [data]);
@@ -2301,10 +2335,58 @@ ${asesoresPDF.length>0?`
               data={dataCRMFiltrada}
               onDownload={() => descargarExcel("CRM")}
               color="bg-slate-600"
+              extraAction={puedeVerDetalleCRMMaster ? (
+                <button onClick={abrirConsultaMasterCRM} className="bg-violet-500/80 hover:bg-violet-500 px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all border border-white/20">
+                  CONSULTA MASTER
+                </button>
+              ) : null}
               filtroBadge={diaFiltrado ? <button onClick={() => setDiaFiltrado(null)} className="text-[8px] bg-white/20 px-2 py-0.5 rounded-full font-black ml-2">DÍA {diaFiltrado} ✕ LIMPIAR</button> : null}
             />
             <DataVisor title="DETALLE BASE JOTFORM (NETLIFE)" data={data.dataNetlife} onDownload={() => descargarExcel("JOTFORM")} color="bg-blue-600" />
           </div>
+
+          {consultaMasterCRM.abierta && (
+            <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm p-4 md:p-8 flex items-center justify-center" onClick={() => setConsultaMasterCRM(prev => ({ ...prev, abierta: false }))}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[96vw] h-[88vh] flex flex-col overflow-hidden" onClick={event => event.stopPropagation()}>
+                <div className="bg-violet-700 text-white px-5 py-4 flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-widest">Consulta Master — Detalle Base CRM</h3>
+                    <p className="text-[9px] font-bold text-violet-200 mt-1">NOVONET + VELSA · {filtrosAplicados.fechaDesde} al {filtrosAplicados.fechaHasta}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!consultaMasterCRM.loading && consultaMasterCRM.rows.length > 0 && (
+                      <button onClick={descargarConsultaMasterCRM} className="bg-emerald-500 hover:bg-emerald-400 px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all">
+                        ↓ EXPORTAR EXCEL ({consultaMasterCRM.rows.length.toLocaleString()})
+                      </button>
+                    )}
+                    <button onClick={() => setConsultaMasterCRM(prev => ({ ...prev, abierta: false }))} className="bg-white/15 hover:bg-white/25 w-9 h-9 rounded-lg font-black" aria-label="Cerrar consulta master">×</button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto">
+                  {consultaMasterCRM.loading ? (
+                    <div className="h-full flex items-center justify-center text-sm font-black text-violet-700 uppercase">Consultando ambas empresas...</div>
+                  ) : consultaMasterCRM.error ? (
+                    <div className="m-6 rounded-xl bg-red-50 border border-red-200 p-5 text-sm font-bold text-red-700">{consultaMasterCRM.error}</div>
+                  ) : consultaMasterCRM.rows.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm font-bold text-slate-400">No se encontraron registros para el período seleccionado.</div>
+                  ) : (
+                    <table className="w-full text-[8px] font-mono whitespace-nowrap">
+                      <thead className="sticky top-0 z-10 bg-slate-900 text-white">
+                        <tr>{Object.keys(consultaMasterCRM.rows[0]).map(col => <th key={col} className="px-3 py-2 text-left font-black border-r border-slate-700">{col}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {consultaMasterCRM.rows.map((row, index) => (
+                          <tr key={`${row.EMPRESA}-${row.ID_CRM}-${index}`} className={index % 2 ? 'bg-slate-50' : 'bg-white'}>
+                            {Object.keys(consultaMasterCRM.rows[0]).map(col => <td key={col} className="px-3 py-1.5 border-r border-slate-100 max-w-[220px] truncate">{row[col] == null ? '—' : String(row[col])}</td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           </div>{/* ── fin zona de datos ── */}
         </div>

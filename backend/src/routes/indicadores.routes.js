@@ -116,6 +116,54 @@ router.get('/dashboard', getIndicadoresDashboard);
 router.get('/monitoreo-diario', getMonitoreoDiario);
 router.get('/reporte180', getReporte180);
 router.get('/consulta-descarga', getConsultaDescargaNovonet);
+router.get('/detalle-crm-master', async (req, res) => {
+  if (normalizarPerfil(req.user?.perfil) !== 'ADMINISTRADOR') {
+    return res.status(403).json({ success: false, error: 'No tiene permisos para consultar el detalle CRM master' });
+  }
+  const { fechaDesde, fechaHasta } = req.query;
+  if (!fechaDesde || !fechaHasta) {
+    return res.status(400).json({ success: false, error: 'Los parámetros fechaDesde y fechaHasta son requeridos' });
+  }
+  try {
+    const [novonet, velsa] = await Promise.all([
+      pool.query(`
+        SELECT DISTINCT 'NOVONET'::text AS "EMPRESA",
+          mb.b_id AS "ID_CRM", mb.b_etapa_de_la_negociacion AS "ETAPA_CRM",
+          TO_CHAR(mb.b_creado_el_fecha, 'YYYY-MM-DD') AS "FECHA_CREACION_CRM", mb.b_persona_responsable AS "ASESOR",
+          mb.b_creado_el_hora AS "HORA_CREACION", e.supervisor AS "SUPERVISOR_ASIGNADO",
+          TO_CHAR(mb.b_modificado_el_fecha, 'YYYY-MM-DD') AS "FECHA_MODIFICACION", mb.b_modificado_el_hora AS "HORA_MODIFICACION",
+          mb.b_origen AS "ORIGEN"
+        FROM public.vw_bitrix_novonet_v2 mb
+        LEFT JOIN LATERAL (
+          SELECT e2.supervisor FROM public.empleados e2
+          WHERE e2.nombre_completo = mb.b_persona_responsable
+          ORDER BY CASE WHEN e2.codigo = EXTRACT(MONTH FROM mb.b_creado_el_fecha::date)::text THEN 0 ELSE 1 END,
+            CASE WHEN BTRIM(e2.codigo) ~ '^\\d+$' THEN BTRIM(e2.codigo)::int ELSE -1 END DESC
+          LIMIT 1
+        ) e ON true
+        WHERE mb.b_creado_el_fecha BETWEEN $1::date AND $2::date
+      `, [fechaDesde, fechaHasta]),
+      pool.query(`
+        SELECT DISTINCT 'VELSA'::text AS "EMPRESA",
+          mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
+          TO_CHAR(mv.fecha_creacion_crm, 'YYYY-MM-DD') AS "FECHA_CREACION_CRM", mv.asesor AS "ASESOR",
+          TO_CHAR(mv.fecha_creacion_crm, 'HH24:MI:SS') AS "HORA_CREACION",
+          'ALEXANDRA PACHECO / DARIANA LEONARDI'::text AS "SUPERVISOR_ASIGNADO",
+          TO_CHAR(mv.fecha_modificacion_crm, 'YYYY-MM-DD') AS "FECHA_MODIFICACION",
+          TO_CHAR(mv.fecha_modificacion_crm, 'HH24:MI:SS') AS "HORA_MODIFICACION", mv.origen AS "ORIGEN"
+        FROM public.mv_indicadores_velsa_completo mv
+        WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date
+      `, [fechaDesde, fechaHasta]),
+    ]);
+    const rows = [...novonet.rows, ...velsa.rows].sort((a, b) =>
+      String(b.FECHA_CREACION_CRM || '').localeCompare(String(a.FECHA_CREACION_CRM || ''))
+    );
+    return res.json({ success: true, rows, total: rows.length, empresas: ['NOVONET', 'VELSA'] });
+  } catch (error) {
+    console.error('[indicadores/detalle-crm-master]', error.message);
+    return res.status(500).json({ success: false, error: 'No se pudo consultar el detalle CRM master' });
+  }
+});
 router.get('/consulta-master', async (req, res) => {
   if (!puedeConsultaMaster(req)) {
     return res.status(403).json({ success: false, error: 'No tiene permisos para realizar la Consulta Master' });

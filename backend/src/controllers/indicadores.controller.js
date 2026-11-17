@@ -985,11 +985,11 @@ const getIndicadoresDashboard = async (req, res) => {
             SELECT DISTINCT
                 mb.b_id AS "ID_CRM",
                 mb.b_etapa_de_la_negociacion AS "ETAPA_CRM",
-                mb.b_creado_el_fecha AS "FECHA_CREACION_CRM",
+                TO_CHAR(mb.b_creado_el_fecha, 'YYYY-MM-DD') AS "FECHA_CREACION_CRM",
                 mb.b_persona_responsable AS "ASESOR",
                 mb.b_creado_el_hora AS "HORA_CREACION",
                 e.supervisor AS "SUPERVISOR_ASIGNADO",
-                mb.b_modificado_el_fecha AS "FECHA_MODIFICACION",
+                TO_CHAR(mb.b_modificado_el_fecha, 'YYYY-MM-DD') AS "FECHA_MODIFICACION",
                 mb.b_modificado_el_hora AS "HORA_MODIFICACION",
                 mb.b_origen AS "ORIGEN"
             FROM public.vw_bitrix_novonet_v2 mb

@@ -1483,12 +1483,16 @@ async function getDetalleCRMData(req, res) {
     const result = await pool.query(`
       SELECT DISTINCT
         mv.id_crm AS "ID_CRM", mv.etapa_crm AS "ETAPA_CRM",
-        mv.fecha_creacion_crm AS "FECHA_CREACION_CRM",
-        mv.asesor AS "ASESOR", ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
-        mv.fecha_modificacion_crm AS "FECHA_MODIFICACION", mv.origen AS "ORIGEN"
+        TO_CHAR(mv.fecha_creacion_crm, 'YYYY-MM-DD') AS "FECHA_CREACION_CRM",
+        mv.asesor AS "ASESOR",
+        TO_CHAR(mv.fecha_creacion_crm, 'HH24:MI:SS') AS "HORA_CREACION",
+        ${EXPR_SUPERVISOR} AS "SUPERVISOR_ASIGNADO",
+        TO_CHAR(mv.fecha_modificacion_crm, 'YYYY-MM-DD') AS "FECHA_MODIFICACION",
+        TO_CHAR(mv.fecha_modificacion_crm, 'HH24:MI:SS') AS "HORA_MODIFICACION",
+        mv.origen AS "ORIGEN"
       FROM ${MV}
       WHERE mv.fecha_creacion_crm::date BETWEEN $1::date AND $2::date ${filters}
-      ORDER BY mv.fecha_creacion_crm DESC
+      ORDER BY "FECHA_CREACION_CRM" DESC, "HORA_CREACION" DESC
     `, values);
 
     console.log(`[DETALLE-CRM-VELSA] ${desde}~${hasta} | ${result.rowCount} registros`);

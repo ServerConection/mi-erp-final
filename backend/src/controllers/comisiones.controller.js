@@ -174,6 +174,7 @@ function calcularValor(ventas, reglas = REGLAS, registro = null) {
 }
 
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+const bonoPorVentas = (n, reglas = REGLAS) => { const e = (reglas.bonoVolumen || []).find(([desde]) => n >= desde); return e ? e[1] : 0; };
 const TRAMO_TXT = { 1: 'HASTA 40', 2: 'DESDE 41' };
 
 /** Agrupa las ventas por asesor y calcula total (todas las activas) y disponible (solo REGULARIZADO). */
@@ -208,8 +209,9 @@ function calcularAsesores(ventas, reglas = REGLAS) {
       valor_comision_directa: r2(disp.valor_directo),
       valor_pyme_bono: r2(disp.valor_pyme_bono),
       pyme_como_bono: disp.pyme_como_bono,
-      bono_volumen: sinAsesor ? 0 : disp.bono_volumen,
-      ventas_volumen: disp.ventas_volumen,
+      // Impulso del mes (manual): se cuenta sobre TODAS las activas regularizadas, se paguen o no por comisión.
+      bono_volumen: sinAsesor ? 0 : bonoPorVentas(regularizadas.length, reglas),
+      ventas_volumen: regularizadas.length,
       te_ventas: disp.te_ventas,
       te_excedentes: disp.te_excedentes,
       valor_total: r2(total.valor),
@@ -461,37 +463,60 @@ async function catalogoCargar(req, res) {
 // public.rol_pagos_ajustes (ROL_PAGOS_AJUSTES.sql). Un ajuste guardado sobre un
 // concepto AUTO lo reemplaza; borrar el valor vuelve al cálculo automático.
 const ROL_CONCEPTOS = [
-  { clave: 'asegurado',          lado: 'ingreso',   etiqueta: 'Asegurado',                              auto: true },
-  { clave: 'comision_total',     lado: 'ingreso',   etiqueta: 'Comisión (con asegurado: desde la venta 36)', auto: true },
-  { clave: 'bono_tc',            lado: 'ingreso',   etiqueta: 'Pago de tarjetas de crédito recaudadas' },
-  { clave: 'incentivos',         lado: 'ingreso',   etiqueta: 'Incentivos (bono al volumen)',           auto: true },
-  { clave: 'asegurado_pagado',   lado: 'descuento', etiqueta: 'Asegurado pagado',                       auto: true },
-  { clave: 'chargeback',         lado: 'descuento', etiqueta: 'Chargeback' },
-  { clave: 'calidad_venta',      lado: 'descuento', etiqueta: 'Descuentos por calidad de venta' },
-  { clave: 'adelantos',          lado: 'descuento', etiqueta: 'Adelantos' },
-  { clave: 'retencion',          lado: 'descuento', etiqueta: 'Retención 8%' },
-  { clave: 'atrasos',            lado: 'descuento', etiqueta: 'Atrasos' },
-  { clave: 'anticipo_40',        lado: 'descuento', etiqueta: 'Anticipo pago 40%',                      auto: true },
-  { clave: 'plan_celular',       lado: 'descuento', etiqueta: 'Plan celular',                           auto: true },
+  // Ingresos (manual de contabilidad, oct-2026)
+  { clave: 'asegurado',             lado: 'ingreso',   etiqueta: 'Asegurado',                               auto: true },
+  { clave: 'comision_total',        lado: 'ingreso',   etiqueta: 'Comisión (con asegurado: desde la venta 36)', auto: true },
+  { clave: 'servicios_adicionales', lado: 'ingreso',   etiqueta: 'Servicios adicionales' },
+  { clave: 'incentivos',            lado: 'ingreso',   etiqueta: 'Impulso del mes',                         auto: true },
+  { clave: 'tc_recaudadas',         lado: 'ingreso',   etiqueta: 'Tarjetas de crédito recaudadas',          unidad: 'cantidad' },
+  { clave: 'bono_tc',               lado: 'ingreso',   etiqueta: 'Pago TC recaudadas (monto manual)',       soloSiHay: true },
+  { clave: 'ajustes_favor',         lado: 'ingreso',   etiqueta: 'Ajustes a favor' },
+  { clave: 'devolucion_8',          lado: 'ingreso',   etiqueta: 'Devolución del 8% (mes 14)' },
+  // Egresos
+  { clave: 'retencion_asegurado',   lado: 'descuento', etiqueta: 'Retención 14 meses 8% asegurado',         auto: true },
+  { clave: 'retencion',             lado: 'descuento', etiqueta: 'Retención 14 meses 8% comisión',          auto: true },
+  { clave: 'chargeback',            lado: 'descuento', etiqueta: 'Chargeback' },
+  { clave: 'atrasos',               lado: 'descuento', etiqueta: 'Atrasos' },
+  { clave: 'no_asistencias',        lado: 'descuento', etiqueta: 'No asistencias' },
+  { clave: 'calidad_venta',         lado: 'descuento', etiqueta: 'Descuentos (calidad / Netlife)' },
+  { clave: 'plan_celular',          lado: 'descuento', etiqueta: 'Plan celular',                            auto: true },
+  // Anticipos ya pagados
+  { clave: 'asegurado_pagado',      lado: 'descuento', etiqueta: 'Asegurado pagado (factura 1)',            auto: true },
+  { clave: 'adelantos',             lado: 'descuento', etiqueta: 'Anticipos' },
+  { clave: 'anticipo_40',           lado: 'descuento', etiqueta: '40% pagado',                              auto: true },
 ];
 const ROL_CLAVES = new Set(ROL_CONCEPTOS.map((c) => c.clave));
-const ROL_REGLAS = { anticipo: 0.4, plan_celular: 8.4 };
+const ROL_REGLAS = { anticipo: 0.4, retencion: 0.08 };
+// Diferencias por empresa (manual de contabilidad):
+//  - VELSA retiene 8% del asegurado y de la comisión; NOVONET solo de la comisión.
+//  - Tarjeta de crédito recaudada: VELSA $3, NOVONET $5.
+const ROL_EMPRESA = {
+  NOVONET: { tarifa_tc: 5, plan_celular: 8.4, retiene_asegurado: false },
+  VELSA:   { tarifa_tc: 3, plan_celular: 8.63, retiene_asegurado: true },
+};
 
 /** Arma el rol de un asesor a partir de su fila de comisiones y sus ajustes { clave: monto }. */
-function armarRol(fila, ajustes = {}, reglas = REGLAS) {
+function armarRol(fila, ajustes = {}, reglas = REGLAS, empresa = 'NOVONET') {
+  const emp = ROL_EMPRESA[String(empresa || '').toUpperCase()] || ROL_EMPRESA.NOVONET;
   // Con asegurado, los $550 cubren las primeras 35 ventas: la comisión del rol es solo
   // lo que va encima (venta 36 en adelante + planes de comisión + PYME bono).
   const asegurado = fila.asegurado_aplicado ? reglas.asegurado : 0;
   const comision = r2(Math.max(0, Number(fila.valor_disponible || 0) - asegurado));
+  const tarjetas = Number(ajustes.tc_recaudadas ?? 0) || 0;
   const auto = {
     asegurado,
     comision_total: comision,
+    incentivos: Number(fila.bono_volumen || 0),
+    retencion_asegurado: emp.retiene_asegurado ? r2(asegurado * ROL_REGLAS.retencion) : 0,
+    retencion: r2(comision * ROL_REGLAS.retencion),
+    plan_celular: emp.plan_celular,
     asegurado_pagado: asegurado,
     anticipo_40: r2(comision * ROL_REGLAS.anticipo),
-    incentivos: Number(fila.bono_volumen || 0),
-    plan_celular: ROL_REGLAS.plan_celular,
   };
-  const conceptos = ROL_CONCEPTOS.map((c) => {
+  const conceptos = ROL_CONCEPTOS.filter((c) => !c.soloSiHay || (ajustes[c.clave] !== undefined && ajustes[c.clave] !== null)).map((c) => {
+    if (c.unidad === 'cantidad') {
+      return { ...c, cantidad: tarjetas, tarifa: emp.tarifa_tc, valor: r2(tarjetas * emp.tarifa_tc), automatico: false, ajustado: tarjetas !== 0 };
+    }
     const manual = ajustes[c.clave];
     const tieneManual = manual !== undefined && manual !== null;
     const valor = tieneManual ? Number(manual) : (c.auto ? auto[c.clave] : 0);
@@ -538,7 +563,7 @@ async function rolListar(req, res) {
     }
     const roles = data.filas
       .filter((f) => f.usuario !== 'SIN ASIGNAR')
-      .map((f) => armarRol(f, ajustes.get(f.usuario), data.reglas));
+      .map((f) => armarRol(f, ajustes.get(f.usuario), data.reglas, data.empresa));
     const suma = (k) => r2(roles.reduce((a, x) => a + x[k], 0));
     return res.json({ success: true, data: {
       empresa: data.empresa, mes, tabla_ajustes: tabla, mes_catalogo: data.mes_catalogo,
@@ -628,5 +653,5 @@ async function detalle(req, res) {
 module.exports = {
   listar, detalle, catalogoResumen, catalogoCargar, rolListar, rolAjuste,
   _test: { detalleAsesor, fechaIso, validarRangoOpcional, construirFiltrosFechas, contarServicios, normalizarFilaCatalogo, mesValido,
-    categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS, armarRol, ROL_CONCEPTOS },
+    categoriaDesdeTexto, calcularValor, calcularAsesores, REGLAS, armarRol, ROL_CONCEPTOS, ROL_EMPRESA },
 };

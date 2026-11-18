@@ -20,11 +20,12 @@ const normalizarNombre = (s) =>
     .trim()
     .toUpperCase();
 
-const elegirAsesor = (candidatos, azar = Math.random) => {
+// Candidatos con cupo en el orden en que les toca recibir (turno 1, 2, 3…)
+const ordenarPorTurno = (candidatos, azar = Math.random) => {
   const conCupo = (candidatos || []).filter(
     (c) => Number(c.asignados) < Number(c.permitidos)
   );
-  if (conCupo.length === 0) return null;
+  if (conCupo.length === 0) return [];
 
   const ts = (d) => (d ? new Date(d).getTime() : -Infinity); // nunca recibió = más antiguo
   const tc = (d) => (d ? new Date(d).getTime() : Infinity);  // sin hora de conexión = al final
@@ -34,7 +35,18 @@ const elegirAsesor = (candidatos, azar = Math.random) => {
     (tc(a.c.conexion) - tc(b.c.conexion)) ||
     (a.r - b.r)
   );
-  return conAzar[0].c;
+  return conAzar.map((x) => x.c);
+};
+
+// preferente: si ese asesor está entre los primeros `maxTurno` turnos, recibe él
+const elegirAsesor = (candidatos, azar = Math.random, { preferente = null, maxTurno = 3 } = {}) => {
+  const orden = ordenarPorTurno(candidatos, azar);
+  if (!orden.length) return null;
+  if (preferente) {
+    const i = orden.findIndex((c) => normalizarNombre(c.nombre) === normalizarNombre(preferente));
+    if (i >= 0 && i < maxTurno) return orden.at(i);
+  }
+  return orden.at(0);
 };
 
 
@@ -66,4 +78,4 @@ const cupoDeEntregaCola = ({ disponibles, ultimaEntregaCola, ahora = new Date(),
   return 1;
 };
 
-module.exports = { elegirAsesor, normalizarNombre, horaEcuador, dentroDeHorario, cupoDeEntregaCola };
+module.exports = { elegirAsesor, ordenarPorTurno, normalizarNombre, horaEcuador, dentroDeHorario, cupoDeEntregaCola };

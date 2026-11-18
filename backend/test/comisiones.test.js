@@ -75,8 +75,10 @@ const rol1 = _test.armarRol(filaRol, {});
 const c1 = (k) => rol1.conceptos.find((c) => c.clave === k).valor;
 assert.deepEqual([c1('asegurado'), c1('comision_total'), c1('asegurado_pagado'), c1('anticipo_40'), c1('plan_celular')], [0, 365.47, 0, 146.19, 8.4]);
 assert.equal(rol1.total_ingresos, 365.47);
-assert.equal(rol1.total_descuentos, 154.59);
-assert.equal(rol1.valor_a_pagar, 210.88);
+assert.equal(c1('retencion'), 29.24); // NOVONET: 8% solo de la comisión
+assert.equal(c1('retencion_asegurado'), 0);
+assert.equal(rol1.total_descuentos, 183.83);
+assert.equal(rol1.valor_a_pagar, 181.64);
 const rol2 = _test.armarRol({ ...filaRol, asegurado_aplicado: true, valor_disponible: 550 }, { bono_tc: 56.58, plan_celular: 0, atrasos: 1 });
 const c2 = (k) => rol2.conceptos.find((c) => c.clave === k);
 assert.equal(c2('asegurado').valor, 550);
@@ -89,7 +91,16 @@ const rolL = _test.armarRol({ ...filaRol, asegurado_aplicado: true, valor_dispon
 const cL = (k) => rolL.conceptos.find((c) => c.clave === k).valor;
 assert.deepEqual([cL('asegurado'), cL('comision_total'), cL('incentivos'), cL('anticipo_40')], [550, 73.8, 40, 29.52]);
 assert.equal(rolL.total_ingresos, 663.8);
-assert.equal(rolL.valor_a_pagar, 75.88);
+assert.equal(rolL.valor_a_pagar, 69.98);
+// VELSA: 8% de asegurado y comisión, tarjeta recaudada $3, plan celular $8,63
+const rolV = _test.armarRol({ ...filaRol, asegurado_aplicado: true, valor_disponible: 623.8, bono_volumen: 40 }, { tc_recaudadas: 10 }, _test.REGLAS, 'VELSA');
+const cV = (k) => rolV.conceptos.find((c) => c.clave === k);
+assert.deepEqual([cV('retencion_asegurado').valor, cV('retencion').valor, cV('tc_recaudadas').valor, cV('plan_celular').valor], [44, 5.9, 30, 8.63]);
+assert.equal(rolV.valor_a_pagar, 55.75);
+// NOVONET: tarjeta recaudada $5; el monto manual viejo de bono_tc solo aparece si existe
+const rolN = _test.armarRol(filaRol, { tc_recaudadas: 3 }, _test.REGLAS, 'NOVONET');
+assert.equal(rolN.conceptos.find((c) => c.clave === 'tc_recaudadas').valor, 15);
+assert.equal(rolN.conceptos.some((c) => c.clave === 'bono_tc'), false);
 console.log('OK comisiones: rol de pagos');
 
 // ── Fase 2: No vender, tope 3ra edad, PYME como bono, bono volumen ──
@@ -97,7 +108,7 @@ const vt = (n, t1, categoria = 'TABLA', tipo = 'HOME', fecha = '2026-10-01') => 
 const f2 = (vs) => _test.calcularAsesores(vs)[0];
 // No vender: se paga por comisión pero no cuenta como venta
 const nv = f2([...vt(10, 10), ...vt(2, 6.45, 'NO_VENDER', 'TERCERA EDAD')]);
-assert.deepEqual([nv.ventas_tabla, nv.ventas_volumen, nv.valor_disponible], [10, 10, 112.9]);
+assert.deepEqual([nv.ventas_tabla, nv.ventas_volumen, nv.valor_disponible], [10, 12, 112.9]); // impulso: todas las regularizadas
 // Tope 15% tercera edad: 20 ventas → solo 3 de 3ra edad se pagan; las 2 más recientes no
 const te = f2([...vt(15, 10), ...vt(5, 10, 'TABLA', 'TERCERA EDAD')]);
 assert.deepEqual([te.te_ventas, te.te_excedentes, te.ventas_tabla, te.valor_disponible], [5, 2, 18, 180]);

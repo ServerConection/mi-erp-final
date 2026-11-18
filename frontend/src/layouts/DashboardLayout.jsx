@@ -361,8 +361,8 @@ const ALL_MENU_ITEMS = [
 
   // ── NOVONET ACCESS (asistencia / conexión) — visible para todos los perfiles
   { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
-  // Horarios semanales: administradores y perfiles gerenciales.
-  { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p) => puedeAccederAdministracion(p) },
+  // Horarios semanales: supervisores consultan; administradores y gerencia también editan.
+  { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p) => puedeAccederAdministracion(p) || String(p || '').startsWith('SUPERVISOR') },
   // Piloto de llamadas WhatsApp Desktop ocultas: solo administradores.
   { name: "Piloto Llamadas", path: "/piloto-llamadas", icon: "📞", accessCheck: (p) => isAdmin(p) },
 

@@ -226,7 +226,16 @@ const TooltipEmbudo = ({ active, payload }) => {
 // ese día + el total (mismo total que muestra la etiqueta encima de la barra).
 const TooltipEmbudoDia = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
-  const visibles = payload.filter(p => Number(p.value) > 0);
+  // Recharts incluye la serie auxiliar `_total` en el payload del tooltip
+  // personalizado incluso con tooltipType="none". Esa serie ya es la suma de
+  // las barras; contarla nuevamente duplicaba el TOTAL y dividía por dos todos
+  // los porcentajes del día.
+  const visibles = payload.filter((p) => {
+    const nombre = String(p.name || '').trim().toUpperCase();
+    const dataKey = typeof p.dataKey === 'string' ? p.dataKey.trim().toUpperCase() : '';
+    const esTotalAuxiliar = nombre === '_TOTAL' || dataKey === '_TOTAL';
+    return !esTotalAuxiliar && Number(p.value) > 0;
+  });
   const total = visibles.reduce((s, p) => s + Number(p.value || 0), 0);
   return (
     <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-[10px] min-w-[320px] max-w-[min(420px,calc(100vw-32px))]">
@@ -1614,7 +1623,10 @@ ${asesoresPDF.length>0?`
   const FILAS_PLANES_DASH = [
     { key: 'hogar',        label: 'HOGAR',         velocidad: '400 - 2000 Mbps' },
     { key: 'pymes',        label: 'PYMES',         velocidad: '600 - 2000 Mbps' },
+    { key: 'profesional',  label: 'PROFESIONAL / PRO', velocidad: 'SEGÚN PLAN' },
     { key: 'adulto_mayor', label: 'ADULTO MAYOR',  velocidad: '400 - 2000 Mbps' },
+    { key: 'gamer',        label: 'GAMER',          velocidad: 'SEGÚN PLAN' },
+    { key: 'servicios_adicionales', label: 'SERVICIOS ADICIONALES', velocidad: 'NO APLICA' },
   ];
   const TablaPlanesPorCategoriaDash = () => (
     <table className="w-full text-left border-collapse">
@@ -2866,7 +2878,10 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
   const FILAS_PLANES = [
     { key: 'hogar',        label: 'HOGAR',         velocidad: '400 - 2000 Mbps' },
     { key: 'pymes',        label: 'PYMES',         velocidad: '600 - 2000 Mbps' },
+    { key: 'profesional',  label: 'PROFESIONAL / PRO', velocidad: 'SEGÚN PLAN' },
     { key: 'adulto_mayor', label: 'ADULTO MAYOR',  velocidad: '400 - 2000 Mbps' },
+    { key: 'gamer',        label: 'GAMER',          velocidad: 'SEGÚN PLAN' },
+    { key: 'servicios_adicionales', label: 'SERVICIOS ADICIONALES', velocidad: 'NO APLICA' },
   ];
 
   const TablaPlanesPorCategoria = () => (

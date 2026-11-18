@@ -572,8 +572,14 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: fd,
       });
-      const dUp = await rUp.json();
-      if (!dUp.success || !dUp.data) { alert(dUp.error || "No se pudo subir el archivo"); return; }
+      const uploadText = await rUp.text();
+      let dUp = {};
+      try { dUp = uploadText ? JSON.parse(uploadText) : {}; } catch { /* respuesta HTML del proxy */ }
+      if (!rUp.ok || !dUp.success || !dUp.data) {
+        const detalle = dUp.error
+          || (rUp.status === 413 ? "El archivo es demasiado grande para el servidor" : "El servidor no devolvio una respuesta valida");
+        throw new Error(`No se pudo subir el archivo (${rUp.status || "sin respuesta"}): ${detalle}`);
+      }
 
       const r = await fetch(`${API}/conversations/${selected.id}/send`, {
         method: "POST", headers: authH(),
@@ -584,14 +590,19 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
           media_filename: dUp.data.originalname,
         }),
       });
-      const d = await r.json();
-      if (!d.success) { alert(d.error || "No se pudo enviar"); return false; }
+      const sendText = await r.text();
+      let d = {};
+      try { d = sendText ? JSON.parse(sendText) : {}; } catch { /* respuesta HTML del proxy */ }
+      if (!r.ok || !d.success) {
+        const detalle = d.error || "El servidor no devolvio una respuesta valida";
+        throw new Error(`El archivo se subio, pero no se pudo enviar (${r.status || "sin respuesta"}): ${detalle}`);
+      }
       setNewMsg("");
       loadMessages(selected.id);
       return true;
     } catch (e) {
       console.error("[WaInbox] Error enviando archivo:", e);
-      alert("Error enviando el archivo");
+      alert(e.message || "Error enviando el archivo");
     } finally { setUploading(false); }
   };
 

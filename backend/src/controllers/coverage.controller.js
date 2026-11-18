@@ -1704,31 +1704,8 @@ exports.checkCoverage = async (req, res) => {
       if (!bitrix.result) {
         return res.status(404).json({ status: 'error', message: 'La negociacion indicada no existe en Bitrix.' });
       }
-      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
-      const esAdmin = /^ADMINISTRADOR(A)?([ _-]|$)/.test(perfil) || /^GEREN(CIA|TE)([ _-]|$)/.test(perfil);
-      if (!esAdmin) {
-        const responsableId = String(bitrix.result.ASSIGNED_BY_ID || '');
-        const usuarioBitrix = await llamarBitrix('user.get', { FILTER: { ID: responsableId } });
-        const responsable = usuarioBitrix.result?.[0];
-        const nombreResponsable = [responsable?.NAME, responsable?.LAST_NAME].filter(Boolean).join(' ');
-        const validacionResponsable = await validarOVincularUsuarioBitrix({
-          user: req.user,
-          empresa,
-          bitrixUserId: responsableId,
-          bitrixNombre: nombreResponsable,
-          bitrixEmail: responsable?.EMAIL,
-        });
-        if (!validacionResponsable.ok) {
-          console.warn('[Coverage] Responsable Bitrix no autorizado', {
-            usuarioId: req.user?.id,
-            empresa,
-            negociacionId,
-            responsableId,
-            motivo: validacionResponsable.motivo,
-          });
-          return res.status(403).json({ status: 'error', message: 'La negociacion no corresponde al asesor autenticado.' });
-        }
-      }
+      // Cualquier usuario autenticado puede consultar cobertura para una
+      // negociacion valida, aunque no sea su responsable actual en Bitrix.
       negociacionTitulo = String(bitrix.result.TITLE || negociacionTitulo).trim().slice(0, 300);
       } catch (bitrixError) {
         console.error('[Coverage] No se pudo validar la negociacion:', bitrixError.message);

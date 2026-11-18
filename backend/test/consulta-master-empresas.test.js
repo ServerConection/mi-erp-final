@@ -19,3 +19,19 @@ test('Consulta Master conserva la autorización en frontend y backend', () => {
   assert.match(fuente, /ANALISTA/);
   assert.match(fuente, /status\(403\)/);
 });
+
+test('Consulta Master usa las mismas reglas de fecha y supervisor de los reportes individuales', () => {
+  assert.match(fuente, /fechaWebhookExpr\('w'\)/);
+  assert.match(fuente, /'ADRIANA SALVATORE'::text/);
+  assert.match(fuente, /m\.empresa = 'VENTAENLINEA'/);
+  assert.match(fuente, /m\.anio = EXTRACT\(YEAR FROM \$2::date\)/);
+  assert.doesNotMatch(fuente, /WHERE \(w\.created_at AT TIME ZONE 'America\/Guayaquil'\)::date BETWEEN/);
+});
+
+test('Consulta Master no presenta campos CRM de pipelines como datos Jotform o Netlife', () => {
+  assert.match(fuente, /w\.bitrix_id AS "ID_CRM", NULL::text AS "ID_JOT"/);
+  assert.match(fuente, /NULL::text AS "FECHA_CREACION_JOT"/);
+  assert.match(fuente, /NULL::text AS "COD_ASESOR_JOT", NULL::text AS "ASESOR_USUARIO"/);
+  assert.match(fuente, /NULL::text AS "ESTADO_NETLIFE"/);
+  assert.match(fuente, /fila\.FECHA_CREACION_JOT \|\| fila\.FECHA_CREACION/);
+});

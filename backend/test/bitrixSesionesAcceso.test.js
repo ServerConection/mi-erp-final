@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { empresaVisible, puedeCerrarJornada } = require('../src/shared/bitrixSesionesAcceso');
 
 test('segmenta jefaturas por su empresa', () => {
-  for (const perfil of ['SUPERVISOR', 'GERENCIA', 'ADMINISTRADOR']) {
+  for (const perfil of ['SUPERVISOR', 'SUPERVISOR COMERCIAL', 'GERENCIA', 'GERENTE', 'ADMINISTRADOR']) {
     assert.equal(empresaVisible({ perfil, empresa: 'NOVONET' }), 'NOVONET');
     assert.equal(empresaVisible({ perfil, empresa: 'VELSA' }), 'VELSA');
     assert.equal(puedeCerrarJornada({ perfil, empresa: 'NOVONET' }), true);

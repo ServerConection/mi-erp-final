@@ -1,9 +1,10 @@
 // src/pages/Horarios.jsx
 // ============================================================================
-// HORARIOS (NOVONET) — turnos semanales de asesores, lunes a domingo.
+// HORARIOS — turnos semanales de asesores, lunes a domingo.
 //  - Admin / Gerencia: cargan el Excel de horarios (se lee aquí y se envía al backend).
-//  - Admin / Gerencia / Supervisor: ven a todos, editan con selects de 30 min y
-//    pulsan "Guardar cambios". Ven la marcación de INGRESO de NOVONET ACCESS
+//  - Admin / Gerencia: editan con selects de 30 min y guardan los cambios.
+//  - Supervisor: consulta de solo lectura para su propia empresa.
+//  - Todos ven la marcación de INGRESO de NOVONET ACCESS
 //    contra la hora del turno (a tiempo / tarde / sin marcar).
 //  - Asesor: solo ve su propio horario.
 // Backend: /api/horarios (backend/src/routes/horarios.routes.js)
@@ -13,7 +14,15 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import * as XLSX from "xlsx";
 
 const API = import.meta.env.VITE_API_URL;
-const EMPRESA = "NOVONET";
+const empresaSesion = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("userProfile") || localStorage.getItem("user") || "{}");
+    const empresa = String(user?.empresa || "").trim().toUpperCase();
+    return empresa === "VELSA" ? "VELSA" : "NOVONET";
+  } catch {
+    return "NOVONET";
+  }
+};
 const O = "#FF6B00", OP = "#FFF3E8", OB = "#FFCBA0";
 const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DIAS_EXCEL = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"];
@@ -106,6 +115,7 @@ const sel = { border: "1px solid #D1D5DB", borderRadius: 8, padding: "6px 8px", 
 
 export default function Horarios() {
   const token = localStorage.getItem("token");
+  const EMPRESA = useMemo(empresaSesion, []);
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }), [token]);
 
   const [lunes, setLunes] = useState(lunesDe(hoyLocal()));

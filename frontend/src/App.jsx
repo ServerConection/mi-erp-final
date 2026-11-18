@@ -153,6 +153,15 @@ const AdministracionRoute = ({ children }) => {
   return children;
 };
 
+const HorariosRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  if (!token) return <Navigate to="/login" replace />;
+  let perfil = "";
+  try { perfil = String(JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").toUpperCase(); } catch (_) { /* sesión inválida */ }
+  const permitido = puedeAccederAdministracion(perfil) || perfil.startsWith("SUPERVISOR");
+  return permitido ? children : <Navigate to="/" replace />;
+};
+
 const ComisionesRoute = ({ children }) => {
   const token = localStorage.getItem("token");
   let userProfile = null;
@@ -213,7 +222,7 @@ export default function App() {
             <Route path="comparativa-supervisores"  element={<ComparativaSupervisores />} />
             <Route path="ventas"                    element={<Ventas />} />
             <Route path="rrhh"                      element={<TalentoHumano />} />
-            <Route path="horarios"                  element={<AdministracionRoute><Horarios /></AdministracionRoute>} />
+            <Route path="horarios"                  element={<HorariosRoute><Horarios /></HorariosRoute>} />
             <Route path="piloto-llamadas"           element={<AdminOnlyRoute><PilotoLlamadas /></AdminOnlyRoute>} />
             <Route path="billetera"                 element={<BilleteraRoute><BilleteraDigital /></BilleteraRoute>} />
             <Route path="comisiones"                element={<ComisionesRoute><Comisiones /></ComisionesRoute>} />

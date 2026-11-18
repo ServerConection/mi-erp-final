@@ -158,7 +158,9 @@ const getEmpresaFromUser = (user) => {
   const e = (user.empresa || user.distribuidor || user.cuenta || '').toUpperCase();
   if (e.includes('VELSA')   || p.includes('VELSA'))   return 'VELSA';
   if (e.includes('NOVONET') || p.includes('NOVONET')) return 'NOVONET';
-  return 'TODOS'; // admin, gerencia, supervisor cross
+  // Solo una sesión administrativa sin empresa puede operar la vista global.
+  // Un supervisor sin empresa válida no debe cruzar información entre compañías.
+  return p === 'ADMINISTRADOR' ? 'TODOS' : null;
 };
 
 function countTipos(movs) {

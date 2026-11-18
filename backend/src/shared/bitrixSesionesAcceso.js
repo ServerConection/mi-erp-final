@@ -1,10 +1,11 @@
-const PERFILES_BITRIX_LIVE = new Set(['SUPERVISOR', 'GERENCIA', 'ADMINISTRADOR']);
+const PERFILES_BITRIX_LIVE = new Set(['SUPERVISOR', 'GERENCIA', 'GERENTE', 'ADMINISTRADOR']);
 const EMPRESAS_BITRIX_LIVE = new Set(['NOVONET', 'VELSA']);
 
 function empresaVisible(usuario) {
   const perfil = String(usuario?.perfil || '').trim().toUpperCase();
   const empresa = String(usuario?.empresa || '').trim().toUpperCase();
-  if (!PERFILES_BITRIX_LIVE.has(perfil) || !EMPRESAS_BITRIX_LIVE.has(empresa)) return null;
+  const perfilPermitido = PERFILES_BITRIX_LIVE.has(perfil) || perfil.startsWith('SUPERVISOR');
+  if (!perfilPermitido || !EMPRESAS_BITRIX_LIVE.has(empresa)) return null;
   return empresa;
 }
 

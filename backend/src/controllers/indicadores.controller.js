@@ -1297,7 +1297,40 @@ const getIndicadoresDashboard = async (req, res) => {
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
-                ) AS adulto_mayor_activos
+                ) AS adulto_mayor_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> ''
+                ) AS profesional_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> ''
+                ) AS profesional_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> ''
+                ) AS gamer_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> ''
+                ) AS gamer_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND (
+                        NULLIF(TRIM(van.servicio_empaquetado), '') IS NOT NULL OR
+                        NULLIF(TRIM(van.servicio_adicional), '') IS NOT NULL
+                    )
+                ) AS servicios_adicionales_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND (
+                        NULLIF(TRIM(van.servicio_empaquetado), '') IS NOT NULL OR
+                        NULLIF(TRIM(van.servicio_adicional), '') IS NOT NULL
+                    )
+                ) AS servicios_adicionales_activos
             FROM public.vw_mestra_novonet_live mb
             ${JOIN_VAN_NOVONET}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
@@ -1496,6 +1529,12 @@ const getIndicadoresDashboard = async (req, res) => {
                     hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
                     pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
                     adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+                    profesional:  { ingresados: Number(p.profesional_ingresados || 0),  activos: Number(p.profesional_activos || 0) },
+                    gamer:        { ingresados: Number(p.gamer_ingresados || 0),        activos: Number(p.gamer_activos || 0) },
+                    servicios_adicionales: {
+                        ingresados: Number(p.servicios_adicionales_ingresados || 0),
+                        activos: Number(p.servicios_adicionales_activos || 0),
+                    },
                 };
             })(),
             // Detalle de ventas activas del período seleccionado (por fecha de
@@ -1927,7 +1966,40 @@ const getReporte180 = async (req, res) => {
                     WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
                     AND UPPER(TRIM(mb.j_netlife_estatus_real)) = \'ACTIVO\'
                     AND van.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(van.plan_hogar_adulto_mayor::text) <> \'\'
-                ) AS adulto_mayor_activos
+                ) AS adulto_mayor_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> ''
+                ) AS profesional_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND van.plan_profesional IS NOT NULL AND TRIM(van.plan_profesional::text) <> ''
+                ) AS profesional_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> ''
+                ) AS gamer_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND van.plan_centro_comercial IS NOT NULL AND TRIM(van.plan_centro_comercial::text) <> ''
+                ) AS gamer_activos,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND (
+                        NULLIF(TRIM(van.servicio_empaquetado), '') IS NOT NULL OR
+                        NULLIF(TRIM(van.servicio_adicional), '') IS NOT NULL
+                    )
+                ) AS servicios_adicionales_ingresados,
+                COUNT(*) FILTER (
+                    WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date
+                    AND UPPER(TRIM(mb.j_netlife_estatus_real)) = 'ACTIVO'
+                    AND (
+                        NULLIF(TRIM(van.servicio_empaquetado), '') IS NOT NULL OR
+                        NULLIF(TRIM(van.servicio_adicional), '') IS NOT NULL
+                    )
+                ) AS servicios_adicionales_activos
             FROM public.vw_mestra_novonet_live mb
             ${JOIN_VAN_NOVONET}
             WHERE public.parse_fecha_flex(mb.j_fecha_registro_sistema::text) BETWEEN $1::date AND $2::date ${filtersNoJoin}
@@ -1978,6 +2050,12 @@ const getReporte180 = async (req, res) => {
                     hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
                     pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
                     adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+                    profesional:  { ingresados: Number(p.profesional_ingresados || 0),  activos: Number(p.profesional_activos || 0) },
+                    gamer:        { ingresados: Number(p.gamer_ingresados || 0),        activos: Number(p.gamer_activos || 0) },
+                    servicios_adicionales: {
+                        ingresados: Number(p.servicios_adicionales_ingresados || 0),
+                        activos: Number(p.servicios_adicionales_activos || 0),
+                    },
                 };
             })(),
         });

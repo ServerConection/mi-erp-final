@@ -874,7 +874,40 @@ LIMIT 6000
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
-        ) AS adulto_mayor_activos
+        ) AS adulto_mayor_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.plan_profesional IS NOT NULL AND TRIM(mv.plan_profesional::text) <> ''
+        ) AS profesional_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND mv.plan_profesional IS NOT NULL AND TRIM(mv.plan_profesional::text) <> ''
+        ) AS profesional_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.plan_centro_red_comercial IS NOT NULL AND TRIM(mv.plan_centro_red_comercial::text) <> ''
+        ) AS gamer_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND mv.plan_centro_red_comercial IS NOT NULL AND TRIM(mv.plan_centro_red_comercial::text) <> ''
+        ) AS gamer_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND (
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_empaquetado'), '') IS NOT NULL OR
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_adicional'), '') IS NOT NULL
+          )
+        ) AS servicios_adicionales_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND (
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_empaquetado'), '') IS NOT NULL OR
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_adicional'), '') IS NOT NULL
+          )
+        ) AS servicios_adicionales_activos
       FROM ${MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
@@ -1069,6 +1102,12 @@ LIMIT 6000
           hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
           pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
           adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+          profesional:  { ingresados: Number(p.profesional_ingresados || 0),  activos: Number(p.profesional_activos || 0) },
+          gamer:        { ingresados: Number(p.gamer_ingresados || 0),        activos: Number(p.gamer_activos || 0) },
+          servicios_adicionales: {
+            ingresados: Number(p.servicios_adicionales_ingresados || 0),
+            activos: Number(p.servicios_adicionales_activos || 0),
+          },
         };
       })(),
       // NUEVO: detalle de ventas activas del mes en curso (por fecha de
@@ -1265,7 +1304,40 @@ async function getReporte180Velsa(req, res) {
           WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
           AND ${VENTA_SERVICIO_VELSA_MV}
           AND mv.plan_hogar_adulto_mayor IS NOT NULL AND TRIM(mv.plan_hogar_adulto_mayor::text) <> ''
-        ) AS adulto_mayor_activos
+        ) AS adulto_mayor_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.plan_profesional IS NOT NULL AND TRIM(mv.plan_profesional::text) <> ''
+        ) AS profesional_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND mv.plan_profesional IS NOT NULL AND TRIM(mv.plan_profesional::text) <> ''
+        ) AS profesional_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND mv.plan_centro_red_comercial IS NOT NULL AND TRIM(mv.plan_centro_red_comercial::text) <> ''
+        ) AS gamer_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND mv.plan_centro_red_comercial IS NOT NULL AND TRIM(mv.plan_centro_red_comercial::text) <> ''
+        ) AS gamer_activos,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND (
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_empaquetado'), '') IS NOT NULL OR
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_adicional'), '') IS NOT NULL
+          )
+        ) AS servicios_adicionales_ingresados,
+        COUNT(*) FILTER (
+          WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date
+          AND UPPER(TRIM(mv.estado_venta)) = 'ACTIVO'
+          AND (
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_empaquetado'), '') IS NOT NULL OR
+            NULLIF(TRIM(to_jsonb(mv)->>'servicio_adicional'), '') IS NOT NULL
+          )
+        ) AS servicios_adicionales_activos
       FROM ${MV}
       WHERE (mv.fecha_registro_jotform - INTERVAL '5 hours')::date BETWEEN $1::date AND $2::date ${filters}
     `;
@@ -1297,6 +1369,12 @@ async function getReporte180Velsa(req, res) {
           hogar:        { ingresados: Number(p.hogar_ingresados || 0),        activos: Number(p.hogar_activos || 0) },
           pymes:        { ingresados: Number(p.pymes_ingresados || 0),        activos: Number(p.pymes_activos || 0) },
           adulto_mayor: { ingresados: Number(p.adulto_mayor_ingresados || 0), activos: Number(p.adulto_mayor_activos || 0) },
+          profesional:  { ingresados: Number(p.profesional_ingresados || 0),  activos: Number(p.profesional_activos || 0) },
+          gamer:        { ingresados: Number(p.gamer_ingresados || 0),        activos: Number(p.gamer_activos || 0) },
+          servicios_adicionales: {
+            ingresados: Number(p.servicios_adicionales_ingresados || 0),
+            activos: Number(p.servicios_adicionales_activos || 0),
+          },
         };
       })(),
     };

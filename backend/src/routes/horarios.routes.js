@@ -4,10 +4,10 @@
 //   GET  /api/horarios/semanas?empresa=           semanas con datos (lunes)
 //   GET  /api/horarios/semana?empresa=&lunes=     grilla de la semana (+ marcación INGRESO de NOVONET ACCESS)
 //   POST /api/horarios/cargar                     carga del Excel (ADMINISTRADOR / GERENCIA)
-//   PUT  /api/horarios/cambios                    guardar cambios manuales (ADMIN / GERENCIA / SUPERVISOR)
+//   PUT  /api/horarios/cambios                    guardar cambios manuales (ADMIN / GERENCIA)
 // Acceso:
-//   - ADMINISTRADOR, GERENCIA, SUPERVISOR: ven a todos los asesores.
-//   - Cualquier otro perfil (asesor = USUARIO): solo ve SU horario.
+//   - ADMINISTRADOR y GERENCIA: consultan, cargan y editan.
+//   - SUPERVISOR: consulta de solo lectura, limitada a su empresa.
 // Montado en app.js (monolito) y entries/core.js. El gateway lo manda a CORE por su catch-all.
 // ============================================================================
 
@@ -15,21 +15,19 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { verificarToken } = require('../middleware/auth');
-const { soloAdministracion } = require('../shared/accesoAdministracion');
 const { claveNombre, mismaPalabra } = require('../services/asesorMatcher.service');
+const {
+  esAdminGerencia,
+  esSupervisor,
+  puedeAccederHorarios,
+  empresaHorarios,
+} = require('../shared/horariosAcceso');
 
-const EMPRESAS = new Set(['NOVONET']);           // por ahora solo NOVONET
 const TOLERANCIA_MIN = 5;                         // minutos de gracia para "a tiempo"
 const MODALIDADES = new Set(['OFICINA', 'TELECONEXION', 'HIBRIDO']);
 const RE_HORA = /^([01]\d|2[0-3]):(00|30)$/;      // solo cortes de 30 minutos
 
 // ── Perfiles ────────────────────────────────────────────────────────────────
-const normPerfil = (p) => String(p || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
-const esAdminGerencia = (p) => {
-  const x = normPerfil(p);
-  return x === 'ADMINISTRADOR' || x === 'GERENCIA' || x === 'GERENTE' || /^GEREN(CIA|TE)[ _-]/.test(x);
-};
-const esSupervisor = (p) => normPerfil(p).startsWith('SUPERVISOR');
 const veTodo = (p) => esAdminGerencia(p) || esSupervisor(p);
 
 // ── Fechas (YYYY-MM-DD, sin zona horaria) ───────────────────────────────────
@@ -96,13 +94,17 @@ function resolver(claves, usuarios) {
   return out;
 }
 
-const empresaDe = (req) => {
-  const e = String(req.query.empresa || req.body?.empresa || 'NOVONET').trim().toUpperCase();
-  return EMPRESAS.has(e) ? e : null;
-};
+const empresaDe = empresaHorarios;
 const quien = (req) => req.user?.usuario || req.user?.nombreCompleto || String(req.user?.id || '');
 
-router.use(verificarToken, soloAdministracion); // solo administradores
+const soloHorarios = (req, res, next) => {
+  if (!puedeAccederHorarios(req.user?.perfil)) {
+    return res.status(403).json({ success: false, error: 'No tienes acceso al módulo de horarios' });
+  }
+  next();
+};
+
+router.use(verificarToken, soloHorarios);
 
 // ── GET /semanas ────────────────────────────────────────────────────────────
 router.get('/semanas', async (req, res) => {
@@ -206,7 +208,7 @@ router.get('/semana', async (req, res) => {
         empresa, lunes, domingo, hoy: hoyEcuador(),
         dias: Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i)),
         tolerancia_min: TOLERANCIA_MIN,
-        puede_editar: veTodo(perfil),
+        puede_editar: esAdminGerencia(perfil),
         puede_cargar: esAdminGerencia(perfil),
         ve_todo: todo,
         filas: [...porAsesor.values()],
@@ -296,7 +298,7 @@ router.post('/cargar', async (req, res) => {
 // body: { empresa, cambios: [{ asesor_clave, asesor, supervisor, fecha, tipo,
 //         hora_inicio, hora_fin, hora_inicio2, hora_fin2, modalidad }] }
 router.put('/cambios', async (req, res) => {
-  if (!veTodo(req.user?.perfil)) {
+  if (!esAdminGerencia(req.user?.perfil)) {
     return res.status(403).json({ success: false, error: 'No tienes permiso para editar horarios' });
   }
   const empresa = empresaDe(req);

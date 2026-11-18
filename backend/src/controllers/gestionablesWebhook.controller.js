@@ -29,7 +29,7 @@
 const poolErp = require('../config/dbErp');
 const { bitrixCallNovonet, bitrixCallCuenta } = require('../services/bitrix.service');
 const { getEmpresa, empresaValida } = require('../shared/repartoEmpresas');
-const { elegirAsesor, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
+const { elegirAsesor, ordenarPorTurno, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { conteoGestionablesHoy, bloqueadoPorAtc, bloqueadoPorEfectividad } = require('../shared/repartoConteo');
 
@@ -196,7 +196,56 @@ const crearReparto = (empresa) => {
 
   // ── Asignar UN lead por rondas ───────────────────────────────────────────────
   // Devuelve { estado: 'asignado' | 'ya_repartido' | 'sin_disponible' | 'sin_usuario', elegido?, motivo? }
-  const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea, cfg, origen = 'directo') => {
+  const candidatos = (disponibles, enLinea) => disponibles.map((r) => ({
+    nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
+    conexion: enLinea?.mapa.get(normalizarNombre(r.nombre))?.inicio || null,
+  }));
+
+  // ── Respuesta "1" (Venta) en el chat del primer contacto ───────────────────
+  const PREF = E.preferenteVenta || null;
+  const limpiarTexto = (s) => String(s || '').replace(/\[\/?[a-z]+[^\]]*\]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const esRespuestaUno = (s) => /^1\s*[.)-]?$/.test(limpiarTexto(s));
+  // ¿El cliente escribió "1" en el chat de canal abierto del deal?
+  const respondioUno = async (bitrixId) => {
+    const chats = (await bx('imopenlines.crm.chat.get', { CRM_ENTITY_TYPE: 'DEAL', CRM_ENTITY: bitrixId, ACTIVE_ONLY: 'N' })).result || [];
+    for (const ch of chats) {
+      const chatId = ch?.CHAT_ID;
+      if (!chatId) continue;
+      const r = (await bx('im.dialog.messages.get', { DIALOG_ID: `chat${chatId}`, LIMIT: 50 })).result || {};
+      const clientes = new Set((r.users || []).filter((u) => u.extranet || u.connector).map((u) => String(u.id)));
+      if ((r.messages || []).some((m) => clientes.has(String(m.author_id)) && esRespuestaUno(m.text))) return true;
+    }
+    return false;
+  };
+  // Turno actual del preferente (0 = el siguiente en recibir, -1 = no puede recibir)
+  const turnoPreferente = async (enLinea, cfg) => {
+    const { disponibles } = await asesoresDeHoy(poolErp, enLinea, cfg.estacion_nombre);
+    return ordenarPorTurno(candidatos(disponibles, enLinea)).findIndex((c) => normalizarNombre(c.nombre) === normalizarNombre(PREF.asesor));
+  };
+  // Reparto después de la espera: se vuelve a leer todo (horario, en línea, turnos)
+  const repartoDiferido = async (bitrixId, nombreAsesor) => {
+    try {
+      const cfg = await leerConfig({ sinCache: true, empresa });
+      if (!cfg.activo_efectivo) { await escribirCupoResponsableActual(bitrixId, nombreAsesor); return; }
+      if (!dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin)) { await enviarAEstacion(bitrixId, nombreAsesor, 'fuera_de_horario', cfg); return; }
+      const enLinea = cfg.solo_en_linea ? await leerEnLinea({ empresa }) : null;
+      let uno = false;
+      try { uno = await respondioUno(bitrixId); } catch (e) { console.warn(`[gestionables ${E.etiqueta}] No se pudo leer el chat del deal ${bitrixId}:`, e.message); }
+      const r = await repartirPorRondas(bitrixId, nombreAsesor, enLinea, cfg, 'directo', uno ? { preferente: PREF.asesor, maxTurno: PREF.maxTurno } : {});
+      if (r.estado !== 'asignado' && r.estado !== 'ya_repartido') await enviarAEstacion(bitrixId, nombreAsesor, r.motivo, cfg);
+    } catch (err) {
+      console.error(`[gestionables ${E.etiqueta}] Reparto del deal ${bitrixId}:`, err.message);
+      // Si algo falla, el lead no se pierde: queda en la cola para reintentar
+      await poolErp.query(
+        `INSERT INTO ${T.cola} (bitrix_deal_id, motivo, responsable_original)
+         VALUES ($1, 'reintento_bitrix', $2)
+         ON CONFLICT (bitrix_deal_id) WHERE estado = 'pendiente' DO NOTHING`,
+        [bitrixId, nombreAsesor || null]
+      ).catch((e2) => console.error('[gestionablesWebhook] No se pudo encolar el reintento:', e2.message));
+    }
+  };
+
+  const repartirPorRondas = async (bitrixId, nombreOriginal, enLinea, cfg, origen = 'directo', opciones = {}) => {
     const client = await poolErp.connect();
     try {
       await client.query('BEGIN');
@@ -214,10 +263,7 @@ const crearReparto = (empresa) => {
       }
 
       const { disponibles, hayConCupo, soloBloqueadosAtc, porEfectividad } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
-      const elegido = elegirAsesor(disponibles.map((r) => ({
-        nombre: r.nombre, permitidos: r.permitidos, asignados: r.asignados, ultimaAsignacion: r.ultima_asignacion,
-        conexion: enLinea?.mapa.get(normalizarNombre(r.nombre))?.inicio || null,
-      })));
+      const elegido = elegirAsesor(candidatos(disponibles, enLinea), Math.random, opciones);
 
       if (!elegido) {
         await client.query('ROLLBACK');
@@ -631,6 +677,16 @@ const crearReparto = (empresa) => {
 
       // 3) Reparto directo por rondas; si nadie puede recibir → estación
       const enLinea = cfg.solo_en_linea ? await leerEnLinea({ empresa }) : null;
+      // Si el preferente está en el turno 2 o 3, se esperan 45 s para leer el chat:
+      // si el cliente responde "1", el lead es para él (en el turno 1 ya le toca).
+      if (PREF) {
+        let turno = -1;
+        try { turno = await turnoPreferente(enLinea, cfg); } catch (e) { console.warn(`[gestionables ${E.etiqueta}] turno preferente:`, e.message); }
+        if (turno >= 1 && turno < PREF.maxTurno) {
+          setTimeout(() => { repartoDiferido(bitrixId, nombreAsesor); }, PREF.esperaSeg * 1000);
+          return res.status(200).send('OK');
+        }
+      }
       const r = await repartirPorRondas(bitrixId, nombreAsesor, enLinea, cfg, 'directo');
       if (r.estado === 'asignado') return res.status(200).send('OK');
       if (r.estado === 'ya_repartido') return res.status(200).send('OK (ya repartido hoy)');

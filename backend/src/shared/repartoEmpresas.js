@@ -37,7 +37,10 @@ const EMPRESAS = {
     lock: 874201,
     plazoVentaHoras: 5,                          // Novonet: 5 horas para pasar a Venta Subida
     // Orígenes que se REPARTEN en orden pero NO cuentan en leads, ATC ni gestionables
-    origenesSinConteo: ['FB MESSENGER - NOVO'],                          // efectividad: horas para pasar a Venta Subida                                 // +1 = candado de la cola
+    origenesSinConteo: ['FB MESSENGER - NOVO'],
+    // Cliente que responde "1" (Venta) en el chat: si este asesor está hasta el
+    // turno 3, recibe él. Se espera 45 s antes de repartir para leer el chat.
+    preferenteVenta: { asesor: env.GESTIONABLES_PREFERENTE_VENTA || 'MELANY CAMILA REINA NOTENO', maxTurno: 3, esperaSeg: 45 },                          // efectividad: horas para pasar a Venta Subida                                 // +1 = candado de la cola
   },
   velsa: {
     clave: 'velsa',

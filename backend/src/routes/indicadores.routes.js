@@ -16,6 +16,7 @@ const {
 const { verificarToken } = require('../middleware/auth');
 const pool = require('../config/db');
 const { consultarDetalleJotform } = require('../shared/detalleJotformEnviosVentas');
+const { fechaWebhookExpr } = require('../shared/webhookRedes');
 
 async function consultarDetallePipelineWebhook(empresa, categoria, distribuidor, query = {}) {
   const { fechaDesde, fechaHasta } = query;
@@ -51,17 +52,41 @@ async function consultarDetallePipelineWebhook(empresa, categoria, distribuidor,
          AND UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' ')) <> 'CONTACTO NUEVO'
        ))`
     : `BTRIM(COALESCE(w.categoria_id, '')) = $4`;
+  // Debe usar exactamente las mismas reglas que las consultas individuales
+  // de Semillero y Venta en Línea. Antes el consolidado usaba created_at y un
+  // supervisor genérico, por lo que el resultado Master no coincidía con la
+  // suma de los reportes descargados por separado.
+  const fecha = fechaWebhookExpr('w');
+  const supervisor = empresa === 'semillero'
+    ? `'ADRIANA SALVATORE'::text`
+    : `COALESCE((
+        SELECT NULLIF(BTRIM(m.supervisor), '')
+        FROM public.metas_asesor m
+        WHERE m.empresa = 'VENTAENLINEA' AND m.activo
+          AND m.anio = EXTRACT(YEAR FROM $2::date)::int
+          AND m.mes = EXTRACT(MONTH FROM $2::date)::int
+          AND UPPER(BTRIM(m.asesor)) = UPPER(BTRIM(w.responsible))
+        ORDER BY m.actualizado_en DESC LIMIT 1
+      ), (
+        SELECT NULLIF(BTRIM(e.supervisor), '')
+        FROM public.empleados e
+        WHERE UPPER(BTRIM(e.nombre_completo)) = UPPER(BTRIM(w.responsible))
+        ORDER BY
+          CASE WHEN BTRIM(e.codigo) = EXTRACT(MONTH FROM $2::date)::text THEN 0 ELSE 1 END,
+          CASE WHEN BTRIM(e.codigo) ~ '^\\d+$' THEN BTRIM(e.codigo)::int ELSE -1 END DESC
+        LIMIT 1
+      ), 'SIN SUPERVISOR')`;
 
   const { rows } = await pool.query(`
     SELECT
       $5::text AS "DISTRIBUIDOR",
       w.bitrix_id AS "ID_CRM", w.bitrix_id AS "ID_JOT",
       UPPER(REPLACE(COALESCE(NULLIF(BTRIM(w.etapa_bitrix), ''), NULLIF(BTRIM(w.etapa), ''), 'SIN ETAPA'), '_', ' ')) AS "ETAPA",
-      to_char(w.created_at AT TIME ZONE 'America/Guayaquil', 'YYYY-MM-DD HH24:MI:SS') AS "FECHA_CREACION",
+      ${fecha}::text AS "FECHA_CREACION",
       COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE') AS "ASESOR",
-      COALESCE(NULLIF(BTRIM(emp.supervisor), ''), 'SIN SUPERVISOR') AS "SUPERVISOR_ASIGNADO",
+      ${supervisor} AS "SUPERVISOR_ASIGNADO",
       COALESCE(NULLIF(BTRIM(w.source), ''), 'SIN ORIGEN') AS "ORIGEN",
-      to_char(w.created_at AT TIME ZONE 'America/Guayaquil', 'DD/MM/YYYY HH24:MI:SS') AS "FECHA_CREACION_JOT",
+      ${fecha}::text AS "FECHA_CREACION_JOT",
       NULL::text AS "FECHA_ASIGNACION", NULLIF(w.fecha_venta_subida, '') AS "FECHA_ACTIVACION",
       NULL::text AS "COD_ASESOR_JOT", COALESCE(NULLIF(BTRIM(w.responsible), ''), 'SIN RESPONSABLE') AS "ASESOR_USUARIO",
       NULL::text AS "LOGIN",
@@ -72,14 +97,7 @@ async function consultarDetallePipelineWebhook(empresa, categoria, distribuidor,
       NULL::text AS "SERVICIO_ADICIONAL_FACTURADO", NULL::text AS "FORMA_PAGO",
       NULL::text AS "APLICA_DESCUENTO", w.comentario AS "OBSERVACION"
     FROM public.bitrix_webhook_leads w
-    LEFT JOIN LATERAL (
-      SELECT e.supervisor
-      FROM public.empleados e
-      WHERE UPPER(BTRIM(e.nombre_completo)) = UPPER(BTRIM(w.responsible))
-      ORDER BY CASE WHEN BTRIM(e.codigo) ~ '^\\d+$' THEN BTRIM(e.codigo)::int ELSE -1 END DESC
-      LIMIT 1
-    ) emp ON true
-    WHERE (w.created_at AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+    WHERE ${fecha} BETWEEN $1::date AND $2::date
       AND LOWER(BTRIM(w.empresa)) = $3
       AND ${filtroCategoria}
       ${filtros}
@@ -117,7 +135,12 @@ router.get('/monitoreo-diario', getMonitoreoDiario);
 router.get('/reporte180', getReporte180);
 router.get('/consulta-descarga', getConsultaDescargaNovonet);
 router.get('/detalle-crm-master', async (req, res) => {
-  if (String(req.user?.usuario || '').trim().toLowerCase() !== 'jasimbana') {
+  const usuario = String(req.user?.usuario || req.user?.username || '').trim().toLowerCase();
+  const perfil = normalizarPerfil(req.user?.perfil);
+  const puedeVerDetalleCRMMaster = usuario === 'jasimbana'
+    || perfil === 'ADMIN'
+    || /^ADMINISTRADOR(?:A)?(?:[ _-].*)?$/.test(perfil);
+  if (!puedeVerDetalleCRMMaster) {
     return res.status(403).json({ success: false, error: 'No tiene permisos para consultar el detalle CRM master' });
   }
   const { fechaDesde, fechaHasta } = req.query;

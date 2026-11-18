@@ -19,3 +19,11 @@ test('Consulta Master conserva la autorización en frontend y backend', () => {
   assert.match(fuente, /ANALISTA/);
   assert.match(fuente, /status\(403\)/);
 });
+
+test('Consulta Master usa las mismas reglas de fecha y supervisor de los reportes individuales', () => {
+  assert.match(fuente, /fechaWebhookExpr\('w'\)/);
+  assert.match(fuente, /'ADRIANA SALVATORE'::text/);
+  assert.match(fuente, /m\.empresa = 'VENTAENLINEA'/);
+  assert.match(fuente, /m\.anio = EXTRACT\(YEAR FROM \$2::date\)/);
+  assert.doesNotMatch(fuente, /WHERE \(w\.created_at AT TIME ZONE 'America\/Guayaquil'\)::date BETWEEN/);
+});

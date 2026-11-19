@@ -31,6 +31,7 @@ const { bitrixCallNovonet, bitrixCallCuenta } = require('../services/bitrix.serv
 const { getEmpresa, empresaValida } = require('../shared/repartoEmpresas');
 const { elegirAsesor, ordenarPorTurno, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
+const { leerAccess, estadoAccess } = require('../shared/repartoAccess');
 const { conteoGestionablesHoy, bloqueadoPorAtc, bloqueadoPorEfectividad } = require('../shared/repartoConteo');
 
 // Opcional: si se define, antes de escribir se verifica que el deal siga
@@ -181,8 +182,11 @@ const crearReparto = (empresa) => {
     const estNorm = normalizarNombre(estacion);
     const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);
     // Si Bitrix Live no respondió (enLinea = null) no se filtra por en línea.
+    // Además debe estar conectado en NOVONET ACCESS / VELSA ACCESS (marcación de hoy).
+    const access = enLinea ? await leerAccess() : null;
     const enLineaRows = enLinea
-      ? sinEstacion.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea)
+      ? sinEstacion.filter((r) => enLinea.mapa.get(normalizarNombre(r.nombre))?.enLinea
+          && (!access || estadoAccess(access, r.nombre).conectado))
       : sinEstacion;
     return {
       disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos && !r.bloqueado),

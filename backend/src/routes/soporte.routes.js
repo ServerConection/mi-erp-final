@@ -37,7 +37,7 @@ const DESARROLLO = new Set(
 );
 const esDesarrollo = (u) => DESARROLLO.has(String(u?.usuario || '').toLowerCase());
 
-const TIPOS   = ['INCIDENCIA', 'CREACION_USUARIO', 'ELIMINACION_USUARIO'];
+const TIPOS   = ['INCIDENCIA', 'CREACION_USUARIO', 'ELIMINACION_USUARIO', 'DANO_ACTIVO'];
 const ESTADOS = ['SIN_ATENDER', 'EN_PROCESO', 'ATENDIDO'];
 
 // ─── Tablas (idempotente) ────────────────────────────────────────────────────
@@ -129,6 +129,8 @@ router.post('/tickets', (req, res, next) => {
       ? `Falla en ${modulo}`
       : tipo === 'CREACION_USUARIO'
         ? `Crear usuario: ${limpio.nombres || 'sin nombre'}`
+        : tipo === 'DANO_ACTIVO'
+        ? `Daño en ${limpio.activo || 'activo'}: ${limpio.problema || 'sin detalle'}`
         : `Eliminar usuario: ${limpio.usuario || limpio.nombres || 'sin dato'}`;
 
     const { rows } = await pool.query(

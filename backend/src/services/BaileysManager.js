@@ -1464,6 +1464,12 @@ class BaileysManager {
     this._empujarABitrix({ lineId, waNumber, pushName, text, msgType, mediaUrl, msg })
       .catch((e) => console.error(`[Line ${lineId}] WABOT-BITRIX no se pudo empujar a Bitrix:`, e.message))
 
+    // BOT VENDEDOR IA: si el administrador lo activó en esta línea, responde él
+    // (en segundo plano) y no corre el FlowEngine. Nunca lanza errores.
+    if (await require('./botVendedorWa.service').atenderSiAplica({ manager: this, lineId, msg, conv, remoteJid, text, msgType })) {
+      return
+    }
+
     const lineRow = await query('SELECT bot_id FROM lines WHERE id=$1', [lineId])
     const botId = lineRow.rows[0]?.bot_id
     if (!botId) {

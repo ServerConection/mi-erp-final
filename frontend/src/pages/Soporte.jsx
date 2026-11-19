@@ -52,6 +52,7 @@ const BadgeEstado = ({ estado }) => {
 const ETIQUETAS_DATOS = {
   nombres: "Nombres completos", cedula: "Cédula", correo: "Correo", empresa: "Empresa",
   cargo: "Cargo", perfil: "Perfil en el ERP", fecha: "Fecha", usuario: "Usuario", motivo: "Motivo",
+  activo: "Activo", problema: "Problema", serie: "Código / serie", area: "Área / ubicación",
 };
 function DatosTicket({ datos }) {
   const entradas = Object.entries(datos || {}).filter(([, v]) => v);
@@ -88,8 +89,17 @@ const CAMPOS_TIPO = {
     ["fecha", "Fecha de salida", "date"],
     ["motivo", "Motivo", "text"],
   ],
+  DANO_ACTIVO: [
+    ["activo", "Activo dañado *", "activo"],
+    ["problema", "¿Qué le pasa? *", "problema"],
+    ["empresa", "Empresa *", "empresa"],
+    ["area", "Área / ubicación", "text"],
+    ["serie", "Código o serie del equipo", "text"],
+  ],
 };
-const OBLIGATORIOS = { CREACION_USUARIO: ["nombres", "empresa"], ELIMINACION_USUARIO: ["nombres", "empresa"] };
+const ACTIVOS = ["PC de escritorio", "Laptop", "Teclado", "Mouse", "Pantalla / monitor", "Diadema / audífonos", "Celular corporativo", "Cargador / cable", "Impresora", "Otro"];
+const PROBLEMAS = ["No enciende", "Se reinicia solo", "Pantalla dañada / sin imagen", "Teclas no funcionan", "Muy lento / se congela", "No hay internet / red", "Sin sonido / micrófono", "Daño físico (golpe, rotura)", "Otro"];
+const OBLIGATORIOS = { CREACION_USUARIO: ["nombres", "empresa"], ELIMINACION_USUARIO: ["nombres", "empresa"], DANO_ACTIVO: ["activo", "problema", "empresa"] };
 
 function FormularioReporte({ onCreado }) {
   const [tipo, setTipo] = useState("INCIDENCIA");
@@ -180,6 +190,11 @@ function FormularioReporte({ onCreado }) {
           <select className={cls} value={valor} onChange={(e) => set(e.target.value)}>
             <option value="">Selecciona…</option><option>NOVONET</option><option>VELSA</option><option>Otra</option>
           </select>
+        ) : tipoCampo === "activo" || tipoCampo === "problema" ? (
+          <select className={cls} value={valor} onChange={(e) => set(e.target.value)}>
+            <option value="">Selecciona…</option>
+            {(tipoCampo === "activo" ? ACTIVOS : PROBLEMAS).map((o) => <option key={o}>{o}</option>)}
+          </select>
         ) : tipoCampo === "perfil" ? (
           <select className={cls} value={valor} onChange={(e) => set(e.target.value)}>
             <option value="">Selecciona…</option>
@@ -196,7 +211,7 @@ function FormularioReporte({ onCreado }) {
     <form onSubmit={enviar} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 md:p-6 space-y-5 max-w-3xl">
       <div>
         <p className="text-sm font-semibold text-slate-700 mb-2">¿Qué necesitas?</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {Object.entries(TIPOS_SOPORTE).map(([k, t]) => (
             <button type="button" key={k} onClick={() => { setTipo(k); setDatos({}); setMensaje(null); }}
               className={`text-left p-3 rounded-xl border-2 transition ${tipo === k ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
@@ -228,7 +243,9 @@ function FormularioReporte({ onCreado }) {
         <textarea rows={5} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} maxLength={5000}
           placeholder={tipo === "INCIDENCIA"
             ? "Ej.: Al abrir WABOT no cargan los chats desde las 9:00. Sale el mensaje 'Error de conexión'."
-            : "Accesos o módulos que necesita, observaciones…"}
+            : tipo === "DANO_ACTIVO"
+              ? "Ej.: La PC se reinicia sola cada 10 minutos desde ayer. Puedes adjuntar fotos del equipo."
+              : "Accesos o módulos que necesita, observaciones…"}
           className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
       </label>
 

@@ -15,6 +15,9 @@ import {
   ResponsiveContainer, FunnelChart, Funnel, Cell, ReferenceLine, LabelList, Legend
 } from 'recharts';
 
+// % de participación por categoría de plan (servicios adicionales no suman al total: son complementos)
+const pctPlan = (n, total) => (total > 0 ? `${((Number(n || 0) / total) * 100).toFixed(1)}%` : '0.0%');
+
 // Contexto para saber si un gráfico está en modo expandido (modal)
 const ExpandedCtx = createContext({ isExpanded: false, modalHeight: 500 });
 
@@ -1151,6 +1154,10 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
     { key: 'gamer',        label: 'GAMER',          velocidad: 'SEGÚN PLAN' },
     { key: 'servicios_adicionales', label: 'SERVICIOS ADICIONALES', velocidad: 'NO APLICA' },
   ];
+  const TOT_PLANES_DASH = FILAS_PLANES_DASH.filter(f => f.key !== 'servicios_adicionales').reduce((a, f) => ({
+    ing: a.ing + Number(PLANES_CAT_DASH[f.key]?.ingresados || 0),
+    act: a.act + Number(PLANES_CAT_DASH[f.key]?.activos || 0),
+  }), { ing: 0, act: 0 });
   const TablaPlanesPorCategoriaDash = () => (
     <table className="w-full text-left border-collapse">
       <thead>
@@ -1168,11 +1175,17 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
             <tr key={fila.key} className="border-b border-slate-100 last:border-0">
               <td className="py-2.5 px-2 text-[10px] font-black text-slate-700 uppercase">{fila.label}</td>
               <td className="py-2.5 px-2 text-[9px] font-bold text-slate-400">{fila.velocidad}</td>
-              <td className="py-2.5 px-2 text-[11px] font-black text-orange-600 text-right">{d.ingresados}</td>
-              <td className="py-2.5 px-2 text-[11px] font-black text-amber-600 text-right">{d.activos}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-orange-600 text-right">{d.ingresados} <span className="text-[9px] font-bold text-slate-400">({pctPlan(d.ingresados, TOT_PLANES_DASH.ing)})</span></td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-amber-600 text-right">{d.activos} <span className="text-[9px] font-bold text-slate-400">({pctPlan(d.activos, TOT_PLANES_DASH.act)})</span></td>
             </tr>
           );
         })}
+  <tr className="border-t-2 border-slate-300 bg-slate-50">
+          <td className="py-2.5 px-2 text-[10px] font-black text-slate-800 uppercase">TOTAL PLANES</td>
+          <td className="py-2.5 px-2 text-[9px] font-bold text-slate-400">SIN SERV. ADICIONALES</td>
+          <td className="py-2.5 px-2 text-[11px] font-black text-slate-800 text-right">{TOT_PLANES_DASH.ing} <span className="text-[9px] font-bold text-slate-400">(100%)</span></td>
+          <td className="py-2.5 px-2 text-[11px] font-black text-slate-800 text-right">{TOT_PLANES_DASH.act} <span className="text-[9px] font-bold text-slate-400">(100%)</span></td>
+        </tr>
       </tbody>
     </table>
   );
@@ -1794,7 +1807,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                 <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
                 PLANES POR CATEGORÍA — INGRESADOS / ACTIVOS
               </h3>
-              <p className="text-[8px] font-bold text-slate-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. EXCLUYE "GAMER" (SIN DATO EN BASE).</p>
+              <p className="text-[8px] font-bold text-slate-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. % = PARTICIPACIÓN SOBRE EL TOTAL DE PLANES (SERV. ADICIONALES SOBRE EL MISMO TOTAL).</p>
               <TablaPlanesPorCategoriaDash />
             </ExpandableChart>
           </div>
@@ -2250,6 +2263,10 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
     { key: 'gamer',        label: 'GAMER',          velocidad: 'SEGÚN PLAN' },
     { key: 'servicios_adicionales', label: 'SERVICIOS ADICIONALES', velocidad: 'NO APLICA' },
   ];
+  const TOT_PLANES = FILAS_PLANES.filter(f => f.key !== 'servicios_adicionales').reduce((a, f) => ({
+    ing: a.ing + Number(PLANES_CAT[f.key]?.ingresados || 0),
+    act: a.act + Number(PLANES_CAT[f.key]?.activos || 0),
+  }), { ing: 0, act: 0 });
 
   const TablaPlanesPorCategoria = () => (
     <table className="w-full text-left border-collapse">
@@ -2268,11 +2285,17 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <tr key={fila.key} className="border-b border-stone-100 last:border-0">
               <td className="py-2.5 px-2 text-[10px] font-black text-slate-700 uppercase">{fila.label}</td>
               <td className="py-2.5 px-2 text-[9px] font-bold text-stone-400">{fila.velocidad}</td>
-              <td className="py-2.5 px-2 text-[11px] font-black text-amber-600 text-right">{d.ingresados}</td>
-              <td className="py-2.5 px-2 text-[11px] font-black text-emerald-600 text-right">{d.activos}</td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-amber-600 text-right">{d.ingresados} <span className="text-[9px] font-bold text-slate-400">({pctPlan(d.ingresados, TOT_PLANES.ing)})</span></td>
+              <td className="py-2.5 px-2 text-[11px] font-black text-emerald-600 text-right">{d.activos} <span className="text-[9px] font-bold text-slate-400">({pctPlan(d.activos, TOT_PLANES.act)})</span></td>
             </tr>
           );
         })}
+  <tr className="border-t-2 border-slate-300 bg-slate-50">
+          <td className="py-2.5 px-2 text-[10px] font-black text-slate-800 uppercase">TOTAL PLANES</td>
+          <td className="py-2.5 px-2 text-[9px] font-bold text-slate-400">SIN SERV. ADICIONALES</td>
+          <td className="py-2.5 px-2 text-[11px] font-black text-slate-800 text-right">{TOT_PLANES.ing} <span className="text-[9px] font-bold text-slate-400">(100%)</span></td>
+          <td className="py-2.5 px-2 text-[11px] font-black text-slate-800 text-right">{TOT_PLANES.act} <span className="text-[9px] font-bold text-slate-400">(100%)</span></td>
+        </tr>
       </tbody>
     </table>
   );
@@ -2384,7 +2407,7 @@ function Reporte180({ data, filtros, setFiltros, onFetch, loading, etapasCRM, ET
             <span className="w-2 h-2 bg-amber-600 rounded-full animate-pulse"></span>
             PLANES POR CATEGORÍA — INGRESADOS / ACTIVOS
           </h3>
-          <p className="text-[8px] font-bold text-stone-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. EXCLUYE "GAMER" (SIN DATO EN BASE).</p>
+          <p className="text-[8px] font-bold text-stone-400 mb-2 uppercase">VELOCIDAD = RANGO DE REFERENCIA FIJO POR CATEGORÍA, NO POR VENTA INDIVIDUAL. % = PARTICIPACIÓN SOBRE EL TOTAL DE PLANES (SERV. ADICIONALES SOBRE EL MISMO TOTAL).</p>
           <TablaPlanesPorCategoria />
         </ExpandableChart>
       </div>

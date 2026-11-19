@@ -54,6 +54,7 @@ app.use('/api/nexo-ia',           require('../routes/nexoIa.routes'));
 app.use('/api/tthh',              require('../routes/tthh.routes'));
 app.use('/api/soporte',           require('../routes/soporte.routes'));
 app.use('/api/carpeta-compartida', require('../routes/carpetaCompartida.routes'));
+app.use('/api/bot-vendedor',     require('../routes/botVendedor.routes'));
 app.use('/api/tareas',            require('../routes/tareas.routes'));
 app.use('/api/hojas',             require('../routes/hojas.routes'));
 app.use('/api/chat',              require('../routes/chat.routes'));

@@ -271,6 +271,7 @@ app.use('/api/datos-adicionales', datosAdicionalesRoutes);
 app.use('/api/tthh', tthhRoutes);
 app.use('/api/soporte', require('./routes/soporte.routes'));
 app.use('/api/carpeta-compartida', require('./routes/carpetaCompartida.routes'));
+app.use('/api/bot-vendedor', require('./routes/botVendedor.routes'));
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));
 app.use('/api/mis-negociaciones', require('./routes/misNegociaciones.routes'));

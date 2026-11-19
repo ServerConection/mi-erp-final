@@ -1,0 +1,375 @@
+// src/pages/BotVendedor.jsx
+// Bot Vendedor IA: editar prompt y reglas, cargar conocimiento y probar el bot.
+// Solo ADMINISTRADOR (el backend lo valida). Lo que se guarda aqui lo usa el bot
+// de WhatsApp en menos de un minuto, sin reiniciarlo.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw } from "lucide-react";
+
+const API = import.meta.env.VITE_API_URL;
+const BASE = `${API}/api/bot-vendedor`;
+const token = () => localStorage.getItem("token");
+const headers = (json = true) => ({
+  Authorization: `Bearer ${token()}`,
+  ...(json ? { "Content-Type": "application/json" } : {}),
+});
+
+async function pedir(url, opciones = {}) {
+  const r = await fetch(url, opciones);
+  let j = {};
+  try { j = await r.json(); } catch { /* respuesta sin JSON */ }
+  if (!r.ok || j.success === false) throw new Error(j.error || `Error ${r.status}`);
+  return j.data;
+}
+
+const fecha = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" }) : "—");
+const PESTANAS = [
+  { id: "prompt", nombre: "Prompt y reglas" },
+  { id: "conocimiento", nombre: "Conocimiento" },
+  { id: "probar", nombre: "Probar bot" },
+];
+
+export default function BotVendedor() {
+  const [pestana, setPestana] = useState("prompt");
+  return (
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+      <div className="mb-4">
+        <h1 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+          <Bot className="w-7 h-7 text-blue-600" /> Bot Vendedor IA
+        </h1>
+        <p className="text-sm text-slate-500">
+          Configura lo que sabe y cómo vende el bot de WhatsApp. Los cambios se aplican en menos de un minuto.
+        </p>
+      </div>
+      <div className="flex gap-1 border-b mb-4">
+        {PESTANAS.map((p) => (
+          <button key={p.id} onClick={() => setPestana(p.id)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${pestana === p.id ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+            {p.nombre}
+          </button>
+        ))}
+      </div>
+      {pestana === "prompt" && <PestanaPrompt />}
+      {pestana === "conocimiento" && <PestanaConocimiento />}
+      {pestana === "probar" && <PestanaProbar />}
+    </div>
+  );
+}
+
+// ─── Prompt y reglas ─────────────────────────────────────────────────────────
+function PestanaPrompt() {
+  const [cfg, setCfg] = useState(null);
+  const [prompt, setPrompt] = useState("");
+  const [reglas, setReglas] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const [error, setError] = useState("");
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try {
+      const d = await pedir(`${BASE}/config`, { headers: headers() });
+      setCfg(d); setPrompt(d.prompt); setReglas(d.reglas);
+    } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const guardar = async () => {
+    setGuardando(true); setError(""); setAviso("");
+    try {
+      await pedir(`${BASE}/config`, { method: "PUT", headers: headers(), body: JSON.stringify({ prompt, reglas }) });
+      setAviso("Guardado. El bot lo usará en menos de un minuto.");
+      cargar();
+    } catch (e) { setError(e.message); }
+    setGuardando(false);
+  };
+
+  if (!cfg && !error) return <Cargando />;
+  const cambiado = cfg && (prompt !== cfg.prompt || reglas !== cfg.reglas);
+
+  return (
+    <div className="space-y-4">
+      {error && <Mensaje tipo="error" texto={error} />}
+      {aviso && <Mensaje tipo="ok" texto={aviso} />}
+      <div className="bg-white rounded-xl border p-4">
+        <div className="flex justify-between items-baseline mb-2">
+          <h2 className="font-bold text-slate-800">Prompt del vendedor</h2>
+          <span className="text-xs text-slate-400">{prompt.length} caracteres</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-2">
+          Quién es el bot, cómo habla y el flujo de venta. Mantén las palabras ESCALAR_ASESOR y FUERA_DE_HORARIO: así el bot pasa el chat a un asesor.
+        </p>
+        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={18}
+          className="w-full border rounded-lg p-3 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+      </div>
+      <div className="bg-white rounded-xl border p-4">
+        <h2 className="font-bold text-slate-800 mb-1">Reglas adicionales</h2>
+        <p className="text-xs text-slate-500 mb-2">
+          Reglas rápidas del día a día, una por línea. Ejemplo: "Esta semana no ofrecer el plan Jedi", "Siempre preguntar si ya es cliente".
+        </p>
+        <textarea value={reglas} onChange={(e) => setReglas(e.target.value)} rows={6}
+          placeholder="- Regla 1&#10;- Regla 2"
+          className="w-full border rounded-lg p-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-slate-400">
+          Modelo: {cfg?.modelo} · Última edición: {cfg?.actualizado_por || "—"} {fecha(cfg?.actualizado_en)}
+        </span>
+        <button onClick={guardar} disabled={guardando || !cambiado}
+          className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50">
+          {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar cambios
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Conocimiento ────────────────────────────────────────────────────────────
+function PestanaConocimiento() {
+  const [docs, setDocs] = useState(null);
+  const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [subiendo, setSubiendo] = useState(false);
+  const [fijarAlSubir, setFijarAlSubir] = useState(false);
+  const [nuevoTexto, setNuevoTexto] = useState(null); // {nombre, contenido, siempre_incluir}
+  const [viendo, setViendo] = useState(null); // documento completo
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try { setDocs(await pedir(`${BASE}/conocimiento`, { headers: headers() })); } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const subir = async (archivo) => {
+    if (!archivo) return;
+    setSubiendo(true); setError(""); setAviso("");
+    try {
+      const fd = new FormData();
+      fd.append("archivo", archivo);
+      fd.append("siempre_incluir", fijarAlSubir ? "true" : "false");
+      const d = await pedir(`${BASE}/conocimiento/archivo`, { method: "POST", headers: headers(false), body: fd });
+      setAviso(`"${d.nombre}" cargado (${d.caracteres.toLocaleString("es-EC")} caracteres de texto).`);
+      cargar();
+    } catch (e) { setError(e.message); }
+    setSubiendo(false);
+  };
+
+  const actualizar = async (id, cambios) => {
+    setError("");
+    try {
+      await pedir(`${BASE}/conocimiento/${id}`, { method: "PUT", headers: headers(), body: JSON.stringify(cambios) });
+      cargar();
+    } catch (e) { setError(e.message); }
+  };
+
+  const guardarTexto = async () => {
+    setError("");
+    try {
+      await pedir(`${BASE}/conocimiento/texto`, { method: "POST", headers: headers(), body: JSON.stringify(nuevoTexto) });
+      setNuevoTexto(null); setAviso("Texto agregado."); cargar();
+    } catch (e) { setError(e.message); }
+  };
+
+  const ver = async (d) => {
+    try { setViendo(await pedir(`${BASE}/conocimiento/${d.id}`, { headers: headers() })); } catch (e) { setError(e.message); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && <Mensaje tipo="error" texto={error} />}
+      {aviso && <Mensaje tipo="ok" texto={aviso} />}
+
+      <div className="bg-white rounded-xl border p-4 flex flex-wrap items-center gap-3 justify-between">
+        <div className="text-sm text-slate-600 max-w-xl">
+          Sube la guía comercial, catálogos o políticas (PDF, TXT, MD, CSV). Marca <b>Siempre</b> solo en documentos cortos y clave (catálogo de precios):
+          se envían completos en cada respuesta. El resto se busca por palabras.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            <input type="checkbox" checked={fijarAlSubir} onChange={(e) => setFijarAlSubir(e.target.checked)} /> Siempre
+          </label>
+          <label className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm cursor-pointer hover:bg-blue-700 ${subiendo ? "opacity-60 pointer-events-none" : ""}`}>
+            {subiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {subiendo ? "Leyendo archivo…" : "Subir archivo"}
+            <input type="file" accept=".pdf,.txt,.md,.csv" className="hidden"
+              onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          <button onClick={() => setNuevoTexto({ nombre: "", contenido: "", siempre_incluir: false })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-600 text-blue-700 font-semibold text-sm hover:bg-blue-50">
+            <Plus className="w-4 h-4" /> Escribir texto
+          </button>
+          <button onClick={cargar} title="Actualizar" className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><RefreshCw className="w-4 h-4" /></button>
+        </div>
+      </div>
+
+      {nuevoTexto && (
+        <div className="bg-white rounded-xl border p-4 space-y-2">
+          <input value={nuevoTexto.nombre} onChange={(e) => setNuevoTexto({ ...nuevoTexto, nombre: e.target.value })}
+            placeholder="Nombre (ej. Preguntas frecuentes de instalación)" className="w-full border rounded-lg p-2 text-sm" />
+          <textarea value={nuevoTexto.contenido} onChange={(e) => setNuevoTexto({ ...nuevoTexto, contenido: e.target.value })}
+            rows={8} placeholder="Escribe aquí la información que debe saber el bot" className="w-full border rounded-lg p-2 text-sm" />
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1 text-xs text-slate-600">
+              <input type="checkbox" checked={nuevoTexto.siempre_incluir}
+                onChange={(e) => setNuevoTexto({ ...nuevoTexto, siempre_incluir: e.target.checked })} /> Enviar siempre
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setNuevoTexto(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+              <button onClick={guardarTexto} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!docs && !error ? <Cargando /> : (
+        <div className="bg-white rounded-xl border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left py-2 px-3">Documento</th>
+                <th className="text-left py-2 px-3">Tamaño</th>
+                <th className="text-left py-2 px-3">Uso</th>
+                <th className="text-left py-2 px-3">Subido</th>
+                <th className="py-2 px-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {(docs || []).length === 0 && (
+                <tr><td colSpan={5} className="py-6 text-center text-slate-400">Aún no hay documentos. Sube la guía comercial.</td></tr>
+              )}
+              {(docs || []).map((d) => (
+                <tr key={d.id} className={`border-t ${d.activo ? "" : "opacity-50"}`}>
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2 font-medium text-slate-800">
+                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span className="break-all">{d.nombre}</span>
+                      {!d.activo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">ARCHIVADO</span>}
+                    </div>
+                    <div className="text-xs text-slate-400 line-clamp-1">{d.vista_previa}</div>
+                  </td>
+                  <td className="py-2 px-3 text-slate-500 whitespace-nowrap">{Number(d.caracteres).toLocaleString("es-EC")} car.</td>
+                  <td className="py-2 px-3">
+                    {d.siempre_incluir
+                      ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">Siempre</span>
+                      : <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Búsqueda</span>}
+                  </td>
+                  <td className="py-2 px-3 text-slate-500 whitespace-nowrap">{d.creado_por || "—"} · {fecha(d.creado_en)}</td>
+                  <td className="py-2 px-3">
+                    <div className="flex justify-end gap-1">
+                      <button title="Ver texto" onClick={() => ver(d)} className="p-1.5 rounded hover:bg-slate-100 text-slate-600"><Eye className="w-4 h-4" /></button>
+                      <button title={d.siempre_incluir ? "Pasar a búsqueda" : "Enviar siempre"}
+                        onClick={() => actualizar(d.id, { siempre_incluir: !d.siempre_incluir })}
+                        className="p-1.5 rounded hover:bg-slate-100 text-amber-600">
+                        {d.siempre_incluir ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                      </button>
+                      <button title={d.activo ? "Archivar (el bot deja de usarlo)" : "Reactivar"}
+                        onClick={() => actualizar(d.id, { activo: !d.activo })}
+                        className="p-1.5 rounded hover:bg-slate-100 text-slate-600">
+                        {d.activo ? <Archive className="w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {viendo && <VerDocumento doc={viendo} onCerrar={() => setViendo(null)}
+        onGuardar={async (contenido) => { await actualizar(viendo.id, { contenido }); setViendo(null); setAviso("Documento actualizado."); }} />}
+    </div>
+  );
+}
+
+function VerDocumento({ doc, onCerrar, onGuardar }) {
+  const [texto, setTexto] = useState(doc.contenido || "");
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h3 className="font-bold text-slate-800 break-all">{doc.nombre}</h3>
+            <p className="text-xs text-slate-500">Este es el texto que lee el bot. Puedes corregirlo aquí.</p>
+          </div>
+          <button onClick={onCerrar} className="p-1.5 rounded hover:bg-slate-100"><X className="w-5 h-5" /></button>
+        </div>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)}
+          className="flex-1 m-4 border rounded-lg p-3 font-mono text-xs min-h-[50vh]" />
+        <div className="flex justify-end gap-2 p-4 border-t">
+          <button onClick={onCerrar} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cerrar</button>
+          <button onClick={() => onGuardar(texto)} disabled={texto === doc.contenido}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">Guardar texto</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Probar ──────────────────────────────────────────────────────────────────
+function PestanaProbar() {
+  const [mensajes, setMensajes] = useState([]); // {role, content, meta?}
+  const [texto, setTexto] = useState("");
+  const [pensando, setPensando] = useState(false);
+  const [error, setError] = useState("");
+  const fin = useRef(null);
+
+  useEffect(() => { fin.current?.scrollIntoView({ behavior: "smooth" }); }, [mensajes, pensando]);
+
+  const enviar = async () => {
+    const t = texto.trim();
+    if (!t || pensando) return;
+    const nuevos = [...mensajes, { role: "user", content: t }];
+    setMensajes(nuevos); setTexto(""); setPensando(true); setError("");
+    try {
+      const d = await pedir(`${BASE}/probar`, {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({ historial: nuevos.map(({ role, content }) => ({ role, content })) }),
+      });
+      setMensajes([...nuevos, { role: "assistant", content: d.texto, meta: `${d.modelo} · ${(d.ms / 1000).toFixed(1)} s${d.accion ? ` · ${d.accion}` : ""}` }]);
+    } catch (e) { setError(e.message); }
+    setPensando(false);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border flex flex-col h-[70vh]">
+      <div className="flex items-center justify-between p-3 border-b">
+        <span className="text-sm text-slate-500">Escribe como si fueras un cliente. Usa el mismo prompt y conocimiento que el bot de WhatsApp.</span>
+        <button onClick={() => { setMensajes([]); setError(""); }} className="text-xs px-3 py-1 rounded border hover:bg-slate-50">Nueva conversación</button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#efeae2]">
+        {mensajes.length === 0 && <p className="text-center text-sm text-slate-500 mt-10">Prueba con "hola".</p>}
+        {mensajes.map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap shadow-sm ${m.role === "user" ? "bg-[#d9fdd3]" : "bg-white"}`}>
+              {m.content}
+              {m.meta && <div className="text-[10px] text-slate-400 mt-1">{m.meta}</div>}
+            </div>
+          </div>
+        ))}
+        {pensando && <div className="flex"><div className="bg-white rounded-lg px-3 py-2 text-sm text-slate-400 shadow-sm flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> escribiendo…</div></div>}
+        <div ref={fin} />
+      </div>
+      {error && <div className="px-3 pt-2"><Mensaje tipo="error" texto={error} /></div>}
+      <div className="flex gap-2 p-3 border-t">
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviar()}
+          placeholder="Mensaje del cliente…" className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        <button onClick={enviar} disabled={pensando || !texto.trim()}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
+          <Send className="w-4 h-4" /> Enviar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Auxiliares ──────────────────────────────────────────────────────────────
+function Cargando() {
+  return <div className="flex items-center gap-2 text-slate-500 text-sm p-6"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>;
+}
+function Mensaje({ tipo, texto }) {
+  return (
+    <div className={`text-sm rounded-lg px-3 py-2 ${tipo === "error" ? "bg-red-50 text-red-700 border border-red-200" : "bg-green-50 text-green-700 border border-green-200"}`}>
+      {texto}
+    </div>
+  );
+}

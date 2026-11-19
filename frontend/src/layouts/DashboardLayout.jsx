@@ -507,6 +507,9 @@ const ALL_MENU_ITEMS = [
   // Panel de control de líneas: solo perfiles de mando (no asesores ni consultores)
   { name: "Control de líneas", path: "/whatsapp/control-lineas", icon: "📊", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'ANALISTA', 'SUPERVISOR'].includes((p || '').toUpperCase()) },
+  // Bot Vendedor IA: prompt, reglas y conocimiento del bot de WhatsApp. Solo administración.
+  { name: "Bot Vendedor IA", path: "/bot-vendedor", icon: "🤖", isChild: true, group: "wabot",
+    accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   { name: "Uso y cobertura", path: "/whatsapp/uso", icon: "📈", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'ANALISTA', 'SUPERVISOR', 'COORDINADOR'].includes((p || '').toUpperCase()) },
 

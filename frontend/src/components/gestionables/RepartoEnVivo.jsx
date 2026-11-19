@@ -39,13 +39,20 @@ const ESTADOS = {
   fuera:      { label: 'Desconectado',   cls: 'bg-slate-100 text-slate-600 border-slate-200' },
   noBitrix:   { label: 'No está en Bitrix', cls: 'bg-red-50 text-red-700 border-red-200' },
   sinAccess:  { label: 'Sin ACCESS',     cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  almuerzo:   { label: 'Almuerzo (ACCESS)', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  salio:      { label: 'Salió (ACCESS)', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
   sinDato:    { label: 'Sin dato',       cls: 'bg-slate-50 text-slate-500 border-slate-200' },
 };
 const estadoDe = (r) => {
   if (r.en_linea === null) return 'sinDato';
   if (!r.encontrado_en_bitrix) return 'noBitrix';
   // En Bitrix sí, pero sin conexión en NOVONET ACCESS / VELSA ACCESS → no recibe
-  if (r.en_linea) return r.access_conectado === false ? 'sinAccess' : 'linea';
+  if (r.en_linea) {
+    if (r.access_conectado !== false) return 'linea';
+    if (r.access_actividad === 'SALIDA ALMUERZO') return 'almuerzo';
+    if (r.access_actividad === 'SALIDA') return 'salio';
+    return 'sinAccess';
+  }
   return r.jornada === 'PAUSED' ? 'pausa' : 'fuera';
 };
 
@@ -90,7 +97,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
     const turnoDe = new Map(pueden.map((r, i) => [r.nombre, i + 1]));
     // Orden de la vista: En línea → En pausa → Desconectado → resto.
     // Dentro de cada grupo: primero los que tienen cupo (por turno), luego los llenos (por nombre).
-    const grupo = { linea: 0, sinAccess: 1, pausa: 2, fuera: 3, noBitrix: 4, sinDato: 5 };
+    const grupo = { linea: 0, almuerzo: 1, sinAccess: 2, pausa: 3, salio: 4, fuera: 4, noBitrix: 5, sinDato: 6 };
     const ordenadas = [...filas].sort((a, b) =>
       (grupo[estadoDe(a)] - grupo[estadoDe(b)])
       || ((a.asignados < a.permitidos ? 0 : 1) - (b.asignados < b.permitidos ? 0 : 1))
@@ -268,7 +275,7 @@ export default function RepartoEnVivo({ empresa = 'novonet' }) {
                       <td className="p-2 font-bold tabular-nums">{turno ?? '—'}</td>
                       <td className="p-2 font-medium text-slate-800">{r.nombre}</td>
                       <td className="p-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`} title={estadoDe(r) === 'sinAccess' ? (r.access_actividad ? `Última marcación en ACCESS: ${r.access_actividad}. No recibe leads hasta marcar INGRESO.` : 'Hoy no ha marcado INGRESO en ACCESS. No recibe leads.') : undefined}>{e.label}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${e.cls}`} title={estadoDe(r) === 'almuerzo' ? 'Marcó SALIDA ALMUERZO en ACCESS. Vuelve a recibir al marcar INGRESO ALMUERZO.' : estadoDe(r) === 'salio' ? 'Marcó SALIDA en ACCESS. No recibe más leads hoy.' : estadoDe(r) === 'sinAccess' ? 'Hoy no ha marcado INGRESO en ACCESS, o su nombre no coincide con el del ERP. No recibe leads.' : undefined}>{e.label}</span>
                         {r.bloqueado_efectividad && <span className="ml-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700" title={`Tiene ${r.vencidos} lead(s) con más de ${datos?.efectividad?.plazo_horas ?? 3} h sin Venta Subida y lleva ${r.venta_subida} de ${r.meta_venta} Ventas Subidas. Vuelve a recibir al cubrir su meta.`}>Sin subir +{datos?.efectividad?.plazo_horas ?? 3}h</span>}
                         {r.bloqueado_atc && <span className="ml-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700" title={`Llegó a ${r.atc} ATC (tope ${r.atc_tope}: ${r.atc_max}% de ${r.permitidos} permitidos). El bot ya no le entrega.`}>Límite ATC</span>}
                       </td>

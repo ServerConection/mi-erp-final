@@ -66,6 +66,7 @@ export const TIPOS_SOPORTE = {
   INCIDENCIA:          { label: "Reportar una falla", corto: "Incidencia", icono: "🛠️", color: "bg-rose-100 text-rose-700" },
   CREACION_USUARIO:    { label: "Creación de usuario", corto: "Crear usuario", icono: "👤", color: "bg-emerald-100 text-emerald-700" },
   ELIMINACION_USUARIO: { label: "Eliminación de usuario", corto: "Eliminar usuario", icono: "🚫", color: "bg-amber-100 text-amber-700" },
+  DANO_ACTIVO:         { label: "Reportar daño en activo", corto: "Daño activo", icono: "💻", color: "bg-sky-100 text-sky-700" },
 };
 
 export const ESTADOS_SOPORTE = {

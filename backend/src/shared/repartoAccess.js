@@ -98,9 +98,16 @@ const coincidenciaParcial = (access, clave) => {
   return vistas === 1 ? unica : null;
 };
 
+// Excepciones temporales: asesores que reciben aunque no marquen en ACCESS.
+// Variable en Render: GESTIONABLES_ACCESS_EXCEPCIONES="NOMBRE UNO, NOMBRE DOS"
+// (nombres como están en Bitrix, separados por coma). Vacía = sin excepciones.
+const excepciones = () => new Set(String(process.env.GESTIONABLES_ACCESS_EXCEPCIONES || '')
+  .split(',').map((n) => claveAccess(n)).filter(Boolean));
+
 const estadoAccess = (access, nombre) => {
   if (!access) return null;
   const clave = claveAccess(nombre);
+  if (excepciones().has(clave)) return { conectado: true, actividad: 'EXCEPCION', momento: null };
   if (!access.parcial) access.parcial = new Map();
   if (!access.parcial.has(clave)) access.parcial.set(clave, access.mapa.get(clave) || coincidenciaParcial(access, clave));
   return access.parcial.get(clave) || { conectado: false, actividad: null, momento: null };

@@ -129,6 +129,17 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS paused_for_schedule BOOLEAN DEFAU
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS line_ids UUID[];
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS modo_responsable VARCHAR(10) DEFAULT 'libre';
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS line_id UUID;
+-- Cierre diario y bot de campaña (2026-11-19).
+-- cierre_at: hora aleatoria entre 20:00 y 20:30 (Ecuador) en que la campaña se
+-- cierra y se envía el resumen. status 'abierta' = ya no envía, pero sigue
+-- midiendo respuestas y su bot atiende a los contactos de la campaña.
+-- bot_id: bot que responde, en las líneas de la campaña, SOLO a los números
+-- que están en la campaña y solo mientras esté running/paused/abierta.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cierre_at TIMESTAMPTZ;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cierre_aviso_enviado BOOLEAN DEFAULT false;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS bot_id UUID REFERENCES bots(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_campaigns_cierre ON campaigns(cierre_at) WHERE status IN ('running','paused','abierta');
+CREATE INDEX IF NOT EXISTS idx_campaign_recipients_camp_num ON campaign_recipients(campaign_id, wa_number);
 
 CREATE TABLE IF NOT EXISTS campaign_messages (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

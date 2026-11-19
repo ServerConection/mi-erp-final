@@ -1464,6 +1464,22 @@ class BaileysManager {
     this._empujarABitrix({ lineId, waNumber, pushName, text, msgType, mediaUrl, msg })
       .catch((e) => console.error(`[Line ${lineId}] WABOT-BITRIX no se pudo empujar a Bitrix:`, e.message))
 
+    // BOT DE CAMPAÑA (2026-11-19): si quien escribe está en la base de una
+    // campaña activa (running/paused/abierta) que salió por esta línea y esa
+    // campaña tiene bot, responde ese bot. Otros números que escriban a la
+    // misma línea siguen el flujo normal. Al cerrar la campaña (20:00–20:30)
+    // el bot deja de responder.
+    try {
+      const botCampania = await this._botDeCampania(lineId, [waNumber, conv?.wa_number, this.lidMap?.[waNumber]])
+      if (botCampania) {
+        const engine = new FlowEngine(this, this.io)
+        await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId: botCampania })
+        return
+      }
+    } catch (e) {
+      console.warn(`[Line ${lineId}] Bot de campaña no disponible: ${e.message}`)
+    }
+
     // BOT VENDEDOR IA: si el administrador lo activó en esta línea, responde él
     // (en segundo plano) y no corre el FlowEngine. Nunca lanza errores.
     if (await require('./botVendedorWa.service').atenderSiAplica({ manager: this, lineId, msg, conv, remoteJid, text, msgType })) {
@@ -1479,6 +1495,27 @@ class BaileysManager {
 
     const engine = new FlowEngine(this, this.io)
     await engine.process({ lineId, sock, waNumber: remoteJid, text, conv, botId })
+  }
+
+  // Bot de la campaña activa más reciente que salió por esta línea y tiene a
+  // este número en su base. null si no hay ninguna.
+  async _botDeCampania(lineId, numeros) {
+    const candidatos = [...new Set((numeros || []).map(n => String(n || '').replace(/\D/g, '')).filter(Boolean))]
+    if (!candidatos.length) return null
+    const r = await query(
+      `SELECT c.bot_id
+         FROM campaigns c
+         JOIN bots b ON b.id = c.bot_id AND b.is_active = true
+        WHERE c.bot_id IS NOT NULL
+          AND c.status IN ('running', 'paused', 'abierta')
+          AND (c.line_id = $1 OR $1 = ANY(COALESCE(c.line_ids, '{}'::uuid[])))
+          AND EXISTS (SELECT 1 FROM campaign_recipients r
+                       WHERE r.campaign_id = c.id AND r.wa_number = ANY($2::text[]))
+        ORDER BY c.started_at DESC NULLS LAST
+        LIMIT 1`,
+      [lineId, candidatos]
+    )
+    return r.rows[0]?.bot_id || null
   }
 
   // ── WABOT-BITRIX: mensaje entrante → Canal Abierto de Bitrix ──────────

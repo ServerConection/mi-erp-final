@@ -61,8 +61,7 @@ function lineaEnCalentamiento(createdAt, ahora = new Date()) {
 // Numeros propios que SIEMPRE contestan. Se les manda primero (antes que a
 // cualquier destinatario frio) y luego cada WA_CONTROL_CADA_N envios reales,
 // para mantener una tasa de respuesta sana durante TODA la campaña, no solo
-// al arrancar. Ajustable/reemplazable con WA_NUMEROS_CONTROL (separados por
-// coma) sin tocar codigo.
+// al arrancar. Por empresa: WA_NUMEROS_CONTROL_VELSA / WA_NUMEROS_CONTROL_NOVONET.
 const CONTROL_CADA_N = parseInt(process.env.WA_CONTROL_CADA_N || '14', 10)
 
 // Normaliza a formato internacional de Ecuador (593XXXXXXXXX). Numeros que no
@@ -79,9 +78,45 @@ function normalizarNumeroControl(raw) {
   return digits
 }
 
-const NUMEROS_CONTROL_RAW = (process.env.WA_NUMEROS_CONTROL || '59396028844,593958650281,958790214,0983336118')
-  .split(',').map(s => s.trim()).filter(Boolean)
-const NUMEROS_CONTROL = NUMEROS_CONTROL_RAW.map(normalizarNumeroControl).filter(Boolean)
+// Números de prueba POR EMPRESA (2026-11-19): cada campaña se dispara primero
+// a los números de prueba de la empresa de quien la creó. SEMILLERO y VENTA EN
+// LÍNEA usan los de NOVONET (mismo portal). Reemplazables por variable de
+// entorno sin tocar código.
+const listaNumeros = (raw) => String(raw || '').split(',').map(s => s.trim()).filter(Boolean)
+  .map(normalizarNumeroControl).filter(Boolean)
+const NUMEROS_CONTROL_POR_EMPRESA = {
+  VELSA: listaNumeros(process.env.WA_NUMEROS_CONTROL_VELSA ||
+    '593963097928,593987362202,593992689404'),
+  NOVONET: listaNumeros(process.env.WA_NUMEROS_CONTROL_NOVONET ||
+    '593958685423,593984892363,593999925455,593983336118,593958650281'),
+}
+function numerosControlDe(empresa) {
+  return String(empresa || '').toUpperCase() === 'VELSA'
+    ? NUMEROS_CONTROL_POR_EMPRESA.VELSA
+    : NUMEROS_CONTROL_POR_EMPRESA.NOVONET
+}
+
+// ── Cierre diario de campañas (2026-11-19) ──────────────────────────────
+// Ninguna campaña envía después de las 20:00 (hora Ecuador). Si terminó antes,
+// queda ABIERTA (status 'abierta') para medir lecturas y respuestas, y su bot
+// (si tiene) sigue atendiendo. Se CIERRA a una hora aleatoria entre 20:00 y
+// 20:30 (cierre_at) enviando un resumen a WA_NUMERO_CIERRE_CAMPANA.
+const HORA_CORTE_CAMPANAS   = parseInt(process.env.WA_CAMPANA_HORA_CORTE || '20', 10)
+const VENTANA_CIERRE_MIN    = parseInt(process.env.WA_CAMPANA_VENTANA_CIERRE_MIN || '30', 10)
+const NUMERO_CIERRE_CAMPANA = normalizarNumeroControl(process.env.WA_NUMERO_CIERRE_CAMPANA || '593962517928')
+
+// Instante (UTC) de las HORA_CORTE:00 del día de Ecuador de `ahora`.
+function corteDelDia(ahora = new Date()) {
+  const local = new Date(ahora.getTime() + OFFSET_HORAS_ECUADOR_CIERRE * 3600e3)
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), HORA_CORTE_CAMPANAS)
+    - OFFSET_HORAS_ECUADOR_CIERRE * 3600e3)
+}
+const pasoHoraCorte = (ahora = new Date()) => ahora.getTime() >= corteDelDia(ahora).getTime()
+// Hora de cierre aleatoria entre el corte y corte + VENTANA_CIERRE_MIN.
+function cierreAleatorioDelDia(ahora = new Date(), aleatorio = Math.random) {
+  return new Date(corteDelDia(ahora).getTime() + Math.floor(aleatorio() * VENTANA_CIERRE_MIN * 60e3))
+}
+const OFFSET_HORAS_ECUADOR_CIERRE = -5
 
 // ── Aviso de exclusión automático (opt-out) ─────────────────────────────
 const AGREGAR_OPT_OUT = process.env.WA_AGREGAR_OPT_OUT !== 'false'
@@ -158,10 +193,21 @@ class CampaignEngine {
     const camp = await this._loadCampaign(campaignId)
     if (!camp) throw new Error('Campaña no encontrada')
     if (camp.status === 'completed') throw new Error('La campaña ya terminó')
+    if (camp.status === 'abierta') {
+      throw new Error('La campaña ya envió a todos; queda abierta midiendo respuestas hasta el cierre de las 20:00–20:30')
+    }
+    if (pasoHoraCorte()) {
+      throw new Error(`Después de las ${HORA_CORTE_CAMPANAS}:00 no se inician campañas: todas cierran entre ` +
+        `las ${HORA_CORTE_CAMPANAS}:00 y las ${HORA_CORTE_CAMPANAS}:${String(VENTANA_CIERRE_MIN).padStart(2, '0')}. Iníciala mañana.`)
+    }
 
+    // cierre_at: hora aleatoria entre 20:00 y 20:30 de HOY. Se conserva al
+    // pausar/reanudar el mismo día; si quedó de un día anterior se recalcula.
     await query(
-      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()), paused_for_schedule=false WHERE id=$1`,
-      [campaignId]
+      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()), paused_for_schedule=false,
+              cierre_at = CASE WHEN cierre_at IS NULL OR cierre_at < NOW() THEN $2 ELSE cierre_at END
+        WHERE id=$1`,
+      [campaignId, cierreAleatorioDelDia()]
     )
 
     this.running[campaignId] = { abortFlag: false }
@@ -257,11 +303,19 @@ class CampaignEngine {
     // después de la guarda de calentamiento, para que una línea ya en su
     // tope diario no reciba ni siquiera los envíos de control.
     let burstInicialPendiente = (camp.sent_count || 0) === 0
+    const numerosControl = numerosControlDe(await this._empresaDeCampania(camp))
 
     while (camp.status === 'running') {
       if (this.running[campaignId]?.abortFlag) {
         console.log(`[CampaignEngine] ⏸ Abort en ${campaignId}`)
         break
+      }
+
+      // 🌙 Corte de las 20:00: no se envía nada más; los pendientes se
+      // descartan y la campaña queda abierta hasta su cierre (20:00–20:30).
+      if (pasoHoraCorte()) {
+        await this._dejarAbierta(campaignId, 'corte')
+        return
       }
 
       // 🕐 Guarda de horario: si la campaña tiene días/horas configurados y
@@ -308,8 +362,8 @@ class CampaignEngine {
         return
       }
 
-      if (burstInicialPendiente && NUMEROS_CONTROL.length) {
-        await this._enviarBurstControl(camp, this._nextVariant(rotState, variants))
+      if (burstInicialPendiente && numerosControl.length) {
+        await this._enviarBurstControl(camp, this._nextVariant(rotState, variants), numerosControl, [...disponibles][0])
         burstInicialPendiente = false
       }
 
@@ -322,14 +376,9 @@ class CampaignEngine {
       )
 
       if (!pending.rows.length) {
-        // No quedan pendientes → completar campaña
-        await query(
-          `UPDATE campaigns SET status='completed', finished_at=NOW() WHERE id=$1`,
-          [campaignId]
-        )
-        delete this.running[campaignId]
-        this._emit(campaignId, 'campaign:completed', { campaignId })
-        console.log(`[CampaignEngine] ✅ Completada ${campaignId}`)
+        // No quedan pendientes → queda ABIERTA (midiendo respuestas, con su
+        // bot activo) hasta el cierre de las 20:00–20:30.
+        await this._dejarAbierta(campaignId, 'envio_terminado')
         return
       }
 
@@ -378,8 +427,8 @@ class CampaignEngine {
       // Cada WA_CONTROL_CADA_N envíos reales, se vuelve a tocar a los
       // números de control — mantiene la tasa de respuesta sana durante
       // toda la campaña, no solo al arrancar.
-      if (enviosDesdeControl >= CONTROL_CADA_N && NUMEROS_CONTROL.length) {
-        await this._enviarBurstControl(camp, variant)
+      if (enviosDesdeControl >= CONTROL_CADA_N && numerosControl.length) {
+        await this._enviarBurstControl(camp, variant, numerosControl, eleccion.linea.id)
         enviosDesdeControl = 0
       }
 
@@ -440,37 +489,7 @@ class CampaignEngine {
 
     try {
       const body = conOptOut(this._interpolate(msgText, vars))
-      let sendResult = null
-
-      if (mediaUrl) {
-        // Envío con adjunto (soporta /wa-uploads/, /uploads/, ruta absoluta o URL http)
-        let buffer
-        if (/^https?:\/\//i.test(mediaUrl)) {
-          const resp = await fetch(mediaUrl)
-          if (!resp.ok) throw new Error(`No se pudo descargar el medio (HTTP ${resp.status}): ${mediaUrl}`)
-          buffer = Buffer.from(await resp.arrayBuffer())
-        } else {
-          const filePath = this._resolveMediaPath(mediaUrl)
-          await asegurarLocal(filePath)
-          if (!fs.existsSync(filePath)) throw new Error('Archivo de medio no existe: ' + filePath)
-          buffer = fs.readFileSync(filePath)
-        }
-
-        sendResult = await this.baileysManager.sendMedia(lineId, waNumber, {
-          type:     mediaType || 'document',
-          buffer,
-          mimetype: this._guessMime(mediaFile || mediaUrl),
-          filename: path.basename(mediaFile || mediaUrl || 'archivo'),
-          caption:  body,
-          // BaileysManager usa esta referencia para persistir el adjunto en
-          // messages y emitirlo al Inbox. Sin ella WhatsApp recibia la imagen,
-          // pero la burbuja local quedaba registrada solamente con el caption.
-          mediaUrl,
-        })
-      } else {
-        // Solo texto
-        sendResult = await this.baileysManager.sendText(lineId, waNumber, body)
-      }
+      const sendResult = await this._enviarContenido(lineId, waNumber, { body, mediaUrl, mediaType, mediaFile })
 
       // wa_msg_id permite correlacionar los acks de entrega/lectura de Baileys
       const waMsgId = sendResult?.key?.id || null
@@ -540,18 +559,138 @@ class CampaignEngine {
   // destinatario real de la campaña) y no tocan campaign_recipients — no
   // son parte del público objetivo, así que no deben afectar el % de
   // progreso ni las estadísticas de la campaña.
-  async _enviarBurstControl(camp, variant) {
-    const msgText = variant ? (variant.message_text || '') : (camp.body || '')
-    for (const numero of NUMEROS_CONTROL) {
+  // Texto o adjunto (soporta /wa-uploads/, /uploads/, ruta absoluta o URL http).
+  async _enviarContenido(lineId, waNumber, { body, mediaUrl, mediaType, mediaFile }) {
+    if (!mediaUrl) return this.baileysManager.sendText(lineId, waNumber, body)
+    let buffer
+    if (/^https?:\/\//i.test(mediaUrl)) {
+      const resp = await fetch(mediaUrl)
+      if (!resp.ok) throw new Error(`No se pudo descargar el medio (HTTP ${resp.status}): ${mediaUrl}`)
+      buffer = Buffer.from(await resp.arrayBuffer())
+    } else {
+      const filePath = this._resolveMediaPath(mediaUrl)
+      await asegurarLocal(filePath)
+      if (!fs.existsSync(filePath)) throw new Error('Archivo de medio no existe: ' + filePath)
+      buffer = fs.readFileSync(filePath)
+    }
+    return this.baileysManager.sendMedia(lineId, waNumber, {
+      type:     mediaType || 'document',
+      buffer,
+      mimetype: this._guessMime(mediaFile || mediaUrl),
+      filename: path.basename(mediaFile || mediaUrl || 'archivo'),
+      caption:  body,
+      // BaileysManager usa esta referencia para persistir el adjunto en
+      // messages y emitirlo al Inbox. Sin ella WhatsApp recibia la imagen,
+      // pero la burbuja local quedaba registrada solamente con el caption.
+      mediaUrl,
+    })
+  }
+
+  // Empresa de quien creó la campaña (define sus números de prueba).
+  async _empresaDeCampania(camp) {
+    try {
+      const r = await query('SELECT UPPER(COALESCE(empresa, \'\')) AS empresa FROM usuarios WHERE id=$1', [camp.created_by])
+      return r.rows[0]?.empresa || 'NOVONET'
+    } catch { return 'NOVONET' }
+  }
+
+  // Termina el envío y deja la campaña ABIERTA hasta su cierre (20:00–20:30).
+  // motivo 'corte' = llegaron las 20:00 con pendientes (se descartan).
+  async _dejarAbierta(campaignId, motivo) {
+    if (motivo === 'corte') {
+      const r = await query(
+        `UPDATE campaign_recipients SET status='skipped', error='Cierre del día (20:00): no alcanzó a enviarse'
+          WHERE campaign_id=$1 AND status IN ('pending','sending')`, [campaignId])
+      console.log(`[CampaignEngine] 🌙 Corte de las ${HORA_CORTE_CAMPANAS}:00 en ${campaignId}: ${r.rowCount} pendiente(s) descartado(s)`)
+    }
+    await query(
+      `UPDATE campaigns SET status='abierta', cierre_at = COALESCE(cierre_at, $2) WHERE id=$1`,
+      [campaignId, cierreAleatorioDelDia()]
+    )
+    delete this.running[campaignId]
+    this._emit(campaignId, 'campaign:abierta', { campaignId, motivo })
+    console.log(`[CampaignEngine] 📭 Campaña ${campaignId} abierta (${motivo}) hasta su cierre`)
+  }
+
+  // ── Cierre (20:00–20:30): finaliza y envía el resumen ─────────────────
+  // Lo llama el Scheduler cuando cierre_at ya pasó. Idempotente: solo cierra
+  // si la campaña sigue en running/paused/abierta.
+  async cerrar(campaignId) {
+    if (this.running[campaignId]) this.running[campaignId].abortFlag = true
+    delete this.running[campaignId]
+    delete this.paused[campaignId]
+    const upd = await query(
+      `UPDATE campaigns SET status='completed', finished_at=NOW(), paused_for_schedule=false
+        WHERE id=$1 AND status IN ('running','paused','abierta') RETURNING *`, [campaignId])
+    if (!upd.rows.length) return false
+    await query(
+      `UPDATE campaign_recipients SET status='skipped', error='Cierre del día (20:00): no alcanzó a enviarse'
+        WHERE campaign_id=$1 AND status IN ('pending','sending')`, [campaignId])
+    const camp = upd.rows[0]
+    this._emit(campaignId, 'campaign:completed', { campaignId })
+    console.log(`[CampaignEngine] ✅ Cierre de campaña "${camp.name}" (${campaignId})`)
+    if (NUMERO_CIERRE_CAMPANA) {
+      try { await this._enviarResumenCierre(camp) } catch (e) {
+        console.warn(`[CampaignEngine] No se pudo enviar el resumen de cierre de ${campaignId}: ${e.message}`)
+      }
+    }
+    return true
+  }
+
+  async _enviarResumenCierre(camp) {
+    const r = await query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE sent_at IS NOT NULL AND status <> 'failed')::int AS enviados,
+              COUNT(*) FILTER (WHERE status <> 'failed' AND (read_at IS NOT NULL OR status = 'read'))::int AS leidos,
+              COUNT(*) FILTER (WHERE status = 'failed')::int AS fallidos,
+              COUNT(*) FILTER (WHERE status = 'skipped')::int AS saltados
+         FROM campaign_recipients WHERE campaign_id=$1`, [camp.id])
+    const resp = await query(
+      `SELECT COUNT(DISTINCT m.conversation_id)::int AS respondieron
+         FROM messages m
+        WHERE m.direction='in' AND m.timestamp >= $2
+          AND m.conversation_id IN (SELECT conversation_id FROM messages WHERE campaign_id=$1 AND direction='out')`,
+      [camp.id, camp.started_at || camp.created_at])
+    const creador = await query(
+      `SELECT usuario, UPPER(COALESCE(empresa,'')) AS empresa FROM usuarios WHERE id=$1`, [camp.created_by])
+    const k = r.rows[0] || {}
+    const u = creador.rows[0] || {}
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
+    const texto =
+      `📊 *Cierre de campaña*\n` +
+      `*${camp.name}*\n` +
+      `Empresa: ${u.empresa || '-'} · Creó: ${u.usuario || '-'}\n` +
+      `Destinatarios: ${k.total}\n` +
+      `Enviados: ${k.enviados}\n` +
+      `Leídos: ${k.leidos} (${pct(k.leidos, k.enviados)}%)\n` +
+      `Respondieron: ${resp.rows[0]?.respondieron || 0} (${pct(resp.rows[0]?.respondieron || 0, k.enviados)}%)\n` +
+      `Fallidos: ${k.fallidos} · No enviados: ${k.saltados}`
+    // Desde la primera línea conectada de la campaña.
+    const lineas = await this._cargarLineasCampania(camp)
+    const linea = lineas.find(l => this.baileysManager?.getStatus?.(l.id) === 'connected') || lineas[0]
+    if (!linea) throw new Error('la campaña no tiene líneas')
+    await this.baileysManager.sendText(linea.id, NUMERO_CIERRE_CAMPANA, texto)
+    await query(`UPDATE campaigns SET cierre_aviso_enviado=true WHERE id=$1`, [camp.id])
+    console.log(`[CampaignEngine] 📨 Resumen de cierre de "${camp.name}" enviado a ${NUMERO_CIERRE_CAMPANA}`)
+  }
+
+  async _enviarBurstControl(camp, variant, numeros, lineId = null) {
+    const msgText   = variant ? (variant.message_text || '') : (camp.body || '')
+    const mediaUrl  = variant ? variant.media_url  : camp.media_url
+    const mediaType = variant ? variant.media_type : camp.media_type
+    const mediaFile = variant ? (variant.media_caption || variant.media_url || '') : camp.media_filename
+    const linea = lineId || camp.line_id
+    for (const numero of numeros) {
       try {
         const body = this._interpolate(msgText, { nombre: '', numero })
-        const sendResult = await this.baileysManager.sendText(camp.line_id, numero, body)
-        console.log(`[CampaignEngine] 🧪 Envío de control a ${numero} (mantiene la tasa de respuesta sana de la línea)`)
+        // Prueba con el mismo contenido que verán los clientes (incluida la imagen).
+        const sendResult = await this._enviarContenido(linea, numero, { body, mediaUrl, mediaType, mediaFile })
+        console.log(`[CampaignEngine] 🧪 Envío de prueba a ${numero}`)
         try {
           await query(
             `INSERT INTO messages (line_id, wa_number, direction, type, content, campaign_id, timestamp)
-             VALUES ($1,$2,'out','text',$3,$4,NOW())`,
-            [camp.line_id, numero, body, camp.id]
+             VALUES ($1,$2,'out',$3,$4,$5,NOW())`,
+            [linea, numero, mediaUrl ? (mediaType || 'document') : 'text', body, camp.id]
           )
         } catch (e) {}
         try {
@@ -695,7 +834,11 @@ class CampaignEngine {
 CampaignEngine.lineaEnCalentamiento = lineaEnCalentamiento
 CampaignEngine.normalizarNumeroControl = normalizarNumeroControl
 CampaignEngine.conOptOut = conOptOut
-CampaignEngine.NUMEROS_CONTROL = NUMEROS_CONTROL
+CampaignEngine.NUMEROS_CONTROL_POR_EMPRESA = NUMEROS_CONTROL_POR_EMPRESA
+CampaignEngine.numerosControlDe = numerosControlDe
+CampaignEngine.corteDelDia = corteDelDia
+CampaignEngine.pasoHoraCorte = pasoHoraCorte
+CampaignEngine.cierreAleatorioDelDia = cierreAleatorioDelDia
 CampaignEngine.CONTROL_CADA_N = CONTROL_CADA_N
 CampaignEngine.dentroDeHorarioPermitido = dentroDeHorarioPermitido
 

@@ -3,7 +3,7 @@
 // Solo ADMINISTRADOR (el backend lo valida). Lo que se guarda aqui lo usa el bot
 // de WhatsApp en menos de un minuto, sin reiniciarlo.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw } from "lucide-react";
+import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
 const BASE = `${API}/api/bot-vendedor`;
@@ -26,6 +26,7 @@ const PESTANAS = [
   { id: "prompt", nombre: "Prompt y reglas" },
   { id: "conocimiento", nombre: "Conocimiento" },
   { id: "probar", nombre: "Probar bot" },
+  { id: "lineas", nombre: "Líneas WhatsApp" },
 ];
 
 export default function BotVendedor() {
@@ -51,6 +52,7 @@ export default function BotVendedor() {
       {pestana === "prompt" && <PestanaPrompt />}
       {pestana === "conocimiento" && <PestanaConocimiento />}
       {pestana === "probar" && <PestanaProbar />}
+      {pestana === "lineas" && <PestanaLineas />}
     </div>
   );
 }
@@ -358,6 +360,82 @@ function PestanaProbar() {
           <Send className="w-4 h-4" /> Enviar
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Líneas de WABOT ──────────────────────────────────────────────────────────
+function PestanaLineas() {
+  const [lineas, setLineas] = useState(null);
+  const [error, setError] = useState("");
+  const [cambiando, setCambiando] = useState(null);
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try { setLineas(await pedir(`${BASE}/lineas`, { headers: headers() })); } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const alternar = async (l) => {
+    const activar = !l.bot_activo;
+    if (activar && !window.confirm(`¿Activar el bot vendedor en "${l.name}"? Responderá solo a los clientes de esa línea (reemplaza el flujo de bot que tenga asignado).`)) return;
+    setCambiando(l.id); setError("");
+    try {
+      await pedir(`${BASE}/lineas/${l.id}`, { method: "PUT", headers: headers(), body: JSON.stringify({ activo: activar }) });
+      await cargar();
+    } catch (e) { setError(e.message); }
+    setCambiando(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && <Mensaje tipo="error" texto={error} />}
+      <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
+        Activa el bot en las líneas de WABOT que quieras. Se aplica en menos de 30 segundos. El bot se calla solo en un chat
+        cuando pasa el caso a un asesor o cuando un asesor escribe a mano (por 2 horas). Las respuestas del bot se ven en la bandeja.
+      </div>
+      {!lineas && !error ? <Cargando /> : (
+        <div className="bg-white rounded-xl border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left py-2 px-3">Línea</th>
+                <th className="text-left py-2 px-3">Estado WhatsApp</th>
+                <th className="text-left py-2 px-3">Último cambio</th>
+                <th className="text-right py-2 px-3">Bot vendedor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(lineas || []).length === 0 && (
+                <tr><td colSpan={4} className="py-6 text-center text-slate-400">No hay líneas registradas en WABOT.</td></tr>
+              )}
+              {(lineas || []).map((l) => (
+                <tr key={l.id} className="border-t">
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2 font-medium text-slate-800">
+                      <Smartphone className="w-4 h-4 text-green-600 shrink-0" /> {l.name}
+                    </div>
+                    <div className="text-xs text-slate-400">{l.phone_number || "sin número"}</div>
+                  </td>
+                  <td className="py-2 px-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${l.status === "connected" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                      {l.status === "connected" ? "Conectada" : (l.status || "desconectada")}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3 text-xs text-slate-500">{l.actualizado_por ? `${l.actualizado_por} · ${fecha(l.actualizado_en)}` : "—"}</td>
+                  <td className="py-2 px-3 text-right">
+                    <button onClick={() => alternar(l)} disabled={cambiando === l.id}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${l.bot_activo ? "bg-green-600" : "bg-slate-300"} disabled:opacity-50`}
+                      title={l.bot_activo ? "Desactivar bot" : "Activar bot"}>
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${l.bot_activo ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

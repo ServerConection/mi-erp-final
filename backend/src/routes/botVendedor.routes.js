@@ -9,6 +9,8 @@
 // POST /api/bot-vendedor/conocimiento/archivo   multipart: archivo (PDF/TXT/MD/CSV), siempre_incluir
 // POST /api/bot-vendedor/conocimiento/texto     { nombre, contenido, siempre_incluir }
 // PUT  /api/bot-vendedor/conocimiento/:id       { nombre?, contenido?, siempre_incluir?, activo? }
+// GET  /api/bot-vendedor/lineas                 lineas de WABOT y si el bot esta activo en cada una
+// PUT  /api/bot-vendedor/lineas/:id             { activo }  (WABOT lo toma en menos de 30 s)
 // POST /api/bot-vendedor/probar                 { historial: [{role, content}] }
 //
 // No hay DELETE: los documentos se archivan (activo = false) y se pueden reactivar.
@@ -138,6 +140,35 @@ router.put('/conocimiento/:id', async (req, res) => {
       `UPDATE public.bv_conocimiento SET ${sets.join(', ')}, actualizado_en = NOW() WHERE id = $${vals.length}`, vals);
     if (!rowCount) return fallo(res, 'No existe', 404);
     bot.invalidarCache();
+    ok(res, { actualizado: true });
+  } catch (e) { fallo(res, e); }
+});
+
+// ─── Lineas de WABOT donde responde el bot ───────────────────────────────────
+router.get('/lineas', async (_req, res) => {
+  try {
+    await bot.asegurarTablas();
+    const { rows } = await pool.query(
+      `SELECT l.id, l.name, l.phone_number, l.status,
+              COALESCE(b.activo, FALSE) AS bot_activo, b.actualizado_por, b.actualizado_en
+         FROM lines l
+         LEFT JOIN public.bv_lineas b ON b.line_id = l.id
+        ORDER BY COALESCE(b.activo, FALSE) DESC, l.name`);
+    ok(res, rows);
+  } catch (e) { fallo(res, e); }
+});
+
+router.put('/lineas/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fallo(res, 'Linea invalida', 400);
+    const existe = await pool.query('SELECT 1 FROM lines WHERE id = $1', [id]);
+    if (!existe.rows.length) return fallo(res, 'La linea no existe', 404);
+    await bot.asegurarTablas();
+    await pool.query(
+      `INSERT INTO public.bv_lineas (line_id, activo, actualizado_por, actualizado_en) VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (line_id) DO UPDATE SET activo = EXCLUDED.activo, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
+      [id, aBool(req.body?.activo), req.user.usuario]);
     ok(res, { actualizado: true });
   } catch (e) { fallo(res, e); }
 });

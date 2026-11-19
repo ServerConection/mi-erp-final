@@ -23,3 +23,11 @@ CREATE TABLE IF NOT EXISTS public.bv_conocimiento (
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_bv_conocimiento_activo ON public.bv_conocimiento(activo);
+
+-- Lineas de WABOT donde responde el bot vendedor (las elige el administrador).
+CREATE TABLE IF NOT EXISTS public.bv_lineas (
+  line_id         UUID PRIMARY KEY,
+  activo          BOOLEAN NOT NULL DEFAULT FALSE,
+  actualizado_por VARCHAR(100),
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

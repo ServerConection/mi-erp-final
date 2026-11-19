@@ -31,3 +31,18 @@ CREATE TABLE IF NOT EXISTS public.bv_lineas (
   actualizado_por VARCHAR(100),
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Planes con imagen: el bot envia la imagen del plan cuando lo recomienda.
+CREATE TABLE IF NOT EXISTS public.bv_planes (
+  id              SERIAL PRIMARY KEY,
+  nombre          VARCHAR(150) NOT NULL,          -- nombre tal como esta en la guia comercial
+  velocidad_mbps  INTEGER,
+  segmento        VARCHAR(50) NOT NULL DEFAULT 'HOME',
+  descripcion     VARCHAR(500),                   -- resumen corto (precio, equipo) para el bot
+  imagen          BYTEA,
+  imagen_mime     VARCHAR(50),
+  activo          BOOLEAN NOT NULL DEFAULT TRUE,
+  orden           INTEGER NOT NULL DEFAULT 0,
+  actualizado_por VARCHAR(100),
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

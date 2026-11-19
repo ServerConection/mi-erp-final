@@ -148,6 +148,21 @@ async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType })
       `UPDATE messages SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE wa_msg_id = $1`,
       [waMsgId, JSON.stringify({ bot_vendedor: true, accion: r.accion || null })]).catch(() => {});
   }
+  // Imagenes de los planes recomendados (despues del texto).
+  for (const id of r.imagenes || []) {
+    try {
+      const img = await bot.imagenPlan(id);
+      if (!img) continue;
+      const res = await manager.sendMedia(lineId, remoteJid, { type: 'image', buffer: img.buffer, mimetype: img.mime, caption: `Plan ${img.nombre}` });
+      if (res?.key?.id) {
+        await pool.query(
+          `UPDATE messages SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"bot_vendedor": true}'::jsonb WHERE wa_msg_id = $1`,
+          [res.key.id]).catch(() => {});
+      }
+    } catch (e) {
+      console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: no se pudo enviar la imagen del plan ${id}:`, e.message);
+    }
+  }
   console.log(`[BOT-VENDEDOR-WA] linea ${lineId} conv ${conv.id}: respondio en ${(r.ms / 1000).toFixed(1)} s${r.accion ? ` <<${r.accion}>>` : ''}`);
 
   if (r.accion) {

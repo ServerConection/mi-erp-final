@@ -41,7 +41,36 @@ function asegurarTablas() {
 }
 
 // La primera vez copia el prompt y el catalogo que vienen en el repo.
+// Planes de la Guia Comercial Noviembre 2026. Solo se insertan si la tabla esta vacia;
+// el administrador sube la imagen de cada uno desde el modulo.
+const PLANES_INICIALES = [
+  ['GI Beginner-Defense 200Mbps', 200, 'HOME', '$27,03 con IVA; promo TC $24,32 x 6 facturas. Wifi 5. Promo 900 Mbps x 18 meses.'],
+  ['NX Beginner-Defense 900Mbps', 900, 'HOME', '$27,03 con IVA; promo TC $24,32 x 6 facturas. Wifi 6.'],
+  ['GI Net-Defense 400Mbps', 400, 'HOME', '$28,18 con IVA; promo TC $25,36 x 6 facturas. Wifi 5. Promo 900 Mbps x 18 meses.'],
+  ['NX Net-Defense 1000Mbps', 1000, 'HOME', '$28,18 con IVA; promo TC $25,36 x 6 facturas. Wifi 6.'],
+  ['GI Entry-Defense 750Mbps', 750, 'HOME', '$29,61 con IVA; promo TC $19,25 x 3 facturas. Wifi 7* + Mini UPS. Promo 1200 Mbps x 18 meses.'],
+  ['NX Entry-Defense 1200Mbps', 1200, 'HOME', '$29,61 con IVA; promo TC $19,25 x 3 facturas. Wifi 7 + Mini UPS.'],
+  ['NX Learner-Defense 1350Mbps', 1350, 'HOME', '$32,19 con IVA; promo TC $20,92 x 3 facturas. Wifi 7* + Mini UPS.'],
+  ['GI Starter-Defense 850Mbps', 850, 'HOME', '$33,93 con IVA; promo TC $22,05 x 3 facturas. Wifi 7* + Mini UPS. Promo 1300 Mbps x 18 meses.'],
+  ['NX Starter-Defense 1500Mbps', 1500, 'HOME', '$34,49 con IVA; promo TC $22,42 x 3 facturas. Wifi 7* + Mini UPS.'],
+  ['NX Spirit-Defense 1600Mbps', 1600, 'HOME', '$40,24 con IVA; promo TC $26,16 x 3 facturas. Wifi 7 XGSPON + Mini UPS.'],
+  ['GI Jedi-Defense 2000Mbps', 2000, 'HOME', '$114,99 con IVA; promo $57,50 x 12 facturas. Wifi 7* + Mini UPS.'],
+  ['GI Beginner-Defense 150Mbps', 150, 'GUAYAQUIL', 'Solo Guayaquil. $25,29 con IVA; promo $22,76. Wifi 5. Promo 600 Mbps x 18 meses.'],
+  ['NX Beginner-Defense 600Mbps', 600, 'GUAYAQUIL', 'Solo Guayaquil. $25,29 con IVA; promo $22,76. Wifi 5.'],
+  ['Adulto Mayor 100Mbps', 100, 'ADULTO MAYOR', '$18,98 con IVA; con beneficio de ley $9,49. Requiere cedula y planilla de servicio basico.'],
+];
+
 async function sembrarSiVacio() {
+  const p = await pool.query('SELECT COUNT(*)::int n FROM public.bv_planes');
+  if (p.rows[0].n === 0) {
+    let orden = 0;
+    for (const [nombre, mbps, segmento, descripcion] of PLANES_INICIALES) {
+      await pool.query(
+        `INSERT INTO public.bv_planes (nombre, velocidad_mbps, segmento, descripcion, orden, actualizado_por)
+         VALUES ($1, $2, $3, $4, $5, 'sistema')`, [nombre, mbps, segmento, descripcion, ++orden]);
+    }
+  }
+
   const { rows } = await pool.query("SELECT 1 FROM public.bv_config WHERE clave = 'prompt'");
   if (!rows.length) {
     let prompt = '';
@@ -98,7 +127,10 @@ async function cargarBase() {
       fragmentos.push({ fuente: d.nombre, texto: pedazo, palabras: palabrasDe(pedazo) });
     }
   }
-  cache = { prompt: valores.prompt || '', reglas: valores.reglas || '', siempre, fragmentos };
+  const planes = await pool.query(
+    `SELECT id, nombre, velocidad_mbps, segmento FROM public.bv_planes
+      WHERE activo = TRUE AND imagen IS NOT NULL ORDER BY orden, id`);
+  cache = { prompt: valores.prompt || '', reglas: valores.reglas || '', siempre, fragmentos, planesConImagen: planes.rows };
   cacheEn = Date.now();
   return cache;
 }
@@ -193,16 +225,40 @@ async function responder(historial) {
     role: 'system',
     content: `BASE DE CONOCIMIENTO (usa solo esto para precios, planes y condiciones. Si el cliente no dice su forma de pago, muestra el precio promo con tarjeta de credito y aclara que con cuenta bancaria la promo cambia):\n\n${contexto || '(sin documentos cargados; si necesitas un dato que no tienes, aplica la regla de pasar a un asesor)'}`,
   });
+  if (base.planesConImagen.length) {
+    const lista = base.planesConImagen.map((p) => `[IMG:${p.id}] ${p.nombre} (${p.velocidad_mbps} Mbps, ${p.segmento})`).join('\n');
+    messages.push({
+      role: 'system',
+      content: `IMAGENES DE PLANES: cuando recomiendes un plan o el cliente pregunte por uno de esta lista, escribe al FINAL de tu mensaje su etiqueta exacta (maximo 2 etiquetas por mensaje) y se le enviara la imagen con sus caracteristicas. No envies la misma imagen dos veces en la conversacion. No menciones las etiquetas en el texto.\n${lista}`,
+    });
+  }
   messages.push(...hist);
 
   const { texto, modelo } = await llamarConRespaldo(messages);
-  let salida = texto;
+  // Etiquetas [IMG:id] -> imagenes a enviar (solo ids validos), y se quitan del texto.
+  const validos = new Set(base.planesConImagen.map((p) => p.id));
+  const imagenes = [...new Set([...String(texto).matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))]
+    .filter((id) => validos.has(id)).slice(0, 2);
+  let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
   let accion = null;
   if (/FUERA_DE_HORARIO/.test(salida)) { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
   else if (/ESCALAR_ASESOR/.test(salida)) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
   if (!salida) salida = 'Disculpa, no te entendi bien. ¿Me lo puedes repetir?';
-  return { texto: salida, accion, modelo, ms: Date.now() - inicio };
+  return { texto: salida, accion, imagenes: accion ? [] : imagenes, modelo, ms: Date.now() - inicio };
 }
+
+// Imagen de un plan (cache en memoria para no leer la BD en cada envio).
+const cacheImagenes = new Map(); // id -> { buffer, mime, nombre, en }
+async function imagenPlan(id) {
+  const c = cacheImagenes.get(id);
+  if (c && Date.now() - c.en < 10 * 60 * 1000) return c;
+  const { rows } = await pool.query('SELECT nombre, imagen, imagen_mime FROM public.bv_planes WHERE id = $1 AND imagen IS NOT NULL', [id]);
+  if (!rows.length) return null;
+  const v = { buffer: rows[0].imagen, mime: rows[0].imagen_mime || 'image/jpeg', nombre: rows[0].nombre, en: Date.now() };
+  cacheImagenes.set(id, v);
+  return v;
+}
+function invalidarImagen(id) { cacheImagenes.delete(Number(id)); invalidarCache(); }
 
 // ─── Audios, imagenes y archivos ─────────────────────────────────────────────
 async function transcribirAudio(buffer, mimetype = 'audio/ogg') {
@@ -247,7 +303,7 @@ async function extraerTexto(buffer, nombre) {
 }
 
 module.exports = {
-  asegurarTablas, cargarBase, invalidarCache, responder,
+  asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen,
   transcribirAudio, describirImagen, extraerTexto,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

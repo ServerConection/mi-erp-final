@@ -40,7 +40,7 @@ async function responder (jid, textoCliente) {
   while (hist.length > MAX_HISTORIAL) hist.shift()
   const r = await bot.responder(hist)
   console.log(`   (${r.modelo} respondio en ${(r.ms / 1000).toFixed(1)} s)`)
-  hist.push({ role: 'assistant', content: r.texto })
+  hist.push({ role: 'assistant', content: r.texto + ((r.imagenes || []).length ? `\n(Se enviaron las imagenes de los planes ${r.imagenes.join(', ')})` : '') })
   historiales.set(jid, hist)
   return r
 }
@@ -69,7 +69,9 @@ async function modoPrueba () {
     if (!linea.trim()) return preguntar()
     try {
       const { texto, accion } = await responder('prueba', linea)
+      const r = historiales.get('prueba').slice(-1)[0]
       console.log(`\nBot: ${texto}${accion ? `   <<${accion}>>` : ''}\n`)
+      if (/imagenes de los planes/.test(r.content)) console.log(`   [aqui se enviarian imagenes de planes]\n`)
     } catch (e) {
       console.error('Error:', e.message, e.cause ? `(${e.cause.code || e.cause.message})` : '')
     }
@@ -183,6 +185,12 @@ async function atender (sock, downloadMediaMessage, logger, msg) {
   }
 
   await sock.sendMessage(jid, { text: respuesta.texto })
+  for (const id of respuesta.imagenes || []) {
+    try {
+      const img = await bot.imagenPlan(id)
+      if (img) await sock.sendMessage(jid, { image: img.buffer, mimetype: img.mime, caption: `Plan ${img.nombre}` })
+    } catch (e) { console.error(`No se pudo enviar la imagen del plan ${id}: ${e.message}`) }
+  }
   try { await sock.sendPresenceUpdate('paused', jid) } catch {}
   console.log(`-> ${jid}: ${respuesta.texto.slice(0, 120)}${respuesta.accion ? `  <<${respuesta.accion}>>` : ''}`)
 

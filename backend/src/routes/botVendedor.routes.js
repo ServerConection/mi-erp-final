@@ -11,6 +11,11 @@
 // PUT  /api/bot-vendedor/conocimiento/:id       { nombre?, contenido?, siempre_incluir?, activo? }
 // GET  /api/bot-vendedor/lineas                 lineas de WABOT y si el bot esta activo en cada una
 // PUT  /api/bot-vendedor/lineas/:id             { activo }  (WABOT lo toma en menos de 30 s)
+// GET  /api/bot-vendedor/planes                 planes (sin la imagen)
+// GET  /api/bot-vendedor/planes/:id/imagen      imagen del plan
+// POST /api/bot-vendedor/planes/:id/imagen      multipart: imagen (JPG/PNG/WEBP, max 3 MB)
+// POST /api/bot-vendedor/planes                 { nombre, velocidad_mbps, segmento, descripcion }
+// PUT  /api/bot-vendedor/planes/:id             { nombre?, velocidad_mbps?, segmento?, descripcion?, activo? }
 // POST /api/bot-vendedor/probar                 { historial: [{role, content}] }
 //
 // No hay DELETE: los documentos se archivan (activo = false) y se pueden reactivar.
@@ -169,6 +174,80 @@ router.put('/lineas/:id', async (req, res) => {
       `INSERT INTO public.bv_lineas (line_id, activo, actualizado_por, actualizado_en) VALUES ($1, $2, $3, NOW())
        ON CONFLICT (line_id) DO UPDATE SET activo = EXCLUDED.activo, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
       [id, aBool(req.body?.activo), req.user.usuario]);
+    ok(res, { actualizado: true });
+  } catch (e) { fallo(res, e); }
+});
+
+// ─── Planes con imagen ───────────────────────────────────────────────────────
+const subirImagen = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024, files: 1 } });
+
+router.get('/planes', async (_req, res) => {
+  try {
+    await bot.asegurarTablas();
+    const { rows } = await pool.query(
+      `SELECT id, nombre, velocidad_mbps, segmento, descripcion, activo, orden, actualizado_por, actualizado_en,
+              (imagen IS NOT NULL) AS tiene_imagen, imagen_mime, OCTET_LENGTH(imagen) AS imagen_bytes
+         FROM public.bv_planes ORDER BY orden, id`);
+    ok(res, rows);
+  } catch (e) { fallo(res, e); }
+});
+
+router.get('/planes/:id/imagen', async (req, res) => {
+  try {
+    const img = await bot.imagenPlan(parseInt(req.params.id, 10) || 0);
+    if (!img) return fallo(res, 'Sin imagen', 404);
+    res.set('Content-Type', img.mime).set('Cache-Control', 'no-store').send(img.buffer);
+  } catch (e) { fallo(res, e); }
+});
+
+router.post('/planes/:id/imagen', subirImagen.single('imagen'), async (req, res) => {
+  try {
+    const f = req.file;
+    if (!f) return fallo(res, 'Falta la imagen', 400);
+    if (!/^image\/(jpeg|png|webp)$/i.test(f.mimetype)) return fallo(res, 'Solo imagenes JPG, PNG o WEBP', 400);
+    const id = parseInt(req.params.id, 10) || 0;
+    const { rowCount } = await pool.query(
+      `UPDATE public.bv_planes SET imagen = $1, imagen_mime = $2, actualizado_por = $3, actualizado_en = NOW() WHERE id = $4`,
+      [f.buffer, f.mimetype, req.user.usuario, id]);
+    if (!rowCount) return fallo(res, 'El plan no existe', 404);
+    bot.invalidarImagen(id);
+    ok(res, { actualizado: true });
+  } catch (e) { fallo(res, e); }
+});
+
+router.post('/planes', async (req, res) => {
+  try {
+    const nombre = String(req.body?.nombre || '').trim().slice(0, 150);
+    if (!nombre) return fallo(res, 'Falta el nombre del plan', 400);
+    await bot.asegurarTablas();
+    const { rows } = await pool.query(
+      `INSERT INTO public.bv_planes (nombre, velocidad_mbps, segmento, descripcion, orden, actualizado_por)
+       VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(orden), 0) + 1 FROM public.bv_planes), $5) RETURNING id`,
+      [nombre, parseInt(req.body?.velocidad_mbps, 10) || null, String(req.body?.segmento || 'HOME').slice(0, 50),
+        String(req.body?.descripcion || '').slice(0, 500), req.user.usuario]);
+    bot.invalidarCache();
+    ok(res, rows[0]);
+  } catch (e) { fallo(res, e); }
+});
+
+router.put('/planes/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    const b = req.body || {};
+    const sets = [];
+    const vals = [];
+    if (b.nombre !== undefined) { vals.push(String(b.nombre).trim().slice(0, 150)); sets.push(`nombre = $${vals.length}`); }
+    if (b.velocidad_mbps !== undefined) { vals.push(parseInt(b.velocidad_mbps, 10) || null); sets.push(`velocidad_mbps = $${vals.length}`); }
+    if (b.segmento !== undefined) { vals.push(String(b.segmento).slice(0, 50)); sets.push(`segmento = $${vals.length}`); }
+    if (b.descripcion !== undefined) { vals.push(String(b.descripcion).slice(0, 500)); sets.push(`descripcion = $${vals.length}`); }
+    if (b.activo !== undefined) { vals.push(aBool(b.activo)); sets.push(`activo = $${vals.length}`); }
+    if (!sets.length) return fallo(res, 'Nada que actualizar', 400);
+    vals.push(req.user.usuario); sets.push(`actualizado_por = $${vals.length}`);
+    vals.push(id);
+    const { rowCount } = await pool.query(
+      `UPDATE public.bv_planes SET ${sets.join(', ')}, actualizado_en = NOW() WHERE id = $${vals.length}`, vals);
+    if (!rowCount) return fallo(res, 'El plan no existe', 404);
+    bot.invalidarImagen(id);
     ok(res, { actualizado: true });
   } catch (e) { fallo(res, e); }
 });

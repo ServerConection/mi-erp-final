@@ -3,7 +3,7 @@
 // Solo ADMINISTRADOR (el backend lo valida). Lo que se guarda aqui lo usa el bot
 // de WhatsApp en menos de un minuto, sin reiniciarlo.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone } from "lucide-react";
+import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone, ImagePlus, Image as ImageIcon } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
 const BASE = `${API}/api/bot-vendedor`;
@@ -25,6 +25,7 @@ const fecha = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "shor
 const PESTANAS = [
   { id: "prompt", nombre: "Prompt y reglas" },
   { id: "conocimiento", nombre: "Conocimiento" },
+  { id: "planes", nombre: "Planes e imágenes" },
   { id: "probar", nombre: "Probar bot" },
   { id: "lineas", nombre: "Líneas WhatsApp" },
 ];
@@ -51,6 +52,7 @@ export default function BotVendedor() {
       </div>
       {pestana === "prompt" && <PestanaPrompt />}
       {pestana === "conocimiento" && <PestanaConocimiento />}
+      {pestana === "planes" && <PestanaPlanes />}
       {pestana === "probar" && <PestanaProbar />}
       {pestana === "lineas" && <PestanaLineas />}
     </div>
@@ -325,9 +327,9 @@ function PestanaProbar() {
     try {
       const d = await pedir(`${BASE}/probar`, {
         method: "POST", headers: headers(),
-        body: JSON.stringify({ historial: nuevos.map(({ role, content }) => ({ role, content })) }),
+        body: JSON.stringify({ historial: nuevos.map(({ role, content, imagenes }) => ({ role, content: imagenes?.length ? `${content}\n(Se enviaron las imagenes de los planes ${imagenes.join(", ")})` : content })) }),
       });
-      setMensajes([...nuevos, { role: "assistant", content: d.texto, meta: `${d.modelo} · ${(d.ms / 1000).toFixed(1)} s${d.accion ? ` · ${d.accion}` : ""}` }]);
+      setMensajes([...nuevos, { role: "assistant", content: d.texto, imagenes: d.imagenes || [], meta: `${d.modelo} · ${(d.ms / 1000).toFixed(1)} s${d.accion ? ` · ${d.accion}` : ""}` }]);
     } catch (e) { setError(e.message); }
     setPensando(false);
   };
@@ -344,6 +346,7 @@ function PestanaProbar() {
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap shadow-sm ${m.role === "user" ? "bg-[#d9fdd3]" : "bg-white"}`}>
               {m.content}
+              {(m.imagenes || []).map((id) => <ImagenPlan key={id} id={id} className="mt-2 rounded-md max-h-64" />)}
               {m.meta && <div className="text-[10px] text-slate-400 mt-1">{m.meta}</div>}
             </div>
           </div>
@@ -438,6 +441,118 @@ function PestanaLineas() {
       )}
     </div>
   );
+}
+
+// ─── Planes con imagen ───────────────────────────────────────────────────────
+function PestanaPlanes() {
+  const [planes, setPlanes] = useState(null);
+  const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [subiendo, setSubiendo] = useState(null);
+  const [version, setVersion] = useState(0); // fuerza recargar miniaturas
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try { setPlanes(await pedir(`${BASE}/planes`, { headers: headers() })); } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const subir = async (plan, archivo) => {
+    if (!archivo) return;
+    setSubiendo(plan.id); setError(""); setAviso("");
+    try {
+      const fd = new FormData();
+      fd.append("imagen", archivo);
+      await pedir(`${BASE}/planes/${plan.id}/imagen`, { method: "POST", headers: headers(false), body: fd });
+      setAviso(`Imagen de "${plan.nombre}" cargada.`);
+      setVersion((v) => v + 1);
+      await cargar();
+    } catch (e) { setError(e.message); }
+    setSubiendo(null);
+  };
+
+  const alternar = async (plan) => {
+    try {
+      await pedir(`${BASE}/planes/${plan.id}`, { method: "PUT", headers: headers(), body: JSON.stringify({ activo: !plan.activo }) });
+      cargar();
+    } catch (e) { setError(e.message); }
+  };
+
+  const agregar = async () => {
+    const nombre = window.prompt("Nombre del plan tal como está en la guía comercial:");
+    if (!nombre) return;
+    const mbps = window.prompt("Velocidad en Mbps (solo el número):", "");
+    try {
+      await pedir(`${BASE}/planes`, { method: "POST", headers: headers(), body: JSON.stringify({ nombre, velocidad_mbps: mbps }) });
+      cargar();
+    } catch (e) { setError(e.message); }
+  };
+
+  if (!planes && !error) return <Cargando />;
+  const conImagen = (planes || []).filter((p) => p.tiene_imagen).length;
+
+  return (
+    <div className="space-y-4">
+      {error && <Mensaje tipo="error" texto={error} />}
+      {aviso && <Mensaje tipo="ok" texto={aviso} />}
+      <div className="bg-white rounded-xl border p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600 max-w-2xl">
+          Sube la imagen de cada plan (JPG, PNG o WEBP, máx. 3 MB). Cuando el bot recomiende un plan o el cliente pregunte por él,
+          enviará su imagen. Solo se usan los planes <b>activos y con imagen</b>.
+          <div className="mt-1 font-semibold text-slate-800">{conImagen} de {(planes || []).length} planes con imagen.</div>
+        </div>
+        <button onClick={agregar}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-600 text-blue-700 font-semibold text-sm hover:bg-blue-50">
+          <Plus className="w-4 h-4" /> Agregar plan
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {(planes || []).map((p) => (
+          <div key={p.id} className={`bg-white rounded-xl border p-3 flex flex-col gap-2 ${p.activo ? "" : "opacity-50"}`}>
+            <div className="aspect-video rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden">
+              {p.tiene_imagen
+                ? <ImagenPlan key={`${p.id}-${version}`} id={p.id} className="w-full h-full object-contain" />
+                : <div className="text-center text-xs text-slate-400"><ImageIcon className="w-8 h-8 mx-auto mb-1" />Falta la imagen</div>}
+            </div>
+            <div>
+              <div className="font-bold text-slate-800 text-sm">{p.nombre}</div>
+              <div className="text-xs text-slate-500">
+                {p.velocidad_mbps ? `${p.velocidad_mbps} Mbps · ` : ""}{p.segmento}
+              </div>
+              {p.descripcion && <div className="text-xs text-slate-400 mt-1">{p.descripcion}</div>}
+            </div>
+            <div className="flex items-center justify-between mt-auto">
+              <label className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${p.tiene_imagen ? "border border-blue-600 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700"} ${subiendo === p.id ? "opacity-60 pointer-events-none" : ""}`}>
+                {subiendo === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+                {p.tiene_imagen ? "Cambiar imagen" : "Subir imagen"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  onChange={(e) => { subir(p, e.target.files?.[0]); e.target.value = ""; }} />
+              </label>
+              <button onClick={() => alternar(p)} className="text-xs text-slate-500 hover:text-slate-800">
+                {p.activo ? "Desactivar" : "Activar"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Las imágenes requieren el token, por eso se piden con fetch y se muestran como blob.
+function ImagenPlan({ id, className }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    let creada = null;
+    fetch(`${BASE}/planes/${id}/imagen`, { headers: headers(false) })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => { if (b && vivo) { creada = URL.createObjectURL(b); setUrl(creada); } })
+      .catch(() => {});
+    return () => { vivo = false; if (creada) URL.revokeObjectURL(creada); };
+  }, [id]);
+  if (!url) return <div className="text-xs text-slate-400 p-2">Cargando imagen…</div>;
+  return <img src={url} alt="Plan" className={className} />;
 }
 
 // ─── Auxiliares ──────────────────────────────────────────────────────────────

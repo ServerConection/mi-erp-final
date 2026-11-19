@@ -98,6 +98,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 // ── PANEL "REPARTO DE GESTIONABLES" ──────────────────────────────────────────
 // Mismo acceso que las cuotas (router.use de arriba). Todo vive en erp_database.
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
+const { leerAccess, estadoAccess } = require('../shared/repartoAccess');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
 const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, plazoVentaHoras, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
 
@@ -118,7 +119,7 @@ router.get('/reparto/estado', async (req, res) => {
       await sincronizarManuales(E.clave).catch(() => null);
       await procesarCola(E.clave).catch(() => null);
     }
-    const [cfg, enLinea, asesores, resumen, cola, gestMap] = await Promise.all([
+    const [cfg, enLinea, asesores, resumen, cola, gestMap, access] = await Promise.all([
       leerConfig({ sinCache: true, empresa: E.clave }),
       leerEnLinea({ empresa: E.clave }),
       erp.query(
@@ -149,6 +150,7 @@ router.get('/reparto/estado', async (req, res) => {
           WHERE estado = 'pendiente' ORDER BY creado_en, id LIMIT 200`
       ).catch(() => ({ rows: [], sinTabla: true })),
       conteoGestionablesHoy(erp, E.clave).catch(() => null),
+      leerAccess({ forzar }).catch(() => null),
     ]);
     const data = asesores.rows.map((r) => {
       const l = enLinea?.mapa.get(normalizarNombre(r.nombre));
@@ -175,6 +177,9 @@ router.get('/reparto/estado', async (req, res) => {
         jornada: l?.jornada || null,
         conexion: l?.inicio || null,          // hora de apertura de jornada (orden de conexión)
         encontrado_en_bitrix: enLinea ? !!l : null,
+        // NOVONET ACCESS / VELSA ACCESS: última marcación de hoy (null = no se exige)
+        access_conectado: access ? estadoAccess(access, r.nombre).conectado : null,
+        access_actividad: access ? estadoAccess(access, r.nombre).actividad : null,
         es_estacion: esEstacion,
         gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
         // % ATC de lo recibido hoy y si ya llegó a su máximo (el bot no le entrega)

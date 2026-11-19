@@ -1,4 +1,6 @@
 const test = require('node:test')
+// Sin corte de 20:00 en los tests (si no, fallarían al correrlos de noche).
+process.env.WA_CAMPANA_HORA_CORTE = '24'
 const assert = require('node:assert/strict')
 const path = require('node:path')
 
@@ -81,7 +83,7 @@ test('una campaña nueva (sent_count=0) manda primero a los numeros de control',
     if (sql.includes('FROM campaign_recipients')) return { rows: [] }
     return { rows: [] }
   }
-  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL: '593999111222,593999333444' })
+  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL_NOVONET: '593999111222,593999333444' })
   const engine = new CampaignEngine(
     { sendText: async (lineId, numero) => { enviosControl.push(numero); return { key: { id: 'wa-x' } } } },
     { emit: () => {} }
@@ -108,7 +110,7 @@ test('una campaña YA iniciada (sent_count>0) no repite el burst inicial al rean
     if (sql.includes('FROM campaign_recipients')) return { rows: [] }
     return { rows: [] }
   }
-  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL: '593999111222' })
+  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL_NOVONET: '593999111222' })
   const engine = new CampaignEngine(
     { sendText: async (lineId, numero) => { enviosControl.push(numero); return { key: { id: 'wa-x' } } } },
     { emit: () => {} }
@@ -142,7 +144,7 @@ test('cada N envios reales (WA_CONTROL_CADA_N=2) se vuelve a tocar a los numeros
     }
     return { rows: [] }
   }
-  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL: '593999111222', WA_CONTROL_CADA_N: '2' })
+  const { CampaignEngine, restore } = cargarMotor(query, { WA_NUMEROS_CONTROL_NOVONET: '593999111222', WA_CONTROL_CADA_N: '2' })
   const engine = new CampaignEngine(
     {
       sendText: async (lineId, numero) => {

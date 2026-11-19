@@ -7,6 +7,14 @@ const { normalizarModo } = require('../services/campaignLineas')
 // Líneas de envío de una campaña. Acepta line_ids (varias) o line_id (una).
 // Permisos: ADMINISTRADOR cualquiera; supervisores/gerencia solo líneas de su
 // empresa; asesores solo SU línea. Devuelve { ids } o { error }.
+// Bot opcional de la campaña: debe existir y estar activo.
+async function validarBotCampania(botId) {
+  if (botId === undefined || botId === null || botId === '') return { id: null }
+  const r = await query('SELECT id FROM bots WHERE id=$1 AND is_active=true', [String(botId)]).catch(() => ({ rows: [] }))
+  if (!r.rows.length) return { error: 'El bot elegido no existe o está inactivo' }
+  return { id: r.rows[0].id }
+}
+
 async function validarLineasCampania(req, body) {
   const crudas = Array.isArray(body.line_ids) && body.line_ids.length ? body.line_ids : (body.line_id ? [body.line_id] : [])
   const ids = [...new Set(crudas.map(v => String(v || '').trim()).filter(Boolean))].slice(0, 50)
@@ -173,6 +181,8 @@ async function create(req, res) {
     if (lineasOk.error) return res.status(400).json({ success: false, error: lineasOk.error })
     const lineIds = lineasOk.ids
     const modoResponsable = normalizarModo(req.body.modo_responsable)
+    const botCampania = await validarBotCampania(req.body.bot_id)
+    if (botCampania.error) return res.status(400).json({ success: false, error: botCampania.error })
 
     let horario
     try {
@@ -245,15 +255,15 @@ async function create(req, res) {
           (name, line_id, template_id, list_id, body, media_url, media_type, media_filename,
            min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
            total_recipients, status, scheduled_at, created_by,
-           send_days, send_hour_from, send_hour_to, line_ids, modo_responsable)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid[],$21) RETURNING *`,
+           send_days, send_hour_from, send_hour_to, line_ids, modo_responsable, bot_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid[],$21,$22) RETURNING *`,
         [
           name, lineIds[0], template_id || null, list_id || null,
           finalBody, finalMediaUrl, finalMediaType, finalMediaFilename,
           min_delay_secs ?? 8, max_delay_secs ?? 20, batch_size ?? 50, batch_pause_secs ?? 120,
           allRecipients.length, status, scheduled_at || null, req.user.id,
           horario.send_days, horario.send_hour_from, horario.send_hour_to,
-          lineIds, modoResponsable,
+          lineIds, modoResponsable, botCampania.id,
         ]
       )
       const campaign = c.rows[0]
@@ -309,6 +319,14 @@ async function update(req, res) {
       lineIds = lineasOk.ids
     }
     const modoResponsable = req.body.modo_responsable !== undefined ? normalizarModo(req.body.modo_responsable) : null
+    // bot_id: undefined = no cambia; '' / null = quitar el bot.
+    let botId = null
+    const cambiaBot = req.body.bot_id !== undefined
+    if (cambiaBot) {
+      const v = await validarBotCampania(req.body.bot_id)
+      if (v.error) return res.status(400).json({ success: false, error: v.error })
+      botId = v.id
+    }
 
     const result = await query(
       `UPDATE campaigns SET
@@ -328,13 +346,14 @@ async function update(req, res) {
          send_hour_to = $15,
          paused_for_schedule = false,
          line_ids = COALESCE($16::uuid[], line_ids),
-         modo_responsable = COALESCE($17, modo_responsable)
+         modo_responsable = COALESCE($17, modo_responsable),
+         bot_id = CASE WHEN $18 THEN $19::uuid ELSE bot_id END
        WHERE id=$12 RETURNING *`,
       [name, body, media_url || null, media_type || null, media_filename || null,
        min_delay_secs, max_delay_secs, batch_size, batch_pause_secs,
        scheduled_at || null, lineIds ? lineIds[0] : null, id,
        horario.send_days, horario.send_hour_from, horario.send_hour_to,
-       lineIds, modoResponsable]
+       lineIds, modoResponsable, cambiaBot, botId]
     )
     res.json({ success: true, data: result.rows[0] })
   } catch (err) {

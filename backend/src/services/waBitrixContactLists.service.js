@@ -316,9 +316,12 @@ async function consultar(user, input, db = require('../config/db')) {
   }
   // Automarcador: solo el pipeline oficial de la empresa (igual que Indicadores:
   // NOVONET = categoría 19). WABOT no manda este flag y queda como estaba.
+  // El webhook de etapas de NOVONET no trae la categoría (queda vacía): vacío
+  // = pipeline oficial, igual que en Redes. Los deals movidos a otro embudo
+  // sí quedan con su categoría (la reconciliación la llena) y se excluyen.
   if (input?.solo_pipeline_oficial && PIPELINE_OFICIAL[empresa]) {
     params.push(PIPELINE_OFICIAL[empresa])
-    filtrosExtra += `\n        AND BTRIM(COALESCE(categoria_id, '')) = $${params.length}`
+    filtrosExtra += `\n        AND COALESCE(NULLIF(BTRIM(categoria_id), ''), $${params.length}) = $${params.length}`
   }
   if (f.responsibleIds.length) {
     params.push(f.responsibleIds.map(r => r.trim().toUpperCase()))

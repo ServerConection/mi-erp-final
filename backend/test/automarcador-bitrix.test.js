@@ -60,3 +60,62 @@ test('el panel de reportes exige un rango de fechas válido', async () => {
 test('pausar campaña: solo acepta activa o pausada', async () => {
   await assert.rejects(svc.cambiarEstadoCampana({ empresa: 'NOVONET' }, 1, 'borrada', { query: async () => ({ rows: [] }) }), /Estado inválido/)
 })
+
+// ── Historial de campañas (filtro por fechas y estado) y estado "finalizada" ──
+function dbCaptura(respuestas = []) {
+  const consultas = []
+  return {
+    consultas,
+    query: async (sql, params) => {
+      if (/CREATE TABLE/.test(sql)) return { rows: [] }
+      consultas.push({ sql, params })
+      return respuestas.length ? respuestas.shift() : { rows: [] }
+    },
+  }
+}
+
+test('historial: filtra campañas por rango de fechas y estado, sin tope de 30', async () => {
+  svc._reset()
+  const db = dbCaptura()
+  await svc.listarCampanas({ empresa: 'NOVONET' }, { desde: '2026-10-01', hasta: '2026-10-31', estado: 'finalizada' }, db)
+  const { sql, params } = db.consultas[0]
+  assert.deepEqual(params, ['NOVONET', '2026-10-01', '2026-10-31', 'finalizada'])
+  assert.match(sql, /created_at AT TIME ZONE 'America\/Guayaquil'\)::date >= \$2::date/)
+  assert.match(sql, /c\.estado = \$4/)
+  assert.doesNotMatch(sql, /LIMIT 30\b/)
+})
+
+test('historial: sin filtros trae todas las campañas de la empresa', async () => {
+  svc._reset()
+  const db = dbCaptura()
+  await svc.listarCampanas({ empresa: 'VELSA' }, {}, db)
+  assert.deepEqual(db.consultas[0].params, ['VELSA'])
+})
+
+test('historial: ignora estado o fechas inválidos', async () => {
+  svc._reset()
+  const db = dbCaptura()
+  await svc.listarCampanas({ empresa: 'NOVONET' }, { desde: 'ayer', estado: 'borrada' }, db)
+  assert.deepEqual(db.consultas[0].params, ['NOVONET'])
+})
+
+test('finalizar: acepta el estado finalizada', async () => {
+  svc._reset()
+  const db = dbCaptura([{ rows: [{ id: 3, estado: 'finalizada' }] }])
+  const r = await svc.cambiarEstadoCampana({ empresa: 'NOVONET' }, 3, 'finalizada', db)
+  assert.equal(r.estado, 'finalizada')
+  assert.match(db.consultas[0].sql, /estado <> 'finalizada'/)
+})
+
+test('finalizar: una campaña finalizada no se puede reabrir', async () => {
+  svc._reset()
+  const db = dbCaptura([{ rows: [] }, { rows: [{ estado: 'finalizada' }] }])
+  await assert.rejects(svc.cambiarEstadoCampana({ empresa: 'NOVONET' }, 3, 'activa', db), /finalizada/)
+})
+
+test('finalizar: no se reintentan números de una campaña finalizada', async () => {
+  svc._reset()
+  const db = dbCaptura()
+  await svc.reintentarNoContestados({ empresa: 'NOVONET' }, 3, db)
+  assert.match(db.consultas[0].sql, /c\.estado <> 'finalizada'/)
+})

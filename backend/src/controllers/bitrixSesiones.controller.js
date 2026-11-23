@@ -35,7 +35,7 @@
 
 const XLSX = require('xlsx');
 const db = require('../config/db');
-const { empresaVisible, puedeCerrarJornada } = require('../shared/bitrixSesionesAcceso');
+const { empresaVisible, empresasVisibles, puedeCerrarJornada } = require('../shared/bitrixSesionesAcceso');
 
 const BITRIX_APIS = {
   NOVONET: (process.env.BITRIX_NOVONET_URL || '').replace(/\/+$/, ''),
@@ -423,8 +423,8 @@ function construirOpciones(usuarios) {
 }
 
 const universoPara = (base, usuario) => {
-  const empresa = empresaVisible(usuario);
-  return empresa ? base.usuarios.filter(u => u.cuenta === empresa) : [];
+  const empresas = empresasVisibles(usuario);
+  return base.usuarios.filter(u => empresas.includes(u.cuenta));
 };
 
 // ── GET /api/bitrix-sesiones/live ────────────────────────────────────────────
@@ -433,16 +433,18 @@ const getLive = async (req, res) => {
     const base = await recolectar();
     const universo = universoPara(base, req.user);
     const empresa = empresaVisible(req.user);
+    const empresas = empresasVisibles(req.user);
     // VELSA también puede venir del portal corporativo NOVONET; por eso ambas
     // fuentes son relevantes para ese usuario. NOVONET solo depende de la suya.
-    const nombresFuentes = empresa === 'VELSA' ? ['NOVONET', 'VELSA'] : ['NOVONET'];
+    const nombresFuentes = empresas.includes('VELSA') ? ['NOVONET', 'VELSA'] : ['NOVONET'];
     const fuentes = Object.fromEntries(nombresFuentes.map(k => [k, base.fuentes[k]]));
     const fuentesConError = Object.entries(fuentes)
       .filter(([, v]) => v?.error)
       // El detalle queda en logs; al navegador no se filtran mensajes del
       // proveedor que puedan incluir información técnica de la integración.
       .map(([cuenta, v]) => ({ cuenta, datosEnCache: !!v.datosEnCache }));
-    const filtrados = aplicarFiltros(universo, { ...req.query, cuenta: empresaVisible(req.user) });
+    const cuentaFiltro = empresas.length > 1 ? req.query.cuenta : empresa;
+    const filtrados = aplicarFiltros(universo, { ...req.query, cuenta: cuentaFiltro });
 
     const conJornada = filtrados.filter(u => u.conectadoSeg != null);
     const promedio = conJornada.length
@@ -456,7 +458,7 @@ const getLive = async (req, res) => {
       consultaDegradada: fuentesConError.length > 0,
       sinDatosPorError: universo.length === 0 && fuentesConError.length === nombresFuentes.length,
       fuentesConError,
-      empresa,
+      empresa: empresas.length > 1 ? 'NOVONET + VELSA' : empresa,
       puedeCerrarJornada: puedeCerrarJornada(req.user),
       // Las opciones salen del universo COMPLETO, no del filtrado: si vinieran
       // del filtrado, al elegir un valor desaparecerían los demás y el usuario
@@ -488,7 +490,9 @@ const exportar = async (req, res) => {
   try {
     const base = await recolectar();
     const universo = universoPara(base, req.user);
-    const filas = aplicarFiltros(universo, { ...req.query, cuenta: empresaVisible(req.user) });
+    const empresas = empresasVisibles(req.user);
+    const cuentaFiltro = empresas.length > 1 ? req.query.cuenta : empresaVisible(req.user);
+    const filas = aplicarFiltros(universo, { ...req.query, cuenta: cuentaFiltro });
 
     const hhmmss = (s) => {
       if (s == null) return '';
@@ -542,10 +546,10 @@ const exportar = async (req, res) => {
 // Dice, sin rodeos, qué métodos responden en cada cuenta. Sirve para saber si
 // "Registro de jornada laboral" está activo antes de culpar al módulo.
 const diagnostico = async (req, res) => {
-  const empresa = empresaVisible(req.user);
+  const empresas = empresasVisibles(req.user);
   const salida = {};
   for (const [cuenta, url] of Object.entries(BITRIX_APIS)) {
-    if (cuenta !== empresa && !(empresa === 'VELSA' && cuenta === 'NOVONET')) continue;
+    if (!empresas.includes(cuenta) && !(empresas.includes('VELSA') && cuenta === 'NOVONET')) continue;
     if (!url) { salida[cuenta] = { configurada: false }; continue; }
     const probar = async (m, p) => {
       try { const r = await bitrixCall(url, m, p); return { ok: true, muestra: Array.isArray(r) ? r.length : typeof r }; }
@@ -597,10 +601,10 @@ async function auditarCierre(req, objetivo, resultado, detalle) {
 // timeman.close finaliza la jornada; Bitrix no expone por REST una revocación
 // general de todas las sesiones web del empleado.
 const cerrarJornada = async (req, res) => {
-  const empresa = empresaVisible(req.user);
+  const empresas = empresasVisibles(req.user);
   const cuenta = String(req.params.cuenta || '').toUpperCase();
   const usuarioId = String(req.params.usuarioId || '').trim();
-  if (!puedeCerrarJornada(req.user) || cuenta !== empresa) {
+  if (!puedeCerrarJornada(req.user) || !empresas.includes(cuenta)) {
     await auditarCierre(req, null, 'RECHAZADO', 'Intento de cerrar una jornada fuera de su empresa').catch(() => {});
     return res.status(403).json({ success: false, error: 'No puede cerrar jornadas de otra empresa' });
   }

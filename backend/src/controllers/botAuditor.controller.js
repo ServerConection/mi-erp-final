@@ -285,11 +285,40 @@ const CREAR_TABLA_CONFIG_SQL = `
   )
 `;
 
+const PREPARAR_CONFIG_POR_EMPRESA_SQL = `
+  ${CREAR_TABLA_CONFIG_SQL};
+  ALTER TABLE bot_auditor_prompt_config ADD COLUMN IF NOT EXISTS empresa VARCHAR(20);
+  ALTER TABLE bot_auditor_prompt_config DROP CONSTRAINT IF EXISTS bot_auditor_prompt_config_single_row;
+  UPDATE bot_auditor_prompt_config SET empresa = 'NOVONET' WHERE empresa IS NULL;
+  INSERT INTO bot_auditor_prompt_config
+    (id, empresa, reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc, actualizado_por, actualizado_at)
+  SELECT 2, 'VELSA', reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc, actualizado_por, actualizado_at
+    FROM bot_auditor_prompt_config
+   WHERE empresa = 'NOVONET'
+     AND NOT EXISTS (SELECT 1 FROM bot_auditor_prompt_config WHERE empresa = 'VELSA')
+   LIMIT 1
+  ON CONFLICT (id) DO NOTHING;
+  CREATE UNIQUE INDEX IF NOT EXISTS bot_auditor_prompt_config_empresa_uq
+    ON bot_auditor_prompt_config (empresa);
+`;
+
+const EMPRESAS_BOT_AUDITOR = new Set(['NOVONET', 'VELSA']);
+
+function empresaConfigPrompt(req) {
+  const esAdmin = String(req.user?.perfil || '').toUpperCase() === 'ADMINISTRADOR';
+  const solicitada = String(req.query?.empresa || req.body?.empresa || '').trim().toUpperCase();
+  const propia = String(req.user?.empresa || '').trim().toUpperCase();
+  const empresa = esAdmin && EMPRESAS_BOT_AUDITOR.has(solicitada) ? solicitada : propia;
+  return EMPRESAS_BOT_AUDITOR.has(empresa) ? empresa : null;
+}
+
 // GET /api/bot-auditor/config-prompt
 async function obtenerConfigPrompt(req, res) {
   try {
-    await pool.query(CREAR_TABLA_CONFIG_SQL);
-    const result = await pool.query(`SELECT * FROM bot_auditor_prompt_config WHERE id = 1`);
+    const empresa = empresaConfigPrompt(req);
+    if (!empresa) return res.status(400).json({ success: false, error: 'Empresa no valida para BotAuditor' });
+    await pool.query(PREPARAR_CONFIG_POR_EMPRESA_SQL);
+    const result = await pool.query(`SELECT * FROM bot_auditor_prompt_config WHERE empresa = $1`, [empresa]);
     const row = result.rows[0];
     res.json({
       success: true,
@@ -299,6 +328,7 @@ async function obtenerConfigPrompt(req, res) {
         reglas_puntuacion_atc: row?.reglas_puntuacion_atc || DEFAULT_REGLAS_PUNTUACION_ATC,
         actualizado_por: row?.actualizado_por || null,
         actualizado_at: row?.actualizado_at || null,
+        empresa,
       },
     });
   } catch (error) {
@@ -307,26 +337,30 @@ async function obtenerConfigPrompt(req, res) {
   }
 }
 
-// PUT /api/bot-auditor/config-prompt — protegido con soloAdmin en las rutas
+// PUT /api/bot-auditor/config-prompt — ADMINISTRADOR o mpijal; alcance de
+// empresa resuelto en el servidor, nunca confiando en el valor del cliente.
 async function actualizarConfigPrompt(req, res) {
   try {
+    const empresa = empresaConfigPrompt(req);
+    if (!empresa) return res.status(400).json({ success: false, error: 'Empresa no valida para BotAuditor' });
     const { reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc } = req.body || {};
     if (!reglas_clasificacion?.trim() || !reglas_puntuacion_venta?.trim() || !reglas_puntuacion_atc?.trim()) {
       return res.status(400).json({ success: false, error: 'Los tres campos son obligatorios' });
     }
 
-    await pool.query(CREAR_TABLA_CONFIG_SQL);
+    await pool.query(PREPARAR_CONFIG_POR_EMPRESA_SQL);
     await pool.query(
       `INSERT INTO bot_auditor_prompt_config
-         (id, reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc, actualizado_por, actualizado_at)
-       VALUES (1, $1, $2, $3, $4, NOW())
-       ON CONFLICT (id) DO UPDATE SET
+         (id, empresa, reglas_clasificacion, reglas_puntuacion_venta, reglas_puntuacion_atc, actualizado_por, actualizado_at)
+       VALUES (CASE WHEN $1 = 'NOVONET' THEN 1 ELSE 2 END, $1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (empresa) DO UPDATE SET
          reglas_clasificacion    = EXCLUDED.reglas_clasificacion,
          reglas_puntuacion_venta = EXCLUDED.reglas_puntuacion_venta,
          reglas_puntuacion_atc   = EXCLUDED.reglas_puntuacion_atc,
          actualizado_por         = EXCLUDED.actualizado_por,
          actualizado_at          = NOW()`,
       [
+        empresa,
         reglas_clasificacion.trim(),
         reglas_puntuacion_venta.trim(),
         reglas_puntuacion_atc.trim(),
@@ -334,7 +368,7 @@ async function actualizarConfigPrompt(req, res) {
       ]
     );
 
-    res.json({ success: true });
+    res.json({ success: true, data: { empresa } });
   } catch (error) {
     console.error('[botAuditor.controller] actualizarConfigPrompt error:', error);
     res.status(500).json({ success: false, error: 'Error al guardar la configuración del prompt' });

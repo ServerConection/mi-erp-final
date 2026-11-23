@@ -33,14 +33,17 @@ function scoreColor(score) {
 }
 
 // El layout guarda el usuario logueado en "userProfile" (ver Backoffice.jsx).
-// Solo ADMINISTRADOR puede editar las reglas del prompt que usa el servicio
-// externo bot-auditor-service para clasificar/puntuar con Groq.
-function esAdministrador() {
+// ADMINISTRADOR puede editar ambas empresas; mpijal, unicamente la propia.
+function usuarioActual() {
   try {
     const u = JSON.parse(localStorage.getItem("userProfile") || "{}");
-    return (u.perfil || "").toUpperCase() === "ADMINISTRADOR";
+    return {
+      usuario: String(u.usuario || "").trim().toLowerCase(),
+      perfil: String(u.perfil || "").trim().toUpperCase(),
+      empresa: String(u.empresa || "").trim().toUpperCase(),
+    };
   } catch {
-    return false;
+    return { usuario: "", perfil: "", empresa: "" };
   }
 }
 
@@ -56,7 +59,10 @@ export default function BotAuditor() {
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const esAdmin = useMemo(() => esAdministrador(), []);
+  const usuarioSesion = useMemo(() => usuarioActual(), []);
+  const esAdmin = usuarioSesion.perfil === "ADMINISTRADOR";
+  const puedeConfigurarPrompt = esAdmin || usuarioSesion.usuario === "mpijal";
+  const [configEmpresa, setConfigEmpresa] = useState(usuarioSesion.empresa === "VELSA" ? "VELSA" : "NOVONET");
   const [configAbierto, setConfigAbierto] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
   const [configGuardando, setConfigGuardando] = useState(false);
@@ -143,19 +149,23 @@ export default function BotAuditor() {
 
   const fmtFecha = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" }) : "—");
 
+  const cargarConfig = async (empresa) => {
+    const r = await fetchJson(`/api/bot-auditor/config-prompt?empresa=${encodeURIComponent(empresa)}`);
+    setConfigForm({
+      reglas_clasificacion: r.data.reglas_clasificacion || "",
+      reglas_puntuacion_venta: r.data.reglas_puntuacion_venta || "",
+      reglas_puntuacion_atc: r.data.reglas_puntuacion_atc || "",
+    });
+    setConfigMeta({ actualizado_por: r.data.actualizado_por, actualizado_at: r.data.actualizado_at });
+  };
+
   const abrirConfig = async () => {
     setConfigAbierto(true);
     setConfigLoading(true);
     setConfigError(null);
     setConfigMsg(null);
     try {
-      const r = await fetchJson(`/api/bot-auditor/config-prompt`);
-      setConfigForm({
-        reglas_clasificacion: r.data.reglas_clasificacion || "",
-        reglas_puntuacion_venta: r.data.reglas_puntuacion_venta || "",
-        reglas_puntuacion_atc: r.data.reglas_puntuacion_atc || "",
-      });
-      setConfigMeta({ actualizado_por: r.data.actualizado_por, actualizado_at: r.data.actualizado_at });
+      await cargarConfig(configEmpresa);
     } catch (err) {
       setConfigError(err.message || "Error al cargar la configuración");
     } finally {
@@ -174,7 +184,7 @@ export default function BotAuditor() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
-        body: JSON.stringify(configForm),
+        body: JSON.stringify({ ...configForm, empresa: configEmpresa }),
       });
       const json = await res.json();
       if (!res.ok || json.success === false) {
@@ -294,7 +304,7 @@ export default function BotAuditor() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {esAdmin && (
+          {puedeConfigurarPrompt && (
             <button
               onClick={abrirConfig}
               style={{
@@ -706,6 +716,29 @@ export default function BotAuditor() {
               Edita las reglas que la IA usa para clasificar (VENTA/ATC) y puntuar cada conversación.
               El formato de salida no es editable acá para no romper el guardado automático.
             </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 5 }}>Empresa</label>
+              <select
+                value={configEmpresa}
+                disabled={!esAdmin || configLoading || configGuardando}
+                onChange={async (e) => {
+                  const empresa = e.target.value;
+                  setConfigEmpresa(empresa);
+                  setConfigLoading(true);
+                  setConfigError(null);
+                  setConfigMsg(null);
+                  try { await cargarConfig(empresa); }
+                  catch (err) { setConfigError(err.message || "Error al cargar la configuración"); }
+                  finally { setConfigLoading(false); }
+                }}
+                style={{ width: "100%", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, background: !esAdmin ? "#f1f5f9" : "white" }}
+              >
+                <option value="NOVONET">NOVONET</option>
+                <option value="VELSA">VELSA</option>
+              </select>
+              {!esAdmin && <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Solo puedes configurar el prompt de tu empresa.</div>}
+            </div>
 
             {configLoading ? (
               <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Cargando…</div>

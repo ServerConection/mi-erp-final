@@ -1419,13 +1419,17 @@ const TAB_KEY = "bitrixlive:submodulo:v1";
 
 export default function BitrixLive() {
   const userRaw = localStorage.getItem("user") || localStorage.getItem("userProfile") || "{}";
-  const perfil  = useMemo(() => {
-    try { return (JSON.parse(userRaw).perfil || "").toUpperCase(); } catch { return ""; }
+  const usuario = useMemo(() => {
+    try { return JSON.parse(userRaw); } catch { return {}; }
   }, [userRaw]);
+  const perfil = String(usuario.perfil || "").toUpperCase();
+  const login  = String(usuario.usuario || usuario.username || "").trim().toLowerCase();
 
   // Quién está conectado y desde qué IP es información de personal: jefatura.
   // El backend lo vuelve a validar — esto solo evita mostrar una pestaña muerta.
-  const esJefatura = ["ADMINISTRADOR", "GERENCIA", "SUPERVISOR"].includes(perfil);
+  const esJefatura = login === "jasimbana"
+    || ["ADMINISTRADOR", "GERENCIA", "GERENTE", "SUPERVISOR"].includes(perfil)
+    || perfil.startsWith("SUPERVISOR");
   const visibles = SUBMODULOS.filter(m => !m.soloJefatura || esJefatura);
 
   const [sub, setSub] = useState(() => {

@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 # Copia este archivo fuera del repositorio y pega el token en esa copia local.
 $ApiUrl = 'https://erp-backend-v1-qhk2.onrender.com'
-$Token = 'PEGAR_AQUI_TOKEN_IAT'
+$Token = 'iat_9zAvQoMBj-VLfE0KtLz8ClKTYWcGTYGzu8H-kAtu_T4'
 if ($Token -notmatch '^iat_[A-Za-z0-9_-]+$') {
     throw 'Configura el token iat_ en la variable $Token dentro del script.'
 }
@@ -124,7 +124,22 @@ $cuerpo = [ordered]@{
 Write-Host 'Enviando auditoria al ERP ...' -ForegroundColor Cyan
 $endpoint = $ApiUrl.TrimEnd('/') + '/api/inventario-activos/auditoria/archivos'
 $json = $cuerpo | ConvertTo-Json -Depth 8 -Compress
-$respuesta = Invoke-RestMethod -Uri $endpoint -Method Post -ContentType 'application/json; charset=utf-8' `
-    -Headers @{ Authorization = "Bearer $Token" } -Body ([Text.Encoding]::UTF8.GetBytes($json))
+$bytes = [Text.Encoding]::UTF8.GetBytes($json)
+Write-Host ("Tamano del envio: {0:N2} MB" -f ($bytes.Length / 1MB)) -ForegroundColor Cyan
+try {
+    $respuesta = Invoke-RestMethod -Uri $endpoint -Method Post -ContentType 'application/json; charset=utf-8' `
+        -Headers @{ Authorization = "Bearer $Token" } -Body $bytes
+} catch {
+    $detalle = $_.Exception.Message
+    if ($_.Exception.Response) {
+        try {
+            $stream = $_.Exception.Response.GetResponseStream()
+            $reader = [IO.StreamReader]::new($stream)
+            $contenido = $reader.ReadToEnd()
+            if ($contenido) { $detalle = $contenido }
+        } catch { }
+    }
+    throw "El ERP rechazo la auditoria: $detalle"
+}
 Write-Host "Auditoria guardada. ID: $($respuesta.data.id)" -ForegroundColor Green
 Write-Host "Archivos: $archivosTotal | Descargas: $descargasTotal | Imagenes: $imagenesTotal | Carpetas: $($carpetas.Count)"

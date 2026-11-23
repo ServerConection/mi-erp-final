@@ -329,6 +329,7 @@ const isAnalGer   = (p)    => p === 'ANALISTA' || p === 'GERENCIA';
 const forEmpresa  = (p, e, emp) => isAdmin(p) || (isAnalGer(p) && e === emp);
 const esEmpresaVentaenlinea = (empresa = '') => empresa.replace(/[^A-Z0-9]/g, '') === 'VENTAENLINEA';
 const accesoVentaenlinea = (perfil, empresa) => isAdmin(perfil) || esEmpresaVentaenlinea(empresa);
+const esJasimbana = (usuario = '') => String(usuario).trim().toLowerCase() === 'jasimbana';
 const rutaRepartoTV = (usuario = '') => {
   const login = String(usuario).trim().toLowerCase();
   if (login === 'tvnovo') return '/gestionables-asesores';
@@ -380,7 +381,7 @@ const ALL_MENU_ITEMS = [
 
   // BitrixLive: todos los perfiles EXCEPTO ASESOR y CONSULTOR (acceso frecuente → fuera de grupo)
   { name: "🟢 Bitrix Live",     path: "/bitrix-live",  icon: "🟢",
-    accessCheck: (p) => p !== 'ASESOR' && p !== 'CONSULTOR' },
+    accessCheck: (p, _e, usuario) => esJasimbana(usuario) || (p !== 'ASESOR' && p !== 'CONSULTOR') },
 
   // Mis negociaciones (deals Bitrix): solo administradores.
   { name: "🤝 Mis negociaciones", path: "/mis-negociaciones", icon: "🤝", accessCheck: (p) => isAdmin(p) },
@@ -641,7 +642,8 @@ export default function DashboardLayout() {
 
     // ATC trabaja exclusivamente en Indicadores y Backoffice; ANALISTA,
     // exclusivamente en Indicadores. Esto también bloquea URLs escritas a mano.
-    if (!rutaPermitidaPerfilRestringido(p, location.pathname)) {
+    const accesoEspecialBitrix = location.pathname === '/bitrix-live' && esJasimbana(user?.usuario || user?.username);
+    if (!accesoEspecialBitrix && !rutaPermitidaPerfilRestringido(p, location.pathname)) {
       navigate(p === 'CONTABILIDAD' ? '/' : '/indicadores', { replace: true });
       return;
     }
@@ -650,7 +652,7 @@ export default function DashboardLayout() {
     // validada la ruta no se deben volver a evaluar sus permisos individuales:
     // algunas cuentas conservan permisos antiguos/incompletos y eso provocaba
     // un ciclo /indicadores -> / -> /indicadores (parpadeo y salto vertical).
-    if (PERFILES_MENU_RESTRINGIDO.has(p)) return;
+    if (PERFILES_MENU_RESTRINGIDO.has(p) && !accesoEspecialBitrix) return;
 
     if (RUTAS_PUBLICAS.includes(location.pathname)) return;
     if (location.pathname === RUTA_SOPORTE) return;
@@ -684,7 +686,7 @@ export default function DashboardLayout() {
     }
 
     if (itemActual.accessCheck) {
-      if (!itemActual.accessCheck(p, e)) navigate('/');
+      if (!itemActual.accessCheck(p, e, user?.usuario || user?.username)) navigate('/');
     } else if (itemActual.permiso) {
       if (permisos.length === 0) return; // permisos aún cargando
       if (!permisos.includes(itemActual.permiso)) navigate('/');
@@ -705,6 +707,7 @@ export default function DashboardLayout() {
 
   const passaAcceso = (item) => {
     const perfil = (user?.perfil || '').trim().toUpperCase();
+    if (item.path === '/bitrix-live' && esJasimbana(user?.usuario || user?.username)) return true;
     if (perfil === 'CONTABILIDAD') {
       return !!item.path && (RUTAS_CONTABILIDAD.has(item.path) || item.path === RUTA_SOPORTE);
     }
@@ -736,7 +739,7 @@ export default function DashboardLayout() {
     if (item.accessCheck) {
       const p = (user?.perfil  || '').toUpperCase();
       const e = (user?.empresa || '').toUpperCase();
-      return item.accessCheck(p, e);
+      return item.accessCheck(p, e, user?.usuario || user?.username);
     }
     return !item.permiso || permisos.includes(item.permiso);
   };
@@ -751,7 +754,7 @@ export default function DashboardLayout() {
       if (item.accessCheck) {
         const p = (user?.perfil  || '').toUpperCase();
         const e = (user?.empresa || '').toUpperCase();
-        if (!item.accessCheck(p, e)) return false;
+        if (!item.accessCheck(p, e, user?.usuario || user?.username)) return false;
       }
       return gruposConHijosVisibles.has(item.groupId);
     }

@@ -115,8 +115,20 @@ async function crearCampana(user, { nombre, filtros, asesorIds, items }, db) {
   })
 }
 
-async function listarCampanas(user, db) {
+const ESTADOS_CAMPANA = ['activa', 'pausada', 'finalizada']
+const MAX_CAMPANAS = 500
+
+// Historial de campañas de la empresa, con filtro opcional por fecha de
+// creación (hora Ecuador) y estado. Sin filtros trae todo (hasta 500).
+async function listarCampanas(user, { desde, hasta, estado } = {}, db) {
   await asegurarEsquema(db)
+  const fecha = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null
+  const params = [empresaDe(user)]
+  const filtros = []
+  const fechaC = `(c.created_at AT TIME ZONE 'America/Guayaquil')::date`
+  if (fecha(desde)) { params.push(fecha(desde)); filtros.push(`${fechaC} >= $${params.length}::date`) }
+  if (fecha(hasta)) { params.push(fecha(hasta)); filtros.push(`${fechaC} <= $${params.length}::date`) }
+  if (ESTADOS_CAMPANA.includes(estado)) { params.push(estado); filtros.push(`c.estado = $${params.length}`) }
   const r = await db.query(
     `SELECT c.id, c.nombre, c.created_at, c.estado,
             COUNT(i.id)::int AS total,
@@ -125,9 +137,9 @@ async function listarCampanas(user, db) {
             COUNT(*) FILTER (WHERE i.estado = 'no_contesta')::int AS no_contesta
        FROM automarcador_bx_campanas c
        LEFT JOIN automarcador_bx_items i ON i.campana_id = c.id
-      WHERE c.empresa = $1
-      GROUP BY c.id ORDER BY c.id DESC LIMIT 30`,
-    [empresaDe(user)]
+      WHERE c.empresa = $1${filtros.map(f => ` AND ${f}`).join('')}
+      GROUP BY c.id ORDER BY c.id DESC LIMIT ${MAX_CAMPANAS}`,
+    params
   )
   return r.rows
 }
@@ -139,6 +151,7 @@ async function reintentarNoContestados(user, campanaId, db) {
     `UPDATE automarcador_bx_items i SET estado = 'pendiente', updated_at = NOW()
        FROM automarcador_bx_campanas c
       WHERE c.id = i.campana_id AND c.id = $1 AND c.empresa = $2
+        AND c.estado <> 'finalizada'
         AND i.estado IN ('no_contesta', 'fallida')
       RETURNING i.id`,
     [parseInt(campanaId, 10) || 0, empresaDe(user)]
@@ -323,21 +336,30 @@ async function control(user, db) {
   return { asesores: asesores.rows, ultimas: ultimas.rows, generado: new Date().toISOString() }
 }
 
-// Pausa o reanuda una campaña. En pausa, los asesores terminan la llamada en
-// curso y ya no reciben más números de ella (siguiente() solo toma 'activa').
+// Pausa, reanuda o finaliza una campaña. En pausa o finalizada, los asesores
+// terminan la llamada en curso y ya no reciben más números de ella
+// (siguiente() solo toma 'activa'). Una campaña finalizada queda cerrada:
+// no se puede reabrir ni reintentar, pero sigue en el historial y reportes.
 async function cambiarEstadoCampana(user, campanaId, estado, db) {
-  if (!['activa', 'pausada'].includes(estado)) { const e = new Error('Estado inválido'); e.status = 400; throw e }
+  if (!ESTADOS_CAMPANA.includes(estado)) { const e = new Error('Estado inválido'); e.status = 400; throw e }
   await asegurarEsquema(db)
+  const id = parseInt(campanaId, 10) || 0
   const r = await db.query(
-    `UPDATE automarcador_bx_campanas SET estado = $3 WHERE id = $1 AND empresa = $2 RETURNING id, estado`,
-    [parseInt(campanaId, 10) || 0, empresaDe(user), estado]
+    `UPDATE automarcador_bx_campanas SET estado = $3
+      WHERE id = $1 AND empresa = $2 AND estado <> 'finalizada' RETURNING id, estado`,
+    [id, empresaDe(user), estado]
   )
-  if (!r.rows.length) { const e = new Error('Campaña no encontrada'); e.status = 404; throw e }
-  return r.rows[0]
+  if (r.rows.length) return r.rows[0]
+  const existe = await db.query(
+    `SELECT estado FROM automarcador_bx_campanas WHERE id = $1 AND empresa = $2`,
+    [id, empresaDe(user)]
+  )
+  if (existe.rows[0]?.estado === 'finalizada') { const e = new Error('La campaña está finalizada y no se puede reabrir'); e.status = 409; throw e }
+  const e = new Error('Campaña no encontrada'); e.status = 404; throw e
 }
 
 module.exports = {
-  DDL, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
+  DDL, ESTADOS_CAMPANA, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
   resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
   _reset: () => { esquemaListo = null },
 }

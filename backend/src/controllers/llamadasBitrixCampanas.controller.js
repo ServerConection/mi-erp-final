@@ -17,7 +17,7 @@ function crearCampanasController({ db = require('../config/db'), lists = bitrixL
   }
   return {
     asesores: responder(req => svc.listarAsesores(req.user, db)),
-    campanas: responder(req => svc.listarCampanas(req.user, db)),
+    campanas: responder(req => svc.listarCampanas(req.user, req.query || {}, db)),
     crear: responder(async (req) => {
       const body = req.body || {}
       const consulta = await lists.consultar(req.user, { ...body, solo_pipeline_oficial: true }, db)

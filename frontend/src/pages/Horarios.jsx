@@ -204,7 +204,7 @@ export default function Horarios() {
       </div>
 
       {verCarga && datos?.puede_cargar && (
-        <PanelCarga headers={headers} onCargado={(desde) => { cargarSemanas(); setVerCarga(false); setLunes(desde); cargarSemana(desde); }} />
+        <PanelCarga headers={headers} empresa={EMPRESA} onCargado={(desde) => { cargarSemanas(); setVerCarga(false); setLunes(desde); cargarSemana(desde); }} />
       )}
 
       {/* Navegación de semana */}
@@ -291,7 +291,7 @@ export default function Horarios() {
                   {datos.dias.map((d) => {
                     const t = turnoDe(f, d);
                     const sucio = !!cambios[`${f.asesor_clave}|${d}`];
-                    const mod = MODALIDAD_UI[t?.modalidad || ""];
+                    const mod = MODALIDAD_UI[t?.modalidad || ""] || MODALIDAD_UI[""];
                     const p = puntualidad(t, d, datos.hoy, datos.tolerancia_min, !!f.usuario_id);
                     return (
                       <td key={d}
@@ -416,7 +416,7 @@ function EditorTurno({ fila, fecha, turno, onCerrar, onAplicar }) {
 }
 
 // ── Carga del Excel ────────────────────────────────────────────────────────
-function PanelCarga({ headers, onCargado }) {
+function PanelCarga({ headers, empresa: EMPRESA, onCargado }) {
   const [wb, setWb] = useState(null);
   const [archivo, setArchivo] = useState("");
   const [hoja, setHoja] = useState("");

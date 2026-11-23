@@ -5398,6 +5398,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [chatConversacionId, setChatConversacionId] = useState(null);
   const [chatClienteWelcome, setChatClienteWelcome] = useState("");
   const [filtrarRespondieron, setFiltrarRespondieron] = useState(false);
+  const [alertasWelcomeCerradas, setAlertasWelcomeCerradas] = useState(() => new Set());
   const token = localStorage.getItem("token");
 
   const cargarOperacionWelcome = useCallback(async () => {
@@ -5559,6 +5560,10 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const sinAtender = respuestasNotificados.filter((respuesta) => !respuesta.attended).length;
   const positivas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "POSITIVA").length;
   const dudas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "DUDA");
+  const claveAlertaWelcome = (respuesta) => `${respuesta.id}:${respuesta.responded_at || "sin-fecha"}`;
+  const dudasVisibles = dudas.filter(
+    (respuesta) => !respuesta.attended && !alertasWelcomeCerradas.has(claveAlertaWelcome(respuesta))
+  );
   const porBloqueVisible = {
     ...porBloque,
     NOTIFICADOS: filtrarRespondieron
@@ -6227,14 +6232,32 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
             onVolver={() => setDetalleId(null)}
           />
         )}
-        {dudas.find((r) => !r.attended) && (() => {
-          const duda = dudas.find((r) => !r.attended);
-          return <button type="button" onClick={() => abrirChatRespuestaWelcome(duda)} style={{position:"fixed",right:82,bottom:96,zIndex:80,width:340,textAlign:"left",padding:"14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 16px 40px rgba(124,45,18,.24)",cursor:"pointer",color:"#7c2d12"}}>
-            <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
-            <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
-            <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>
-          </button>;
-        })()}
+        {dudasVisibles.length > 0 && (
+          <div style={{position:"fixed",right:82,bottom:96,zIndex:80,width:360,maxHeight:"min(520px, calc(100vh - 150px))",overflowY:"auto",display:"flex",flexDirection:"column",gap:10,padding:4}}>
+            {dudasVisibles.map((duda) => (
+              <div key={claveAlertaWelcome(duda)} style={{position:"relative",flex:"none"}}>
+                <button
+                  type="button"
+                  onClick={() => abrirChatRespuestaWelcome(duda)}
+                  style={{width:"100%",textAlign:"left",padding:"14px 42px 14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 12px 30px rgba(124,45,18,.2)",cursor:"pointer",color:"#7c2d12"}}
+                >
+                  <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
+                  <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+                  <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Cerrar alerta de ${duda.nombre_cliente_completo || "cliente"}`}
+                  title="Cerrar notificación"
+                  onClick={() => setAlertasWelcomeCerradas((actuales) => new Set([...actuales, claveAlertaWelcome(duda)]))}
+                  style={{position:"absolute",top:9,right:9,width:26,height:26,borderRadius:999,border:"1px solid #fdba74",background:"#fff",color:"#9a3412",fontSize:16,fontWeight:900,lineHeight:1,cursor:"pointer"}}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

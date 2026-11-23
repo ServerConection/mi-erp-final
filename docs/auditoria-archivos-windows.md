@@ -10,19 +10,15 @@ La auditoría registra cada ejecución en una sola fila de `public.auditoria_arc
 
 ## Ejecución
 
-Abrir PowerShell como el usuario que se auditará y ejecutar una sola línea:
+Una vez desplegado el backend, abrir PowerShell como el usuario que se auditará y ejecutar una sola línea. No es necesario descargar el archivo previamente:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Auditar-ArchivosWindows.ps1"
+irm "https://erp-backend-v1-qhk2.onrender.com/Auditar-ArchivosWindows.ps1" | iex
 ```
 
 El script preguntará `Empresa del equipo (NOVONET/VELSA)` y no continuará hasta recibir uno de esos dos valores.
 
-Por defecto revisa `Downloads`, Escritorio y Documentos del perfil actual, incluidos elementos ocultos. Para rutas específicas:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Auditar-ArchivosWindows.ps1" -Rutas "C:\Users\supervisor\Desktop","C:\Users\supervisor\Downloads"
-```
+Por defecto revisa `Downloads`, Escritorio y Documentos del perfil actual, incluidos elementos ocultos.
 
 La procedencia se obtiene del flujo NTFS `Zone.Identifier` (`HostUrl` y `ReferrerUrl`). El dato puede ser nulo si el navegador, una copia o el sistema de archivos eliminó esa metadata; no se infiere una procedencia inexistente.
 

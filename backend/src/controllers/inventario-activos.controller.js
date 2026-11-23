@@ -414,6 +414,60 @@ exports.registrarAuditoria = async (req, res) => {
   }
 };
 
+exports.registrarAuditoriaArchivos = async (req, res) => {
+  const body = req.body || {};
+  const texto = (valor, max = 2000) => valor === undefined || valor === null ? null : String(valor).trim().slice(0, max) || null;
+  const entero = (valor) => Number.isInteger(valor) && valor >= 0 ? valor : null;
+  const fecha = (valor) => valor && !Number.isNaN(Date.parse(valor)) ? new Date(valor) : null;
+  const archivos = Array.isArray(body.archivos) ? body.archivos : null;
+  const carpetas = Array.isArray(body.carpetas) ? body.carpetas : null;
+  const empresaSolicitada = normalizarTexto(body.empresa);
+  const empresaToken = normalizarTexto(req.user?.empresa);
+  const empresa = req.user?.authTipo === 'API_TOKEN' && ['NOVONET', 'VELSA'].includes(empresaToken)
+    ? empresaToken
+    : empresaSolicitada;
+  const datos = {
+    empresa, equipo: texto(body.equipo, 255), usuario: texto(body.usuario_windows, 255),
+    perfil: texto(body.perfil_usuario, 30), mac: texto(body.mac, 100), raiz: texto(body.raiz_perfil),
+    totalArchivos: entero(body.total_archivos), totalDescargas: entero(body.total_descargas),
+    totalImagenes: entero(body.total_imagenes), totalCarpetas: entero(body.total_carpetas),
+    inicio: fecha(body.iniciada_en), fin: fecha(body.finalizada_en), version: texto(body.version_script, 30),
+  };
+  if (!['NOVONET', 'VELSA'].includes(empresa) || !datos.equipo || !datos.usuario || !datos.raiz ||
+      !datos.inicio || !datos.fin || !datos.version || [datos.totalArchivos, datos.totalDescargas, datos.totalImagenes, datos.totalCarpetas].includes(null)) {
+    return res.status(400).json({ success: false, error: 'La cabecera de la auditoria de archivos es invalida o esta incompleta.' });
+  }
+  if (!archivos || !carpetas || archivos.length > 50000 || carpetas.length > 20000 ||
+      archivos.length > datos.totalArchivos || carpetas.length !== datos.totalCarpetas ||
+      archivos.filter((a) => a?.es_imagen === true).length !== datos.totalImagenes ||
+      archivos.filter((a) => a?.es_descarga === true).length !== datos.totalDescargas) {
+    return res.status(400).json({ success: false, error: 'El detalle no coincide con los totales o supera el limite permitido.' });
+  }
+  if (req.user?.authTipo === 'API_TOKEN' && empresaToken !== 'POR DEFINIR' && empresaToken !== empresa) {
+    return res.status(403).json({ success: false, error: `El token de auditoria pertenece a ${empresaToken}.` });
+  }
+  try {
+    const insercion = await pool.query(
+      `INSERT INTO public.auditoria_archivos_windows
+        (empresa, equipo, usuario_windows, perfil_usuario, mac, raiz_perfil, rutas_auditadas,
+         total_archivos, total_descargas, total_imagenes, total_carpetas, carpetas, archivos,
+         errores, iniciada_en, finalizada_en, registrada_por, token_id, version_script)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,
+               $15,$16,$17,$18,$19)
+       RETURNING id, recibida_en`,
+      [empresa, datos.equipo, datos.usuario, datos.perfil, datos.mac, datos.raiz,
+        JSON.stringify(body.rutas_auditadas || []), datos.totalArchivos, datos.totalDescargas,
+        datos.totalImagenes, datos.totalCarpetas, JSON.stringify(carpetas), JSON.stringify(archivos),
+        JSON.stringify(body.errores || []), datos.inicio, datos.fin, usuarioActual(req),
+        req.user?.tokenId || null, datos.version]
+    );
+    const resultado = insercion.rows[0];
+    return res.status(201).json({ success: true, data: resultado });
+  } catch (error) {
+    return responderError(res, error, 'registrar auditoria de archivos');
+  }
+};
+
 exports.obtenerAuditorias = async (req, res) => {
   const id = normalizarTexto(req.params.id);
   try {

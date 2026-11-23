@@ -45,6 +45,7 @@ const recibirFoto = (req, res, next) => uploadFoto.single('foto')(req, res, (err
 router.get('/auditoria/tokens', verificarToken, soloAdmin, ctrl.listarTokensAuditoria);
 router.post('/auditoria/tokens', verificarToken, soloAdmin, ctrl.crearTokenAuditoria);
 router.delete('/auditoria/tokens/:tokenId', verificarToken, soloAdmin, ctrl.revocarTokenAuditoria);
+router.post('/auditoria/archivos', ctrl.autenticarAuditoria, ctrl.registrarAuditoriaArchivos);
 router.post('/auditoria', ctrl.autenticarAuditoria, ctrl.registrarAuditoria);
 
 // Cualquier usuario autenticado puede consultar y registrar activos.

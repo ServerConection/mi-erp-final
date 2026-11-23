@@ -14,7 +14,7 @@ param(
 )
 
 $ApiUrl = "https://erp-backend-v1-qhk2.onrender.com/api/inventario-activos/auditoria"
-$ApiToken = "iat_F3xEA3E6Iw2v2kQooZEAVa5VTy0xYWNV8xWV2Q4zJEI"
+$ApiToken = "TOKEN_RETIRADO_POR_SEGURIDAD"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 $ErrorActionPreference = "SilentlyContinue"

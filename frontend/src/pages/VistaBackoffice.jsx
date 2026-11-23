@@ -5397,9 +5397,18 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const [mostrarChatWelcome, setMostrarChatWelcome] = useState(false);
   const [chatConversacionId, setChatConversacionId] = useState(null);
   const [chatClienteWelcome, setChatClienteWelcome] = useState("");
+  const [chatRespuestaWelcome, setChatRespuestaWelcome] = useState(null);
   const [filtrarRespondieron, setFiltrarRespondieron] = useState(false);
   const [alertasWelcomeCerradas, setAlertasWelcomeCerradas] = useState(() => new Set());
   const token = localStorage.getItem("token");
+  const puedeConfirmarRespuestaWelcome = useMemo(() => {
+    try {
+      const perfil = String(JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").trim().toUpperCase();
+      return ["ATC", "ADMINISTRADOR"].includes(perfil);
+    } catch {
+      return false;
+    }
+  }, []);
 
   const cargarOperacionWelcome = useCallback(async () => {
     try {
@@ -5529,7 +5538,28 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     }
     setChatConversacionId(respuesta.conversation_id);
     setChatClienteWelcome(respuesta.nombre_cliente_completo || "Cliente");
+    setChatRespuestaWelcome(respuesta);
     setMostrarChatWelcome(true);
+  };
+
+  const marcarRespuestaPositiva = async (respuesta) => {
+    try {
+      const resultado = await fetch(`${API}/api/backoffice/welcome/respuestas/${respuesta.id}/positiva`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await resultado.json().catch(() => ({}));
+      if (!resultado.ok || !json.success) throw new Error(json.error || "No se pudo confirmar la respuesta");
+      setRespuestasWelcome((actuales) => actuales.map((item) =>
+        String(item.id) === String(respuesta.id) ? { ...item, response_status: "POSITIVA" } : item
+      ));
+      setChatRespuestaWelcome((actual) => actual && String(actual.id) === String(respuesta.id)
+        ? { ...actual, response_status: "POSITIVA" }
+        : actual);
+      setAviso(`✅ Respuesta positiva confirmada para ${respuesta.nombre_cliente_completo || "el cliente"}.`);
+    } catch (errorPositiva) {
+      setAviso(`❌ ${errorPositiva.message}`);
+    }
   };
 
   const consultarWelcome = () => setFiltrosWelcome({ busqueda, fechaDesde: fechaDesdeWelcome, fechaHasta: fechaHastaWelcome });
@@ -5554,8 +5584,8 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     porBloque[estadoWelcome(row)].push(row);
   }
   const respuestasNotificados = porBloque.NOTIFICADOS
-    .map((row) => respuestaPorRegistro.get(String(row.id)))
-    .filter(Boolean);
+    .map((row) => notificacionPorRegistro.get(String(row.id)))
+    .filter((respuesta) => Boolean(respuesta?.response_status));
   const respondieron = respuestasNotificados.length;
   const sinAtender = respuestasNotificados.filter((respuesta) => !respuesta.attended).length;
   const positivas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "POSITIVA").length;
@@ -5999,16 +6029,32 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                   <div className="bo-welcome-chat-modal__eyebrow">Inbox · {configWelcome?.line_name || "NOTI_BACK"}</div>
                   <h3 id="bo-welcome-chat-title">Chat de {chatClienteWelcome || "cliente"}</h3>
                 </div>
-                <button
-                  type="button"
-                  className="bo-welcome-chat-modal__close"
-                  aria-label="Cerrar chat"
-                  title="Cerrar (Esc)"
-                  autoFocus
-                  onClick={() => setMostrarChatWelcome(false)}
-                >
-                  ×
-                </button>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {puedeConfirmarRespuestaWelcome && chatRespuestaWelcome?.response_status && chatRespuestaWelcome.response_status !== "POSITIVA" && (
+                    <button
+                      type="button"
+                      onClick={() => marcarRespuestaPositiva(chatRespuestaWelcome)}
+                      style={{padding:"8px 12px",borderRadius:9,border:"1px solid #86efac",background:"#f0fdf4",color:"#166534",fontSize:11.5,fontWeight:900,cursor:"pointer",whiteSpace:"nowrap"}}
+                    >
+                      ✓ Marcar respuesta positiva
+                    </button>
+                  )}
+                  {puedeConfirmarRespuestaWelcome && chatRespuestaWelcome?.response_status === "POSITIVA" && (
+                    <span style={{padding:"7px 11px",borderRadius:9,border:"1px solid #86efac",background:"#f0fdf4",color:"#166534",fontSize:11.5,fontWeight:900,whiteSpace:"nowrap"}}>
+                      ✓ Respuesta positiva
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="bo-welcome-chat-modal__close"
+                    aria-label="Cerrar chat"
+                    title="Cerrar (Esc)"
+                    autoFocus
+                    onClick={() => setMostrarChatWelcome(false)}
+                  >
+                    ×
+                  </button>
+                </div>
               </header>
               <div className="bo-welcome-chat-modal__body">
                 <WaInbox
@@ -6235,16 +6281,18 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
         {dudasVisibles.length > 0 && (
           <div style={{position:"fixed",right:82,bottom:96,zIndex:80,width:360,maxHeight:"min(520px, calc(100vh - 150px))",overflowY:"auto",display:"flex",flexDirection:"column",gap:10,padding:4}}>
             {dudasVisibles.map((duda) => (
-              <div key={claveAlertaWelcome(duda)} style={{position:"relative",flex:"none"}}>
-                <button
-                  type="button"
-                  onClick={() => abrirChatRespuestaWelcome(duda)}
-                  style={{width:"100%",textAlign:"left",padding:"14px 42px 14px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 12px 30px rgba(124,45,18,.2)",cursor:"pointer",color:"#7c2d12"}}
-                >
-                  <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
-                  <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
-                  <div style={{marginTop:6,fontSize:11,fontWeight:800}}>Abrir chat de Welcome →</div>
-                </button>
+              <div key={claveAlertaWelcome(duda)} style={{position:"relative",flex:"none",padding:"14px 42px 12px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 12px 30px rgba(124,45,18,.2)",color:"#7c2d12"}}>
+                <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
+                <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+                <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                  <button
+                    type="button"
+                    onClick={() => abrirChatRespuestaWelcome(duda)}
+                    style={{padding:"7px 10px",borderRadius:8,border:"1px solid #fb923c",background:"#fff",color:"#9a3412",fontSize:11,fontWeight:900,cursor:"pointer"}}
+                  >
+                    Abrir chat →
+                  </button>
+                </div>
                 <button
                   type="button"
                   aria-label={`Cerrar alerta de ${duda.nombre_cliente_completo || "cliente"}`}

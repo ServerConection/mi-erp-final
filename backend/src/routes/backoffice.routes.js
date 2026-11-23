@@ -643,6 +643,28 @@ router.post('/welcome/respuestas/:id/atender', async (req,res) => {
   } catch (error) { res.status(500).json({success:false,error:error.message}); }
 });
 
+router.post('/welcome/respuestas/:id/positiva', async (req, res) => {
+  try {
+    const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+    if (!['ATC', 'ADMINISTRADOR'].includes(perfil)) {
+      return res.status(403).json({ success:false, error:'Solo los perfiles ATC y ADMINISTRADOR pueden confirmar respuestas positivas' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE welcome_notifications
+       SET response_status='POSITIVA', updated_at=NOW()
+       WHERE id=$1 AND status='completed' AND responded_at IS NOT NULL
+       RETURNING *`,
+      [req.params.id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success:false, error:'No se encontró una respuesta de Welcome para confirmar' });
+    }
+    res.json({ success:true, data:rows[0] });
+  } catch (error) {
+    res.status(500).json({ success:false, error:error.message });
+  }
+});
+
 router.post('/welcome/programar', async (req, res) => {
   const ids = [...new Set((req.body?.registro_ids || []).map(Number).filter(Number.isSafeInteger))];
   const inicio = new Date(req.body?.inicio);

@@ -179,6 +179,11 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Se monta fuera de /api para no interferir con las rutas existentes.
 const publicPath = path.resolve(__dirname, '..', 'public');
 app.use(express.static(publicPath));
+app.get('/Auditar-ArchivosWindows.ps1', (_req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  return res.sendFile(path.resolve(__dirname, '..', '..', 'tools', 'Auditar-ArchivosWindows.ps1'));
+});
 
 // Control de asistencia: registra marcaciones de usuarios (lat/lon tomadas en cliente, IP y fecha/hora fijadas en server)
 // Va DESPUES de express.json: si se monta antes, req.body llega vacio y responde "Actividad inválida".

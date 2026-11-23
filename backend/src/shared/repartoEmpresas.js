@@ -35,7 +35,7 @@ const EMPRESAS = {
     pipeline: env.GESTIONABLES_PIPELINE || 'NETLIFE NUEVO',
     etapa: env.GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874201,
-    plazoVentaHoras: 5,                          // Novonet: 5 horas para pasar a Venta Subida
+    plazoVentaHoras: 8,                          // Novonet: 8 horas para pasar a Venta Subida
     // Orígenes que se REPARTEN en orden pero NO cuentan en leads, ATC ni gestionables
     origenesSinConteo: ['FB MESSENGER - NOVO'],
     // Cliente que responde "1" (Venta) en el chat: si este asesor está hasta el
@@ -64,7 +64,7 @@ const EMPRESAS = {
     pipeline: env.VELSA_GESTIONABLES_PIPELINE || 'VELSA',
     etapa: env.VELSA_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     lock: 874301,
-    plazoVentaHoras: 5,                          // Velsa: 5 horas para pasar a Venta Subida
+    plazoVentaHoras: 8,                          // Velsa: 8 horas para pasar a Venta Subida
   },
   semillero: {
     clave: 'semillero',
@@ -89,7 +89,7 @@ const EMPRESAS = {
     etapa: env.SEMILLERO_GESTIONABLES_STAGE_NAME || 'CONTACTO NUEVO',
     etapaPrimeraSiNoExiste: true,                // sin "Contacto nuevo" → primera etapa del pipeline
     lock: 874401,
-    plazoVentaHoras: 5,                          // Semillero: 5 horas para pasar a Venta Subida
+    plazoVentaHoras: 8,                          // Semillero: 8 horas para pasar a Venta Subida
   },
 };
 

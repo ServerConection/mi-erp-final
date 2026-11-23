@@ -10,10 +10,10 @@ La auditoría registra cada ejecución en una sola fila de `public.auditoria_arc
 
 ## Ejecución
 
-Una vez desplegado el backend, abrir PowerShell como el usuario que se auditará y ejecutar una sola línea. No es necesario descargar el archivo previamente:
+Copiar el archivo configurado a `Descargas`, abrir PowerShell como el usuario que se auditará y ejecutar:
 
 ```powershell
-irm "https://erp-backend-v1-qhk2.onrender.com/Auditar-ArchivosWindows.ps1" | iex
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Auditar-ArchivosWindows.ps1"
 ```
 
 El script preguntará `Empresa del equipo (NOVONET/VELSA)` y no continuará hasta recibir uno de esos dos valores.

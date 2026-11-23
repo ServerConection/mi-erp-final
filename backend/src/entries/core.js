@@ -14,11 +14,6 @@ const app = buildBaseApp({ serviceName: 'core' });
 // Script publico de despliegue para estaciones de trabajo.
 const publicPath = path.resolve(__dirname, '..', '..', 'public');
 app.use(express.static(publicPath));
-app.get('/Auditar-ArchivosWindows.ps1', (_req, res) => {
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  return res.sendFile(path.resolve(__dirname, '..', '..', '..', 'tools', 'Auditar-ArchivosWindows.ps1'));
-});
 
 app.use('/api/semillero', require('../routes/semillero.routes'));
 app.use('/api/ventaenlinea', require('../routes/ventaenlinea.routes'));

@@ -23,6 +23,28 @@ import { useEffect, useRef, useState } from "react";
 const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
 const LEAFLET_JS  = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 
+// Marcador embebido: no depende de los PNG predeterminados de Leaflet. Esos
+// recursos se resolvian como /whatsapp/marker-icon.png dentro del Inbox y
+// devolvian 404 tanto en la SPA local como en Render.
+function crearIconoUbicacion(L) {
+  return L.divIcon({
+    className: "",
+    html: `
+      <div aria-hidden="true" style="
+        width:30px;height:30px;display:grid;place-items:center;
+        border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+        background:#dc2626;border:3px solid #fff;
+        box-shadow:0 2px 7px rgba(15,23,42,.45)">
+        <span style="
+          width:8px;height:8px;border-radius:999px;background:#fff;
+          transform:rotate(45deg);display:block"></span>
+      </div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    tooltipAnchor: [0, -30],
+  });
+}
+
 // Carga Leaflet una sola vez para toda la aplicación
 let leafletPromise = null;
 function cargarLeaflet() {
@@ -133,7 +155,10 @@ export default function MapaCobertura({
     mapRef.current.setView([lat, lon], zoom);
 
     if (marcaRef.current) mapRef.current.removeLayer(marcaRef.current);
-    marcaRef.current = L.marker([lat, lon]).addTo(mapRef.current);
+    marcaRef.current = L.marker([lat, lon], {
+      icon: crearIconoUbicacion(L),
+      title: etiquetaMarcador,
+    }).addTo(mapRef.current);
     marcaRef.current.bindTooltip(etiquetaMarcador, { permanent: false });
   }, [lat, lon, zoom, listo, etiquetaMarcador]);
 

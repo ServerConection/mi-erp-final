@@ -180,8 +180,9 @@ function ChartArea({ h = 300, children }) {
 }
 
 /** Multi-select dropdown para Campaña/Origen */
-function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "orange", placeholder = "TODAS LAS CAMPAÑAS" }) {
+function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "orange", placeholder = "TODAS LAS CAMPAÑAS", searchable = false }) {
   const [open, setOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
   const ref = useRef(null);
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -192,6 +193,10 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "o
     if (value.includes(opt)) onChange(value.filter(v => v !== opt));
     else onChange([...value, opt]);
   };
+  const normalizarBusqueda = (texto) => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const opcionesVisibles = searchable && busqueda.trim()
+    ? options.filter(opt => normalizarBusqueda(opt).includes(normalizarBusqueda(busqueda.trim())))
+    : options;
   const btnCls = `w-full text-left bg-stone-50 border border-stone-200 rounded-lg px-3 py-[9px] text-[9px] font-bold text-stone-600 flex justify-between items-center gap-1 hover:border-${accentColor}-300 transition-colors`;
   return (
     <div ref={ref} className="relative">
@@ -201,19 +206,31 @@ function MultiSelectCanal({ value = [], onChange, options = [], accentColor = "o
       </button>
       {open && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+          {searchable && (
+            <div className="sticky top-0 bg-white z-20 p-2 border-b border-stone-100">
+              <input
+                autoFocus
+                type="search"
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+                placeholder="BUSCAR ASESOR..."
+                className="w-full rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-[9px] font-bold text-stone-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              />
+            </div>
+          )}
           {value.length > 0 && (
             <button onClick={() => onChange([])} className="w-full text-left px-3 py-2 text-[8px] font-black text-red-500 hover:bg-red-50 border-b border-stone-100 uppercase">
               ✕ Limpiar selección
             </button>
           )}
-          {options.map((opt, i) => (
+          {opcionesVisibles.map((opt, i) => (
             <label key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-stone-50 cursor-pointer text-[9px] font-bold text-stone-700 border-b border-stone-50 last:border-0">
               <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)}
                 className={`accent-${accentColor}-500 w-3 h-3 shrink-0`} />
               <span className="break-words">{opt}</span>
             </label>
           ))}
-          {options.length === 0 && <div className="px-3 py-3 text-[9px] text-stone-400 uppercase">Sin opciones</div>}
+          {opcionesVisibles.length === 0 && <div className="px-3 py-3 text-[9px] text-stone-400 uppercase">Sin coincidencias</div>}
         </div>
       )}
     </div>
@@ -1489,6 +1506,7 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
                   options={nombresAsesores}
                   accentColor="orange"
                   placeholder="TODOS LOS ASESORES"
+                  searchable
                 />
               </div>
 

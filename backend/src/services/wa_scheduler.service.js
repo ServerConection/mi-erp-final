@@ -151,7 +151,7 @@ class SchedulerService {
         `SELECT * FROM welcome_notifications
          WHERE (status IN ('pending', 'failed')
                 OR (status='processing' AND updated_at < NOW() - INTERVAL '5 minutes'))
-           AND attempts < 3
+           AND (attempts < 3 OR last_error ILIKE 'WhatsApp: Línea % no conectada')
            AND scheduled_at <= NOW()
          ORDER BY scheduled_at ASC
          LIMIT 1`
@@ -222,14 +222,18 @@ class SchedulerService {
             }
             console.log(`[Scheduler] ✅ Bienvenida completada para registro #${tarea.registro_id}`)
           } else {
-            const intentos = Number(tarea.attempts || 0) + 1
+            const detalleError = errores.join(' | ').slice(0, 1000)
+            const lineaDesconectada = /Línea .* no conectada/i.test(detalleError)
+            const intentos = lineaDesconectada
+              ? Number(tarea.attempts || 0)
+              : Number(tarea.attempts || 0) + 1
             await query(
               `UPDATE welcome_notifications
-               SET status='failed', attempts=$2, last_error=$3, updated_at=NOW()
+               SET status=$2, attempts=$3, last_error=$4, updated_at=NOW()
                WHERE id=$1`,
-              [tarea.id, intentos, errores.join(' | ').slice(0, 1000)]
+              [tarea.id, lineaDesconectada ? 'pending' : 'failed', intentos, detalleError]
             )
-            console.warn(`[Scheduler] ⚠️ Bienvenida #${tarea.registro_id} incompleta (intento ${intentos}/3): ${errores.join(' | ')}`)
+            console.warn(`[Scheduler] Bienvenida #${tarea.registro_id} incompleta${lineaDesconectada ? ' (línea desconectada; se reintentará)' : ` (intento ${intentos}/3)`}: ${detalleError}`)
           }
         } catch (error) {
           const intentos = Number(tarea.attempts || 0) + 1

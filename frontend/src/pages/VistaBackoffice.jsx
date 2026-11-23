@@ -5625,6 +5625,22 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
       : new Set());
   };
 
+  const seleccionarSiguienteLoteWelcome = () => {
+    const siguienteLote = porBloque.SIN_NOTIFICAR
+      .filter((row) => !seleccionados.has(String(row.id)))
+      .slice(0, 10)
+      .map((row) => String(row.id));
+
+    if (!siguienteLote.length) {
+      setAviso("Todos los registros visibles sin notificar ya están seleccionados.");
+      return;
+    }
+
+    setSeleccionados((actuales) => new Set([...actuales, ...siguienteLote]));
+    const totalSeleccionados = seleccionados.size + siguienteLote.length;
+    setAviso(`Lote agregado: ${siguienteLote.length}. Total preparado: ${totalSeleccionados} registros.`);
+  };
+
   const programarSeleccionados = async () => {
     const ordenados = rows
       .filter((row) => estadoWelcome(row) === "SIN_NOTIFICAR")
@@ -6059,6 +6075,15 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
               />
               Seleccionar todos
             </label>
+
+            <button
+              type="button"
+              onClick={seleccionarSiguienteLoteWelcome}
+              disabled={programando || porBloque.SIN_NOTIFICAR.length === 0}
+              style={{ padding: "9px 13px", borderRadius: 9, border: "1px solid #7dd3fc", background: "#fff", color: "#0369a1", fontSize: 12, fontWeight: 900, cursor: programando || porBloque.SIN_NOTIFICAR.length === 0 ? "not-allowed" : "pointer" }}
+            >
+              Seleccionar lote de 10
+            </button>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ fontSize: 10, fontWeight: 900, color: "#0369a1", letterSpacing: ".08em", textTransform: "uppercase" }}>
@@ -6829,6 +6854,7 @@ const ESTADOS_PRESERVICIOS = [
   { id: "PREPLANIFICADO", titulo: "Preplanificados", color: "#2563eb", fondo: "#eff6ff", borde: "#bfdbfe", match: (v) => v.includes("PREPLANIFIC") },
   { id: "ASIGNADO", titulo: "Asignados", color: "#059669", fondo: "#ecfdf5", borde: "#a7f3d0", match: (v) => v.includes("ASIGNAD") },
   { id: "DETENIDO", titulo: "Detenidos", color: "#dc2626", fondo: "#fef2f2", borde: "#fecaca", match: (v) => v.includes("DETENID") },
+  { id: "PENDIENTE_POR_DEUDA", titulo: "Pendiente por deuda", color: "#be123c", fondo: "#fff1f2", borde: "#fecdd3", match: (v) => v.includes("PENDIENTE POR DEUDA") },
   { id: "NO_INGRESADO", titulo: "No Ingresado", color: "#c2410c", fondo: "#fff7ed", borde: "#fdba74", match: (v) => v.includes("NO INGRESAD") },
   { id: "EN_VERIFICACION", titulo: "En Verificación", color: "#4f46e5", fondo: "#eef2ff", borde: "#c7d2fe", match: (v) => v.includes("EN VERIFICACION") },
 ];
@@ -7249,18 +7275,22 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
   const [busqueda, setBusqueda] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => rangoMesActualEC().fechaDesde);
   const [fechaHasta, setFechaHasta] = useState(() => rangoMesActualEC().fechaHasta);
+  const [activacionDesde, setActivacionDesde] = useState("");
+  const [activacionHasta, setActivacionHasta] = useState("");
 
   const [filtrosAplicados, setFiltrosAplicados] = useState(() => ({
-    busqueda: "", ...rangoMesActualEC(),
+    busqueda: "", ...rangoMesActualEC(), activacionDesde: "", activacionHasta: "",
   }));
 
-  const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta });
+  const consultar = () => setFiltrosAplicados({ busqueda, fechaDesde, fechaHasta, activacionDesde, activacionHasta });
 
   const limpiarFiltros = () => {
     setBusqueda("");
     setFechaDesde("");
     setFechaHasta("");
-    setFiltrosAplicados({ busqueda: "", fechaDesde: "", fechaHasta: "" });
+    setActivacionDesde("");
+    setActivacionHasta("");
+    setFiltrosAplicados({ busqueda: "", fechaDesde: "", fechaHasta: "", activacionDesde: "", activacionHasta: "" });
   };
 
   const rowsConFiltros = useMemo(() => {
@@ -7268,6 +7298,9 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
       const iso = fechaCalendarioEC(r.fecha_registro_sistema);
       if (filtrosAplicados.fechaDesde && (!iso || iso < filtrosAplicados.fechaDesde)) return false;
       if (filtrosAplicados.fechaHasta && (!iso || iso > filtrosAplicados.fechaHasta)) return false;
+      const activacion = fechaCalendarioEC(r.fecha_activacion_netlife);
+      if (filtrosAplicados.activacionDesde && (!activacion || activacion < filtrosAplicados.activacionDesde)) return false;
+      if (filtrosAplicados.activacionHasta && (!activacion || activacion > filtrosAplicados.activacionHasta)) return false;
       return true;
     });
   }, [todas, filtrosAplicados]);
@@ -7415,6 +7448,14 @@ function TableroValidacionEstado({ onVolver, empresa, onCambiarEmpresa }) {
                   hasta={fechaHasta}
                   onDesde={setFechaDesde}
                   onHasta={setFechaHasta}
+                />
+
+                <CampoRangoFecha
+                  label="Fecha de activación"
+                  desde={activacionDesde}
+                  hasta={activacionHasta}
+                  onDesde={setActivacionDesde}
+                  onHasta={setActivacionHasta}
                 />
 
                 <button

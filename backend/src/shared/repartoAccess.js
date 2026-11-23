@@ -82,9 +82,35 @@ const leerAccess = async ({ forzar = false } = {}) => {
 };
 
 // Estado de un asesor (por su nombre de Bitrix). null = no se exige / sin dato
+// Nombre parcial: en el ERP suele faltar el segundo nombre o el segundo apellido
+// ("GRACE ARIAS" ↔ "GRACE ARIAS NARVAEZ"). Se acepta si TODAS las palabras del
+// nombre más corto están en el otro, son al menos 2 y hay UNA sola persona así.
+const coincidenciaParcial = (access, clave) => {
+  const mias = new Set(clave.split(' ').filter(Boolean));
+  let unica = null, vistas = 0;
+  for (const [k, estado] of access.mapa) {
+    const suyas = k.split(' ').filter(Boolean);
+    const [corto, largo] = suyas.length <= mias.size ? [suyas, mias] : [[...mias], new Set(suyas)];
+    if (corto.length < 2 || !corto.every((w) => largo.has(w))) continue;
+    if (unica && unica !== estado) vistas += 1;
+    if (!unica) { unica = estado; vistas = 1; }
+  }
+  return vistas === 1 ? unica : null;
+};
+
+// Excepciones temporales: asesores que reciben aunque no marquen en ACCESS.
+// Variable en Render: GESTIONABLES_ACCESS_EXCEPCIONES="NOMBRE UNO, NOMBRE DOS"
+// (nombres como están en Bitrix, separados por coma). Vacía = sin excepciones.
+const excepciones = () => new Set(String(process.env.GESTIONABLES_ACCESS_EXCEPCIONES || '')
+  .split(',').map((n) => claveAccess(n)).filter(Boolean));
+
 const estadoAccess = (access, nombre) => {
   if (!access) return null;
-  return access.mapa.get(claveAccess(nombre)) || { conectado: false, actividad: null, momento: null };
+  const clave = claveAccess(nombre);
+  if (excepciones().has(clave)) return { conectado: true, actividad: 'EXCEPCION', momento: null };
+  if (!access.parcial) access.parcial = new Map();
+  if (!access.parcial.has(clave)) access.parcial.set(clave, access.mapa.get(clave) || coincidenciaParcial(access, clave));
+  return access.parcial.get(clave) || { conectado: false, actividad: null, momento: null };
 };
 
 module.exports = { leerAccess, estadoAccess, claveAccess, exigeAccess };

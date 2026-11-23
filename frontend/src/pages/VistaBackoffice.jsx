@@ -5526,7 +5526,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const respuestaPorRegistro = useMemo(() => {
     const mapa = new Map();
     for (const [registroId, notificacion] of notificacionPorRegistro) {
-      if (notificacion.response_status && !notificacion.attended) mapa.set(registroId, notificacion);
+      if (notificacion.response_status === "DUDA" && !notificacion.attended) mapa.set(registroId, notificacion);
     }
     return mapa;
   }, [notificacionPorRegistro]);
@@ -5586,10 +5586,11 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const respuestasNotificados = porBloque.NOTIFICADOS
     .map((row) => notificacionPorRegistro.get(String(row.id)))
     .filter((respuesta) => Boolean(respuesta?.response_status));
-  const respondieron = respuestasNotificados.length;
-  const sinAtender = respuestasNotificados.filter((respuesta) => !respuesta.attended).length;
   const positivas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "POSITIVA").length;
   const dudas = respuestasNotificados.filter((respuesta) => respuesta.response_status === "DUDA");
+  const respuestasPendientes = dudas.filter((respuesta) => !respuesta.attended);
+  const respondieron = respuestasPendientes.length;
+  const sinAtender = respuestasPendientes.length;
   const claveAlertaWelcome = (respuesta) => `${respuesta.id}:${respuesta.responded_at || "sin-fecha"}`;
   const dudasVisibles = dudas.filter(
     (respuesta) => !respuesta.attended && !alertasWelcomeCerradas.has(claveAlertaWelcome(respuesta))

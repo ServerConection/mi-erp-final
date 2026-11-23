@@ -148,6 +148,16 @@ const soloAdmin = (req, res, next) => {
   next();
 };
 
+const puedeConfigurarPromptBotAuditor = (req, res, next) => {
+  const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+  const usuario = String(req.user?.usuario || '').trim().toLowerCase();
+  if (perfil === 'ADMINISTRADOR' || usuario === 'mpijal') return next();
+  return res.status(403).json({
+    success: false,
+    error: 'Acceso denegado. No tienes permiso para configurar el prompt de BotAuditor.'
+  });
+};
+
 /**
  * Middleware: bloquea unicamente a usuarios con perfil ASESOR.
  * Todos los demas perfiles (ADMINISTRADOR, ANALISTA, GERENTE, SUPERVISOR) pasan.
@@ -195,4 +205,4 @@ const soloTTHH = (req, res, next) => {
   next();
 };
 
-module.exports = { verificarToken, soloAdmin, noAsesor, soloAutomarcador, soloTTHH, invalidarUsuarioCache, usuarioFresco };
+module.exports = { verificarToken, soloAdmin, puedeConfigurarPromptBotAuditor, noAsesor, soloAutomarcador, soloTTHH, invalidarUsuarioCache, usuarioFresco };

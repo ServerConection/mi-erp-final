@@ -253,23 +253,45 @@ class SchedulerService {
   async _classifyWelcomeResponses() {
     try {
       const respuestas = await query(`
-        SELECT DISTINCT ON (wn.id) wn.id,m.content,m.timestamp,m.conversation_id
+        SELECT DISTINCT ON (wn.id)
+          wn.id,m.content,m.timestamp,m.conversation_id,respuesta_atc.timestamp AS replied_at
         FROM welcome_notifications wn
         JOIN envios_ventas ev ON ev.id=wn.registro_id
         JOIN lines l ON UPPER(TRIM(l.name))=(SELECT UPPER(TRIM(line_name)) FROM welcome_config WHERE id=1)
         JOIN messages m ON m.line_id=l.id AND m.direction='in'
         LEFT JOIN conversations c ON c.id=m.conversation_id
         LEFT JOIN contacts ct ON ct.id=c.contact_id
+        LEFT JOIN LATERAL (
+          SELECT mo.timestamp
+          FROM messages mo
+          WHERE mo.line_id=m.line_id
+            AND mo.conversation_id=m.conversation_id
+            AND mo.direction='out'
+            AND mo.timestamp > m.timestamp
+          ORDER BY mo.timestamp ASC
+          LIMIT 1
+        ) respuesta_atc ON true
         WHERE right(regexp_replace(COALESCE(ct.metadata->>'real_phone',m.wa_number),'[^0-9]','','g'),9) = right(regexp_replace(COALESCE(ev.telf_celular_pin,ev.telf_celular_2,ev.telf_fijo),'[^0-9]','','g'),9)
           AND m.timestamp >= wn.completed_at
-          AND wn.status='completed' AND wn.response_status IS NULL
-        ORDER BY wn.id,m.timestamp ASC`)
+          AND wn.status='completed'
+        ORDER BY wn.id,m.timestamp DESC`)
       for (const r of respuestas.rows) {
         const texto = String(r.content || '').trim().toLowerCase()
         const positiva = /^(1|si|sí|ok|entendi|entendí|gracias|todo claro)/.test(texto)
         const estado = positiva ? 'POSITIVA' : 'DUDA'
-        await query(`UPDATE welcome_notifications SET response_status=$2,response_text=$3,responded_at=$4,conversation_id=$5,updated_at=NOW() WHERE id=$1 AND response_status IS NULL`, [r.id,estado,r.content,r.timestamp,r.conversation_id])
-        this.io.emit('welcome:respuesta', { id:r.id,estado,conversationId:r.conversation_id })
+        const atendida = Boolean(r.replied_at)
+        const actualizada = await query(
+          `UPDATE welcome_notifications
+           SET response_status=$2,response_text=$3,responded_at=$4,conversation_id=$5,
+               attended=$6,attended_at=$7,updated_at=NOW()
+           WHERE id=$1
+             AND (responded_at IS DISTINCT FROM $4 OR attended IS DISTINCT FROM $6 OR response_text IS DISTINCT FROM $3)
+           RETURNING id`,
+          [r.id,estado,r.content,r.timestamp,r.conversation_id,atendida,r.replied_at]
+        )
+        if (actualizada.rows.length) {
+          this.io.emit('welcome:respuesta', { id:r.id,estado,conversationId:r.conversation_id,attended:atendida })
+        }
       }
     } catch (error) { console.warn('[Scheduler] classifyWelcomeResponses:', error.message) }
   }

@@ -5106,7 +5106,6 @@ function TarjetaWelcome({
   tituloSeleccion = "Seleccionar para programar",
   bloquearArrastre = false,
   onEditarCampo,
-  respuestaWelcome = null,
   notificacionWelcome = null,
   onAbrirChatWelcome,
 }) {
@@ -5255,40 +5254,7 @@ function TarjetaWelcome({
         {edicion && <div style={{ marginTop: 4, color: guardando ? "#0369a1" : "#64748b", fontSize: 10.5, fontWeight: 700 }}>{guardando ? "Guardando…" : "Enter o clic fuera para guardar · Esc para cancelar"}</div>}
       </div>
 
-      {respuestaWelcome && (
-        <div
-          className={`bo-welcome-response ${respuestaWelcome.attended ? "is-attended" : "is-pending"}`}
-          role="status"
-          aria-label="El cliente respondió el mensaje Welcome"
-        >
-          <div className="bo-welcome-response__header">
-            <span className="bo-welcome-response__alert" aria-hidden="true">!</span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="bo-welcome-response__title">
-                {respuestaWelcome.attended ? "Cliente respondió" : "Nueva respuesta"}
-              </div>
-              <div className="bo-welcome-response__date">
-                {mostrarFechaHoraWelcome(respuestaWelcome.responded_at)}
-              </div>
-            </div>
-          </div>
-          <div className="bo-welcome-response__text">
-            {respuestaWelcome.response_text || "El cliente envió un mensaje."}
-          </div>
-          <button
-            type="button"
-            className="bo-welcome-response__button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAbrirChatWelcome?.(respuestaWelcome);
-            }}
-          >
-            💬 Ir al chat
-          </button>
-        </div>
-      )}
-
-      {!respuestaWelcome && notificacionWelcome && (
+      {notificacionWelcome && (
         <button
           type="button"
           className="bo-welcome-chat-button"
@@ -5550,7 +5516,7 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
   const respuestaPorRegistro = useMemo(() => {
     const mapa = new Map();
     for (const [registroId, notificacion] of notificacionPorRegistro) {
-      if (notificacion.response_status) mapa.set(registroId, notificacion);
+      if (notificacion.response_status && !notificacion.attended) mapa.set(registroId, notificacion);
     }
     return mapa;
   }, [notificacionPorRegistro]);
@@ -5563,11 +5529,6 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
     setChatConversacionId(respuesta.conversation_id);
     setChatClienteWelcome(respuesta.nombre_cliente_completo || "Cliente");
     setMostrarChatWelcome(true);
-    if (!respuesta.response_status) return;
-    try {
-      await fetch(`${API}/api/backoffice/welcome/respuestas/${respuesta.id}/atender`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
-      setRespuestasWelcome((actuales) => actuales.map((r) => String(r.id) === String(respuesta.id) ? {...r,attended:true} : r));
-    } catch { /* el chat debe abrir incluso si falla la marca de atención */ }
   };
 
   const consultarWelcome = () => setFiltrosWelcome({ busqueda, fechaDesde: fechaDesdeWelcome, fechaHasta: fechaHastaWelcome });
@@ -6204,7 +6165,6 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
                             tituloSeleccion={modoExportacion ? "Seleccionar para exportar" : "Seleccionar para programar"}
                             bloquearArrastre={modoExportacion}
                             onEditarCampo={editarCampoWelcome}
-                            respuestaWelcome={bloque.id === "NOTIFICADOS" ? respuestaPorRegistro.get(String(row.id)) : null}
                             notificacionWelcome={bloque.id === "NOTIFICADOS" ? notificacionPorRegistro.get(String(row.id)) : null}
                             onAbrirChatWelcome={abrirChatRespuestaWelcome}
                           />

@@ -417,10 +417,25 @@ exports.registrarAuditoria = async (req, res) => {
 exports.registrarAuditoriaArchivos = async (req, res) => {
   const body = req.body || {};
   const texto = (valor, max = 2000) => valor === undefined || valor === null ? null : String(valor).trim().slice(0, max) || null;
+  const textoJsonPostgres = (valor) => String(valor)
+    .replace(/\u0000/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD');
+  const sanitizarJsonPostgres = (valor) => {
+    if (typeof valor === 'string') return textoJsonPostgres(valor);
+    if (Array.isArray(valor)) return valor.map(sanitizarJsonPostgres);
+    if (valor && typeof valor === 'object') {
+      return Object.fromEntries(Object.entries(valor).map(([clave, contenido]) => [
+        textoJsonPostgres(clave), sanitizarJsonPostgres(contenido),
+      ]));
+    }
+    return valor;
+  };
   const entero = (valor) => Number.isInteger(valor) && valor >= 0 ? valor : null;
   const fecha = (valor) => valor && !Number.isNaN(Date.parse(valor)) ? new Date(valor) : null;
-  const archivos = Array.isArray(body.archivos) ? body.archivos : null;
-  const carpetas = Array.isArray(body.carpetas) ? body.carpetas : null;
+  const archivos = Array.isArray(body.archivos) ? sanitizarJsonPostgres(body.archivos) : null;
+  const carpetas = Array.isArray(body.carpetas) ? sanitizarJsonPostgres(body.carpetas) : null;
+  const rutasAuditadas = sanitizarJsonPostgres(Array.isArray(body.rutas_auditadas) ? body.rutas_auditadas : []);
+  const errores = sanitizarJsonPostgres(Array.isArray(body.errores) ? body.errores : []);
   const empresaSolicitada = normalizarTexto(body.empresa);
   const empresaToken = normalizarTexto(req.user?.empresa);
   const empresa = req.user?.authTipo === 'API_TOKEN' && ['NOVONET', 'VELSA'].includes(empresaToken)
@@ -456,9 +471,9 @@ exports.registrarAuditoriaArchivos = async (req, res) => {
                $15,$16,$17,$18,$19)
        RETURNING id, recibida_en`,
       [empresa, datos.equipo, datos.usuario, datos.perfil, datos.mac, datos.raiz,
-        JSON.stringify(body.rutas_auditadas || []), datos.totalArchivos, datos.totalDescargas,
+        JSON.stringify(rutasAuditadas), datos.totalArchivos, datos.totalDescargas,
         datos.totalImagenes, datos.totalCarpetas, JSON.stringify(carpetas), JSON.stringify(archivos),
-        JSON.stringify(body.errores || []), datos.inicio, datos.fin, usuarioActual(req),
+        JSON.stringify(errores), datos.inicio, datos.fin, usuarioActual(req),
         req.user?.tokenId || null, datos.version]
     );
     const resultado = insercion.rows[0];

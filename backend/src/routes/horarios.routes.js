@@ -48,7 +48,7 @@ function parseCelda(valor) {
   const base = { tipo: 'SIN_ASIGNAR', hora_inicio: null, hora_fin: null, hora_inicio2: null, hora_fin2: null, modalidad: null, texto_original: original || null };
   if (!t) return base;
   if (t.includes('LIBRE')) return { ...base, tipo: 'LIBRE' };
-  const pares = [...t.matchAll(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g)];
+  const pares = [...t.matchAll(/(\d{1,2}):(\d{2})\s*(?:-|A)?\s*(\d{1,2}):(\d{2})/g)]; // acepta '08:00 - 15:00', '8:30 a 13:30', '09:00 11:00'
   if (!pares.length) return base;
   let modalidad = null;
   if (t.includes('TELECONEX')) modalidad = 'TELECONEXION';

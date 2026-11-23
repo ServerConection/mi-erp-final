@@ -195,7 +195,7 @@ router.get('/consulta-master', async (req, res) => {
     const [novonet, velsa, semillero, ventaenlinea] = await Promise.all([
       consultarDetalleJotform(pool, 'novonet', req.query),
       consultarDetalleJotform(pool, 'velsa', req.query),
-      consultarDetallePipelineWebhook('semillero', '41', 'SEMILLERO', req.query),
+      consultarDetalleJotform(pool, 'semillero', req.query), // ventas ingresadas (envios_ventas), igual que Novonet/Velsa
       consultarDetallePipelineWebhook('ventaenlinea', '61', 'VENTAENLINEA', req.query),
     ]);
     const claveFecha = fila => {

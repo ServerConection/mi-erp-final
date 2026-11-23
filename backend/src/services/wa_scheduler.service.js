@@ -254,7 +254,7 @@ class SchedulerService {
     try {
       const respuestas = await query(`
         SELECT DISTINCT ON (wn.id)
-          wn.id,m.content,m.timestamp,m.conversation_id,respuesta_atc.timestamp AS replied_at
+          wn.id,wn.response_status,m.content,m.timestamp,m.conversation_id,respuesta_atc.timestamp AS replied_at
         FROM welcome_notifications wn
         JOIN envios_ventas ev ON ev.id=wn.registro_id
         JOIN lines l ON UPPER(TRIM(l.name))=(SELECT UPPER(TRIM(line_name)) FROM welcome_config WHERE id=1)
@@ -278,7 +278,7 @@ class SchedulerService {
       for (const r of respuestas.rows) {
         const texto = String(r.content || '').trim().toLowerCase()
         const positiva = /^(1|si|sí|ok|entendi|entendí|gracias|todo claro)/.test(texto)
-        const estado = positiva ? 'POSITIVA' : 'DUDA'
+        const estado = r.response_status === 'POSITIVA' ? 'POSITIVA' : (positiva ? 'POSITIVA' : 'DUDA')
         const atendida = Boolean(r.replied_at)
         const actualizada = await query(
           `UPDATE welcome_notifications

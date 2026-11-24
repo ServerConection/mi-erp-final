@@ -129,6 +129,7 @@ router.post ('/conversations/:id/call',          convsCtrl.callConversation);
 router.post ('/conversations/:id/internal-note', convsCtrl.createInternalNote);
 router.post ('/conversations/:id/close',         convsCtrl.close);
 router.post ('/conversations/:id/takeover',      convsCtrl.takeover);
+router.post  ('/conversations/:id/llamar-bitrix', convsCtrl.llamarBitrix);
 router.delete('/conversations/:id',              convsCtrl.remove);
 
 // ── RESPALDO DE CONVERSACIONES (buscar y exportar por número) ──

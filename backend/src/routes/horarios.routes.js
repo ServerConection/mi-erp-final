@@ -19,6 +19,7 @@ const { claveNombre, mismaPalabra } = require('../services/asesorMatcher.service
 const {
   esAdminGerencia,
   esSupervisor,
+  esLectorEspecial,
   puedeAccederHorarios,
   empresaHorarios,
 } = require('../shared/horariosAcceso');
@@ -28,7 +29,7 @@ const MODALIDADES = new Set(['OFICINA', 'TELECONEXION', 'HIBRIDO']);
 const RE_HORA = /^([01]\d|2[0-3]):(00|30)$/;      // solo cortes de 30 minutos
 
 // ── Perfiles ────────────────────────────────────────────────────────────────
-const veTodo = (p) => esAdminGerencia(p) || esSupervisor(p);
+const veTodo = (p, usuario) => esAdminGerencia(p) || esSupervisor(p) || esLectorEspecial(usuario);
 
 // ── Fechas (YYYY-MM-DD, sin zona horaria) ───────────────────────────────────
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -98,7 +99,7 @@ const empresaDe = empresaHorarios;
 const quien = (req) => req.user?.usuario || req.user?.nombreCompleto || String(req.user?.id || '');
 
 const soloHorarios = (req, res, next) => {
-  if (!puedeAccederHorarios(req.user?.perfil)) {
+  if (!puedeAccederHorarios(req.user?.perfil, req.user?.usuario)) {
     return res.status(403).json({ success: false, error: 'No tienes acceso al módulo de horarios' });
   }
   next();
@@ -131,7 +132,7 @@ router.get('/semana', async (req, res) => {
   const lunes = lunesDe(pedido);
   const domingo = sumarDias(lunes, 6);
   const perfil = req.user?.perfil;
-  const todo = veTodo(perfil);
+  const todo = veTodo(perfil, req.user?.usuario);
 
   try {
     const { rows } = await pool.query(

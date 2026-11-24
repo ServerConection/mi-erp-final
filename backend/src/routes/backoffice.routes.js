@@ -576,7 +576,7 @@ router.get('/welcome/programaciones', async (_req, res) => {
   }
 });
 
-router.get('/welcome/config', async (_req, res) => {
+router.get('/welcome/config', async (req, res) => {
   try {
     const [config, variantes] = await Promise.all([
       pool.query(`SELECT c.*,l.id AS line_id,l.status AS line_status,l.phone_number
@@ -586,7 +586,14 @@ router.get('/welcome/config', async (_req, res) => {
                   ) l ON true WHERE c.id=1`),
       pool.query(`SELECT id,code,name,body,active,sort_order FROM welcome_variants ORDER BY sort_order,id`),
     ]);
-    res.json({ success: true, data: config.rows[0], variantes: variantes.rows });
+    const data = config.rows[0] ? { ...config.rows[0] } : null;
+    if (data?.line_id) {
+      const baileysManager = req.app.get('baileysManager');
+      data.line_status = baileysManager?.instances?.[data.line_id]
+        ? baileysManager.getStatus(data.line_id)
+        : (data.line_status === 'connected' ? 'connecting' : data.line_status);
+    }
+    res.json({ success: true, data, variantes: variantes.rows });
   } catch (error) { res.status(500).json({ success:false,error:error.message }); }
 });
 

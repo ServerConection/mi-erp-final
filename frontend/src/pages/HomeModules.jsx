@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista } from '../utils/accesoAnalista';
 import { puedeAccederAutomarcador } from '../utils/accesoAutomarcador';
+import { puedeAccederHorarios } from '../utils/accesoAdministracion';
 import { useAccesoTareas } from '../hooks/useTareas';
 import {
   BarChart3, TrendingUp, Users, Clock, CreditCard, Coins, CheckCircle2,
@@ -22,6 +23,7 @@ const getUserInfo = () => {
     return {
       rol: decoded.perfil || decoded.rol || null,
       nombre: decoded.nombre || decoded.usuario || null,
+      usuario: decoded.usuario || decoded.username || null,
     };
   } catch (error) {
     console.error('Error decodificando token:', error);
@@ -51,7 +53,7 @@ const CATEGORIES = {
 
 export default function HomeModules() {
   const navigate = useNavigate();
-  const { rol: userRol, nombre } = getUserInfo();
+  const { rol: userRol, nombre, usuario } = getUserInfo();
   const [query, setQuery] = useState("");
   const { tieneAcceso: accesoTareas } = useAccesoTareas();
 
@@ -119,7 +121,7 @@ export default function HomeModules() {
       desc: "Gestión de talento, vacaciones y expedientes del personal." },
     { title: "Control Horarios", path: "/horarios", icon: Clock, accent: "ambar", cat: "equipo",
       desc: "Registro de asistencia, turnos rotativos y puntualidad.",
-      rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE'] },
+      accessCheck: (perfil, usuario) => puedeAccederHorarios(perfil, usuario) },
     { title: "Billetera Digital", path: "/billetera", icon: CreditCard, accent: "cian", cat: "equipo",
       desc: "Gestión de saldos, pagos corporativos y transferencias.",
       rolesPermitidos: ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'CONTABILIDAD'] },
@@ -215,7 +217,7 @@ export default function HomeModules() {
         if (!accesoTareas) return false;
       } else {
         const allowed = mod.accessCheck
-          ? mod.accessCheck(userRol)
+          ? mod.accessCheck(userRol, usuario)
           : userRol === 'CONSULTOR'
             ? mod.rolesPermitidos?.includes('CONSULTOR')
             : (!mod.rolesPermitidos || mod.rolesPermitidos.includes(userRol));
@@ -228,7 +230,7 @@ export default function HomeModules() {
       if (!q) return true;
       return mod.title.toLowerCase().includes(q) || mod.desc.toLowerCase().includes(q);
     });
-  }, [modules, userRol, query, accesoTareas]);
+  }, [modules, userRol, usuario, query, accesoTareas]);
 
   const grouped = useMemo(() => {
     const out = {};

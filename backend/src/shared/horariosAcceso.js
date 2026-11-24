@@ -12,7 +12,8 @@ const esAdminGerencia = (perfil) => {
 };
 
 const esSupervisor = (perfil) => normPerfil(perfil).startsWith('SUPERVISOR');
-const puedeAccederHorarios = (perfil) => esAdminGerencia(perfil) || esSupervisor(perfil);
+const esLectorEspecial = (usuario) => normPerfil(usuario) === 'JASIMBANA';
+const puedeAccederHorarios = (perfil, usuario) => esAdminGerencia(perfil) || esSupervisor(perfil) || esLectorEspecial(usuario);
 
 function empresaHorarios(req) {
   const empresaUsuario = String(req.user?.empresa || '').trim().toUpperCase();
@@ -26,6 +27,7 @@ module.exports = {
   normPerfil,
   esAdminGerencia,
   esSupervisor,
+  esLectorEspecial,
   puedeAccederHorarios,
   empresaHorarios,
 };

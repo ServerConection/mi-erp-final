@@ -12,6 +12,15 @@ export function perfilAdministracion(valor) {
 // Administración y Horarios: administradores y perfiles gerenciales.
 export const puedeAccederAdministracion = (perfil) => perfilAdministracion(perfil) !== null;
 
+export const esLectorEspecialHorarios = (usuario) => normalizar(usuario) === 'JASIMBANA';
+
+export const puedeAccederHorarios = (perfil, usuario) => {
+  const normalizado = normalizar(perfil);
+  return puedeAccederAdministracion(normalizado)
+    || normalizado.startsWith('SUPERVISOR')
+    || esLectorEspecialHorarios(usuario);
+};
+
 // Analista entra únicamente a Comisiones, no al resto de Administración.
 export const puedeAccederComisiones = (perfil) => {
   const normalizado = normalizar(perfil);

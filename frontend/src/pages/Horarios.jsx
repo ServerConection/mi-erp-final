@@ -23,6 +23,14 @@ const empresaSesion = () => {
     return "NOVONET";
   }
 };
+const esJasimbana = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("userProfile") || localStorage.getItem("user") || "{}");
+    return String(user?.usuario || user?.username || "").trim().toLowerCase() === "jasimbana";
+  } catch {
+    return false;
+  }
+};
 const O = "#FF6B00", OP = "#FFF3E8", OB = "#FFCBA0";
 const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DIAS_EXCEL = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"];
@@ -115,7 +123,8 @@ const sel = { border: "1px solid #D1D5DB", borderRadius: 8, padding: "6px 8px", 
 
 export default function Horarios() {
   const token = localStorage.getItem("token");
-  const EMPRESA = useMemo(empresaSesion, []);
+  const [EMPRESA, setEmpresa] = useState(empresaSesion);
+  const puedeCambiarEmpresa = useMemo(esJasimbana, []);
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }), [token]);
 
   const [lunes, setLunes] = useState(lunesDe(hoyLocal()));
@@ -134,7 +143,7 @@ export default function Horarios() {
   const cargarSemanas = useCallback(() => {
     fetch(`${API}/api/horarios/semanas?empresa=${EMPRESA}`, { headers })
       .then((r) => r.json()).then((j) => j.success && setSemanas(j.data)).catch(() => {});
-  }, [headers]);
+  }, [headers, EMPRESA]);
 
   const cargarSemana = useCallback(async (l) => {
     setCargando(true); setError("");
@@ -145,7 +154,7 @@ export default function Horarios() {
       setDatos(j.data); setCambios({});
     } catch (e) { setError(e.message); }
     finally { setCargando(false); }
-  }, [headers]);
+  }, [headers, EMPRESA]);
 
   useEffect(() => { cargarSemanas(); }, [cargarSemanas]);
   useEffect(() => { cargarSemana(lunes); }, [lunes, cargarSemana]);
@@ -196,6 +205,21 @@ export default function Horarios() {
     <div style={{ padding: 16, maxWidth: 1400, margin: "0 auto", fontFamily: "inherit" }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 14 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: "#111827" }}>⏰ Horarios {EMPRESA}</h1>
+        {puedeCambiarEmpresa && (
+          <select
+            style={sel}
+            value={EMPRESA}
+            onChange={(e) => {
+              setEmpresa(e.target.value);
+              setFiltroSup("");
+              setBusca("");
+              setCambios({});
+            }}
+          >
+            <option value="NOVONET">NOVONET</option>
+            <option value="VELSA">VELSA</option>
+          </select>
+        )}
         {datos?.puede_cargar && (
           <button style={btn(verCarga ? "#374151" : O)} onClick={() => setVerCarga((v) => !v)}>
             {verCarga ? "Cerrar carga" : "📤 Cargar Excel"}

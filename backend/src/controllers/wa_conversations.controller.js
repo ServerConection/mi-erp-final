@@ -968,4 +968,22 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { getAll, getMessages, sendMessage, callConversation, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove }
+// Llamar por Bitrix desde WABOT: encola la llamada del contacto para el asesor;
+// el Automarcador abierto en Bitrix la toma y marca con phoneTo. Aditivo.
+async function llamarBitrix(req, res) {
+  try {
+    const owned = await findOwnedConversation(req, req.params.id)
+    if (!owned) return res.status(404).json({ success: false, error: 'Conversacion no encontrada' })
+    const automarcador = require('../services/automarcadorBitrix.service')
+    const out = await automarcador.encolarLlamadaDirecta(
+      req.user.id, req.user.empresa,
+      { telefono: owned.wa_number, nombre: owned.contact_name, deal_id: owned.bitrix_deal_id },
+      { query, transaction })
+    res.json({ success: true, ...out })
+  } catch (err) {
+    console.warn('[wa/llamar-bitrix]', err.message)
+    res.status(err.status || 500).json({ success: false, error: err.status ? err.message : 'Error interno' })
+  }
+}
+
+module.exports = { getAll, getMessages, sendMessage, callConversation, createInternalNote, close, returnToBot, takeover, backupSearch, backupByNumber, startFromBitrix, setBitrixId, remove, llamarBitrix }

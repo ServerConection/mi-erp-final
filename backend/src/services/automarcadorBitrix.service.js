@@ -560,8 +560,37 @@ async function cambiarEstadoCampana(user, campanaId, estado, db) {
   const e = new Error('Campaña no encontrada'); e.status = 404; throw e
 }
 
+// Encola UNA llamada directa (desde WABOT) para el asesor. Reutiliza la cola del
+// Automarcador: la pagina abierta en Bitrix la toma y marca con phoneTo. Aditivo:
+// no modifica campanas ni items existentes.
+async function encolarLlamadaDirecta(usuarioId, empresa, { telefono, nombre, deal_id }, db) {
+  const uid = parseInt(usuarioId, 10)
+  const tel = String(telefono || '').replace(/\D/g, '').slice(0, 20)
+  if (!uid || uid < 1) { const e = new Error('Asesor invalido'); e.status = 400; throw e }
+  if (!tel) { const e = new Error('La conversacion no tiene un numero valido'); e.status = 400; throw e }
+  await asegurarEsquema(db)
+  const empU = String(empresa || 'NOVONET').trim().toUpperCase()
+  const emp = ['NOVONET', 'VELSA', 'SEMILLERO'].includes(empU) ? empU : 'NOVONET'
+  const NOMBRE_CAMP = 'Llamada directa WABOT'
+  const existente = await db.query(
+    `SELECT id FROM automarcador_bx_campanas
+      WHERE empresa = $1 AND nombre = $2 AND estado = 'activa' ORDER BY id LIMIT 1`, [emp, NOMBRE_CAMP])
+  let campanaId = existente.rows[0]?.id
+  if (!campanaId) {
+    const c = await db.query(
+      `INSERT INTO automarcador_bx_campanas (nombre, empresa, estado) VALUES ($1, $2, 'activa') RETURNING id`,
+      [NOMBRE_CAMP, emp])
+    campanaId = c.rows[0].id
+  }
+  const r = await db.query(
+    `INSERT INTO automarcador_bx_items (campana_id, usuario_id, telefono, nombre_cliente, deal_id, estado)
+     VALUES ($1, $2, $3, $4, $5, 'pendiente') RETURNING id`,
+    [campanaId, uid, tel, nombre ? String(nombre).slice(0, 200) : null, deal_id ? String(deal_id).slice(0, 30) : null])
+  return { item_id: r.rows[0].id }
+}
+
 module.exports = {
   DDL, ESTADOS_CAMPANA, TIPIFICACIONES_FINALES, TIPIFICACIONES_REINTENTO, MAX_INTENTOS, proximoIntento, contactabilidad, filtrarExcluidos, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
-  resumenAsesor, siguiente, registrarResultado, itemEnLlamada,
+  resumenAsesor, siguiente, registrarResultado, itemEnLlamada, encolarLlamadaDirecta,
   _reset: () => { esquemaListo = null; tasasCache = { exp: 0, valor: {} } },
 }

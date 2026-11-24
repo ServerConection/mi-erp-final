@@ -6,7 +6,7 @@ import ChatTareasFloatingButtons from "./components/ChatTareasFloatingButtons";
 import LogoLoader from "./components/LogoLoader";
 import GlobalModuleLoader from "./components/GlobalModuleLoader";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from './utils/accesoGestionables';
-import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones } from './utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones, puedeAccederHorarios } from './utils/accesoAdministracion';
 import { puedeAccederAutomarcador } from './utils/accesoAutomarcador';
 
 // Páginas ligeras — se cargan siempre (login + shell + home)
@@ -159,7 +159,9 @@ const HorariosRoute = ({ children }) => {
   if (!token) return <Navigate to="/login" replace />;
   let perfil = "";
   try { perfil = String(JSON.parse(localStorage.getItem("userProfile") || "{}").perfil || "").toUpperCase(); } catch (_) { /* sesión inválida */ }
-  const permitido = puedeAccederAdministracion(perfil) || perfil.startsWith("SUPERVISOR");
+  let login = "";
+  try { const sesion = JSON.parse(localStorage.getItem("userProfile") || "{}"); login = sesion.usuario || sesion.username || ""; } catch (_) { /* sesión inválida */ }
+  const permitido = puedeAccederHorarios(perfil, login);
   return permitido ? children : <Navigate to="/" replace />;
 };
 

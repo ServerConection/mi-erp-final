@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { puedeAccederGestionables, puedeAccederBolsaLeads } from '../utils/accesoGestionables';
 import { rutaPermitidaAnalista, rutaPermitidaAtc } from '../utils/accesoAnalista';
-import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones, puedeVerMenuAdministracion } from '../utils/accesoAdministracion';
+import { puedeAccederAdministracion, puedeAccederBilletera, puedeAccederComisiones, puedeAccederHorarios, puedeVerMenuAdministracion } from '../utils/accesoAdministracion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -363,7 +363,7 @@ const ALL_MENU_ITEMS = [
   // ── NOVONET ACCESS (asistencia / conexión) — visible para todos los perfiles
   { name: "NOVONET ACCESS", path: RUTA_NOVONET_ACCESS, icon: "🕘", accessCheck: () => true },
   // Horarios semanales: supervisores consultan; administradores y gerencia también editan.
-  { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p) => puedeAccederAdministracion(p) || String(p || '').startsWith('SUPERVISOR') },
+  { name: "Horarios", path: "/horarios", icon: "⏰", accessCheck: (p, _e, usuario) => puedeAccederHorarios(p, usuario) },
   // Piloto de llamadas WhatsApp Desktop ocultas: solo administradores.
   { name: "Piloto Llamadas", path: "/piloto-llamadas", icon: "📞", accessCheck: (p) => isAdmin(p) },
 

@@ -904,6 +904,8 @@ class BaileysManager {
         const listResponse = msg.message?.listResponseMessage
         const interactiveResponse = msg.message?.interactiveResponseMessage
         const nativeFlowResponse = interactiveResponse?.nativeFlowResponseMessage
+        const reaction = msg.message?.reactionMessage
+        const reactionEmoji = String(reaction?.text || '').trim()
 
         let quickReplyResponse = ''
         if (nativeFlowResponse?.paramsJson) {
@@ -926,6 +928,7 @@ class BaileysManager {
           listResponse?.title ||
           listResponse?.singleSelectReply?.selectedRowId ||
           quickReplyResponse ||
+          (reactionEmoji ? `Reaccionó ${reactionEmoji}` : '') ||
           ''
         ).trim()
 
@@ -933,6 +936,7 @@ class BaileysManager {
           : msg.message?.extendedTextMessage ? 'text'
           : msg.message?.listResponseMessage ? 'list_response'
           : msg.message?.interactiveResponseMessage ? 'interactive_response'
+          : reactionEmoji ? 'reaction'
           : msg.message?.imageMessage ? 'image'
           : msg.message?.documentMessage ? 'document'
           : msg.message?.audioMessage ? 'audio'
@@ -943,7 +947,9 @@ class BaileysManager {
           : (msg.message?.locationMessage || msg.message?.liveLocationMessage) ? 'location'
           : 'unknown'
 
-        // Ignorar eventos sin contenido (reacciones, protocolo, etc.) → evita burbujas vacías
+        // Una reacción con emoji cuenta como respuesta del cliente. Las
+        // reacciones retiradas llegan con text vacío y se ignoran junto con
+        // los demás eventos de protocolo para evitar burbujas vacías.
         if (!text && !['image', 'document', 'audio', 'video', 'sticker', 'contact', 'contacts', 'location'].includes(msgType)) continue
 
         const location = msg.message?.locationMessage || msg.message?.liveLocationMessage
@@ -1008,7 +1014,11 @@ class BaileysManager {
 
         try {
           await this._handleIncomingMessage(lineId, sock, msg, remoteJid, waNumber, eventText, msgType, pushName, inMediaUrl,
-            location ? { latitude: location.degreesLatitude, longitude: location.degreesLongitude, name: location.name, address: location.address } : null)
+            location
+              ? { latitude: location.degreesLatitude, longitude: location.degreesLongitude, name: location.name, address: location.address }
+              : reactionEmoji
+                ? { reaction: reactionEmoji, reacted_to_wa_msg_id: reaction?.key?.id || null }
+                : null)
         } catch (err) {
           console.error(`[Line ${lineId}] Error procesando mensaje:`, err.message)
           console.error(err.stack)

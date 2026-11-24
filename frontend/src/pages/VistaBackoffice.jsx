@@ -6283,8 +6283,19 @@ function TableroWelcome({ onVolver, onAbrirRegistro, empresa, onCambiarEmpresa }
           <div style={{position:"fixed",right:82,bottom:96,zIndex:80,width:360,maxHeight:"min(520px, calc(100vh - 150px))",overflowY:"auto",display:"flex",flexDirection:"column",gap:10,padding:4}}>
             {dudasVisibles.map((duda) => (
               <div key={claveAlertaWelcome(duda)} style={{position:"relative",flex:"none",padding:"14px 42px 12px 16px",borderRadius:14,border:"1px solid #fb923c",background:"#fff7ed",boxShadow:"0 12px 30px rgba(124,45,18,.2)",color:"#7c2d12"}}>
-                <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
-                <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+                {String(duda.response_text || "").startsWith("Reaccionó ") ? (
+                  <>
+                    <div style={{fontWeight:900}}>⚠️ Cliente reaccionó</div>
+                    <div style={{marginTop:4,fontSize:12}}>
+                      {duda.nombre_cliente_completo || "Cliente"} reaccionó al mensaje con {String(duda.response_text).slice("Reaccionó ".length) || "un emoji"}.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{fontWeight:900}}>⚠️ Cliente con duda</div>
+                    <div style={{marginTop:4,fontSize:12}}>{duda.nombre_cliente_completo || "Cliente"} respondió: {duda.response_text || "Solicita ayuda"}</div>
+                  </>
+                )}
                 <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
                   <button
                     type="button"

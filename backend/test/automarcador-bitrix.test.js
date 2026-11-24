@@ -17,6 +17,7 @@ function dbFalsa(usuariosValidos) {
     query: async (sql) => {
       if (/CREATE TABLE/.test(sql)) return { rows: [] }
       if (/FROM usuarios WHERE id = ANY/.test(sql)) return { rows: usuariosValidos.map(id => ({ id })) }
+      if (/AS motivo/.test(sql)) return { rows: [] } // lista de exclusión vacía
       throw new Error('SQL inesperado: ' + sql)
     },
     transaction: async (fn) => fn(client),

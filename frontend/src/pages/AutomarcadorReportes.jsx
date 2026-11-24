@@ -41,6 +41,86 @@ function Tarjeta({ titulo, children, className = "" }) {
   );
 }
 
+// Contactabilidad por cliente (deal): cuántas veces se le llamó y si contestó.
+function Contactabilidad({ rango }) {
+  const [filas, setFilas] = useState([]);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    setCargando(true); setError("");
+    fetch(`${API}/contactabilidad?${new URLSearchParams(rango)}`, { headers: authH() })
+      .then(r => r.json())
+      .then(j => { if (!vivo) return; if (!j.success) throw new Error(j.error || "No se pudo cargar la contactabilidad"); setFilas(j.data); })
+      .catch(e => { if (vivo) setError(e.message); })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, [rango]);
+
+  const clientes = filas.length;
+  const llamadas = filas.reduce((a, f) => a + f.veces_llamado, 0);
+  const contactados = filas.filter(f => f.contestadas > 0).length;
+  const sinContacto3 = filas.filter(f => f.contestadas === 0 && f.veces_llamado >= 3).length;
+
+  const descargar = () => {
+    const cols = [["deal_id", "ID Bitrix"], ["cliente", "Cliente"], ["veces_llamado", "Veces llamado"], ["contestadas", "Contestó"],
+      ["campanas", "Campañas"], ["duracion_total", "Duración total (s)"], ["primera_llamada", "Primera llamada"], ["ultima_llamada", "Última llamada"],
+      ["ultima_tipificacion", "Última tipificación"], ["reintento_programado", "Reintento programado"], ["asesores", "Asesores"]];
+    const celda = (v) => `"${String(v === true ? "Sí" : v === false ? "No" : v ?? "").replace(/"/g, '""')}"`;
+    const csv = [cols.map(c => celda(c[1])).join(";"), ...filas.map(f => cols.map(c => celda(f[c[0]])).join(";"))].join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `contactabilidad_por_cliente_${rango.desde}_${rango.hasta}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Tarjeta titulo="Contactabilidad por cliente (deal)">
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-[11px] text-red-700 font-bold">{error}</div>}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <Kpi titulo="Clientes llamados" valor={clientes.toLocaleString("es-EC")} nota={cargando ? "Cargando…" : `${llamadas.toLocaleString("es-EC")} llamadas`} />
+        <Kpi titulo="Llamadas por cliente" valor={clientes ? (llamadas / clientes).toFixed(1) : "0"} nota="promedio" />
+        <Kpi titulo="Clientes contactados" valor={`${pct(contactados, clientes)}%`} nota={`${contactados} contestaron al menos una vez`} />
+        <Kpi titulo="3+ llamadas sin contacto" valor={sinContacto3} nota="candidatos a depurar" />
+      </div>
+      <div className="flex items-center mb-2">
+        <p className="text-[10px] text-slate-400 mr-auto">Los 20 clientes más llamados · el detalle completo está en la descarga</p>
+        <button onClick={descargar} disabled={!clientes}
+          className="text-[11px] font-black uppercase bg-emerald-600 text-white rounded-lg px-4 py-2 disabled:opacity-40">⬇ Descargar por cliente</button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead className="text-[9px] text-slate-400 font-black uppercase border-b border-slate-100">
+            <tr>
+              <th className="py-2 text-left">ID Bitrix</th><th className="py-2 text-left">Cliente</th>
+              <th className="py-2 text-right">Veces llamado</th><th className="py-2 text-right">Contestó</th>
+              <th className="py-2 text-right">Campañas</th><th className="py-2 text-left pl-3">Última tipificación</th>
+              <th className="py-2 text-left">Última llamada</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filas.slice(0, 20).map((f, i) => (
+              <tr key={f.deal_id || i}>
+                <td className="py-2 font-mono">{f.deal_id || "—"}</td>
+                <td className="py-2 font-bold text-slate-700">{f.cliente || "—"}</td>
+                <td className="py-2 text-right font-black">{f.veces_llamado}</td>
+                <td className={`py-2 text-right ${f.contestadas ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}`}>{f.contestadas}</td>
+                <td className="py-2 text-right">{f.campanas}</td>
+                <td className="py-2 pl-3">{f.ultima_tipificacion || <span className="text-slate-400">Sin tipificar</span>}{f.reintento_programado && <span className="ml-1 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">Reintento</span>}</td>
+                <td className="py-2 text-slate-500 whitespace-nowrap">{f.ultima_llamada}</td>
+              </tr>
+            ))}
+            {!filas.length && !cargando && (
+              <tr><td colSpan={7} className="py-6 text-center text-slate-400">No hay clientes llamados en este rango.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Tarjeta>
+  );
+}
+
 export default function AutomarcadorReportes() {
   const [rango, setRango] = useState({ desde: haceDias(6), hasta: fechaEC() });
   const [data, setData] = useState(null);
@@ -198,6 +278,8 @@ export default function AutomarcadorReportes() {
           )}
         </>
       )}
+
+      <Contactabilidad rango={rango} />
     </div>
   );
 }

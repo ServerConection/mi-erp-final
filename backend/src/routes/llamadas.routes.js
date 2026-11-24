@@ -45,6 +45,7 @@ router.post('/bitrix/campanas',               campanasBitrix.crear);
 router.post('/bitrix/campanas/:id/reintentar', campanasBitrix.reintentar);
 router.get('/bitrix/reporte',                 campanasBitrix.reporte);
 router.get('/bitrix/resumen',                 campanasBitrix.resumen);
+router.get('/bitrix/contactabilidad',         campanasBitrix.contactabilidad);
 router.get('/bitrix/control',                 campanasBitrix.control);
 router.post('/bitrix/campanas/:id/estado',    campanasBitrix.estado);
 

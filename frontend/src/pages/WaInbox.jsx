@@ -687,6 +687,24 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     return `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
   };
 
+  // Llamar por Bitrix desde WABOT: encola la llamada; el Automarcador abierto en
+  // Bitrix (PC o app móvil) la toma y marca por el teléfono de Bitrix del asesor.
+  const [llamandoBitrix, setLlamandoBitrix] = useState(false);
+  const llamarPorBitrix = async () => {
+    if (!selected?.id || llamandoBitrix) return;
+    setLlamandoBitrix(true);
+    try {
+      const r = await fetch(`${API}/conversations/${selected.id}/llamar-bitrix`, { method: "POST", headers: authH(false) });
+      const d = await r.json();
+      if (d.success) alert("Llamada enviada. Contéstala en el Automarcador de Bitrix (PC) o en la app de Bitrix (celular). Debe estar abierto y en 'Iniciar'.");
+      else alert(d.error || "No se pudo iniciar la llamada");
+    } catch {
+      alert("No se pudo conectar con el servidor.");
+    } finally {
+      setLlamandoBitrix(false);
+    }
+  };
+
   const takeOver = async () => {
     await fetch(`${API}/conversations/${selected.id}/takeover`, { method: "POST", headers: authH(false) });
     setSelected(s => ({ ...s, status: "human_takeover" }));
@@ -893,6 +911,12 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
 
   const accionesChat = selected ? (
     <>
+              {/* Llamar por la telefonía de Bitrix (Automarcador) */}
+              <button onClick={llamarPorBitrix} disabled={llamandoBitrix}
+                title="Llamar a este contacto por la telefonía de Bitrix"
+                className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-60 whitespace-nowrap">
+                {llamandoBitrix ? "Enviando…" : "📞 Llamar (Bitrix)"}
+              </button>
               {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
                   negociación en Bitrix -- el enlace/botón sería redundante. */}
               {pilotoPc ? (

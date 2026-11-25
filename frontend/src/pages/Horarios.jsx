@@ -184,9 +184,19 @@ export default function Horarios() {
   const turnoDe = (fila, fecha) => cambios[`${fila.asesor_clave}|${fecha}`] || fila.dias[fecha] || null;
 
   const supervisores = useMemo(() => [...new Set((datos?.filas || []).map((f) => f.supervisor).filter(Boolean))].sort(), [datos]);
-  const filas = useMemo(() => (datos?.filas || []).filter((f) =>
-    (!filtroSup || f.supervisor === filtroSup) && (!busca || sinTildes(f.asesor).includes(sinTildes(busca)))
-  ), [datos, filtroSup, busca]);
+  // Orden por hora de ingreso del día de referencia (hoy si cae en la semana, si no el lunes):
+  // 08:00, 08:30, 10:30, tarde... y al final LIBRE y sin turno. Empate: por nombre.
+  const diaOrden = datos ? (datos.dias.includes(datos.hoy) ? datos.hoy : datos.dias[0]) : null;
+  const filas = useMemo(() => {
+    const llave = (f) => {
+      const t = f.dias[diaOrden];
+      if (t?.tipo === "TURNO" && t.hora_inicio) return aMin(t.hora_inicio);
+      return t?.tipo === "LIBRE" ? 10000 : 10001;
+    };
+    return (datos?.filas || [])
+      .filter((f) => (!filtroSup || f.supervisor === filtroSup) && (!busca || sinTildes(f.asesor).includes(sinTildes(busca))))
+      .sort((x, y) => llave(x) - llave(y) || x.asesor.localeCompare(y.asesor));
+  }, [datos, filtroSup, busca, diaOrden]);
 
   // Alertas del día (solo quien ve a todos)
   const alertasHoy = useMemo(() => {

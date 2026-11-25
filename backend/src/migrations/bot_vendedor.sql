@@ -46,3 +46,23 @@ CREATE TABLE IF NOT EXISTS public.bv_planes (
   actualizado_por VARCHAR(100),
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Horario por linea (HH:MM, hora Ecuador). Vacio = todo el dia. Si inicio > fin, cruza medianoche (22:30 -> 07:00).
+ALTER TABLE public.bv_lineas ADD COLUMN IF NOT EXISTS horario_inicio VARCHAR(5);
+ALTER TABLE public.bv_lineas ADD COLUMN IF NOT EXISTS horario_fin    VARCHAR(5);
+
+-- Atencion nocturna: deals nuevos de NOVONET a los que el bot les escribe primero.
+-- grupo BOT = el bot le escribio; CONTROL = se deja para el asesor (prueba A/B).
+CREATE TABLE IF NOT EXISTS public.bv_nocturno (
+  bitrix_id    VARCHAR(30) PRIMARY KEY,
+  empresa      VARCHAR(20) NOT NULL DEFAULT 'novonet',
+  telefono     VARCHAR(30),
+  grupo        VARCHAR(10) NOT NULL,              -- 'BOT' | 'CONTROL'
+  line_id      UUID,
+  estado       VARCHAR(20) NOT NULL DEFAULT 'pendiente', -- pendiente | enviado | error | control
+  detalle      TEXT,
+  deal_creado  TIMESTAMPTZ,
+  creado_en    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  enviado_en   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_bv_nocturno_creado ON public.bv_nocturno(creado_en);

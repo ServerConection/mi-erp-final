@@ -3,7 +3,7 @@
 // Solo ADMINISTRADOR (el backend lo valida). Lo que se guarda aqui lo usa el bot
 // de WhatsApp en menos de un minuto, sin reiniciarlo.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone, ImagePlus, Image as ImageIcon } from "lucide-react";
+import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone, ImagePlus, Image as ImageIcon, Moon } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
 const BASE = `${API}/api/bot-vendedor`;
@@ -28,6 +28,7 @@ const PESTANAS = [
   { id: "planes", nombre: "Planes e imágenes" },
   { id: "probar", nombre: "Probar bot" },
   { id: "lineas", nombre: "Líneas WhatsApp" },
+  { id: "nocturno", nombre: "Atención nocturna" },
 ];
 
 export default function BotVendedor() {
@@ -55,6 +56,7 @@ export default function BotVendedor() {
       {pestana === "planes" && <PestanaPlanes />}
       {pestana === "probar" && <PestanaProbar />}
       {pestana === "lineas" && <PestanaLineas />}
+      {pestana === "nocturno" && <PestanaNocturno />}
     </div>
   );
 }
@@ -384,7 +386,16 @@ function PestanaLineas() {
     if (activar && !window.confirm(`¿Activar el bot vendedor en "${l.name}"? Responderá solo a los clientes de esa línea (reemplaza el flujo de bot que tenga asignado).`)) return;
     setCambiando(l.id); setError("");
     try {
-      await pedir(`${BASE}/lineas/${l.id}`, { method: "PUT", headers: headers(), body: JSON.stringify({ activo: activar }) });
+      await pedir(`${BASE}/lineas/${l.id}`, { method: "PUT", headers: headers(), body: JSON.stringify({ activo: activar, horario_inicio: l.horario_inicio || "", horario_fin: l.horario_fin || "" }) });
+      await cargar();
+    } catch (e) { setError(e.message); }
+    setCambiando(null);
+  };
+
+  const guardarHorario = async (l, inicio, fin) => {
+    setCambiando(l.id); setError("");
+    try {
+      await pedir(`${BASE}/lineas/${l.id}`, { method: "PUT", headers: headers(), body: JSON.stringify({ activo: l.bot_activo, horario_inicio: inicio, horario_fin: fin }) });
       await cargar();
     } catch (e) { setError(e.message); }
     setCambiando(null);
@@ -394,6 +405,7 @@ function PestanaLineas() {
     <div className="space-y-4">
       {error && <Mensaje tipo="error" texto={error} />}
       <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
+        <b>Horario:</b> si lo dejas vacío, el bot responde todo el día. Para la noche usa por ejemplo 22:30 a 07:00 (cruza la medianoche).<br />
         Activa el bot en las líneas de WABOT que quieras. Se aplica en menos de 30 segundos. El bot se calla solo en un chat
         cuando pasa el caso a un asesor o cuando un asesor escribe a mano (por 2 horas). Las respuestas del bot se ven en la bandeja.
       </div>
@@ -404,13 +416,14 @@ function PestanaLineas() {
               <tr>
                 <th className="text-left py-2 px-3">Línea</th>
                 <th className="text-left py-2 px-3">Estado WhatsApp</th>
+                <th className="text-left py-2 px-3">Horario del bot</th>
                 <th className="text-left py-2 px-3">Último cambio</th>
                 <th className="text-right py-2 px-3">Bot vendedor</th>
               </tr>
             </thead>
             <tbody>
               {(lineas || []).length === 0 && (
-                <tr><td colSpan={4} className="py-6 text-center text-slate-400">No hay líneas registradas en WABOT.</td></tr>
+                <tr><td colSpan={5} className="py-6 text-center text-slate-400">No hay líneas registradas en WABOT.</td></tr>
               )}
               {(lineas || []).map((l) => (
                 <tr key={l.id} className="border-t">
@@ -425,6 +438,7 @@ function PestanaLineas() {
                       {l.status === "connected" ? "Conectada" : (l.status || "desconectada")}
                     </span>
                   </td>
+                  <td className="py-2 px-3"><HorarioLinea linea={l} deshabilitado={cambiando === l.id} onGuardar={guardarHorario} /></td>
                   <td className="py-2 px-3 text-xs text-slate-500">{l.actualizado_por ? `${l.actualizado_por} · ${fecha(l.actualizado_en)}` : "—"}</td>
                   <td className="py-2 px-3 text-right">
                     <button onClick={() => alternar(l)} disabled={cambiando === l.id}
@@ -437,6 +451,158 @@ function PestanaLineas() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HorarioLinea({ linea, deshabilitado, onGuardar }) {
+  const [ini, setIni] = useState(linea.horario_inicio || "");
+  const [fin, setFin] = useState(linea.horario_fin || "");
+  const cambiado = ini !== (linea.horario_inicio || "") || fin !== (linea.horario_fin || "");
+  return (
+    <div className="flex items-center gap-1 text-xs">
+      <input type="time" value={ini} onChange={(e) => setIni(e.target.value)} className="border rounded px-1 py-0.5" />
+      <span className="text-slate-400">a</span>
+      <input type="time" value={fin} onChange={(e) => setFin(e.target.value)} className="border rounded px-1 py-0.5" />
+      {cambiado && (
+        <button disabled={deshabilitado} onClick={() => onGuardar(linea, ini, fin)}
+          className="ml-1 px-2 py-0.5 rounded bg-blue-600 text-white font-semibold disabled:opacity-50">Guardar</button>
+      )}
+      {!ini && !fin && !cambiado && <span className="text-slate-400 ml-1">todo el día</span>}
+    </div>
+  );
+}
+
+// ─── Atención nocturna ───────────────────────────────────────────────────────
+function PestanaNocturno() {
+  const [cfg, setCfg] = useState(null);
+  const [lineas, setLineas] = useState([]);
+  const [resumen, setResumen] = useState(null);
+  const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try {
+      const [c, l, r] = await Promise.all([
+        pedir(`${BASE}/nocturno`, { headers: headers() }),
+        pedir(`${BASE}/lineas`, { headers: headers() }),
+        pedir(`${BASE}/nocturno/resumen?dias=30`, { headers: headers() }),
+      ]);
+      setCfg(c); setLineas(l); setResumen(r);
+    } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const guardar = async () => {
+    setGuardando(true); setError(""); setAviso("");
+    try {
+      await pedir(`${BASE}/nocturno`, { method: "PUT", headers: headers(), body: JSON.stringify(cfg) });
+      setAviso("Guardado. WABOT lo toma en el siguiente minuto.");
+      cargar();
+    } catch (e) { setError(e.message); }
+    setGuardando(false);
+  };
+
+  if (!cfg && !error) return <Cargando />;
+  if (!cfg) return <Mensaje tipo="error" texto={error} />;
+  const linea = lineas.find((l) => l.id === cfg.linea);
+  const lineaLista = linea && linea.bot_activo && linea.horario_inicio === cfg.inicio && linea.horario_fin === cfg.fin;
+  const set = (k, v) => setCfg({ ...cfg, [k]: v });
+
+  return (
+    <div className="space-y-4">
+      {error && <Mensaje tipo="error" texto={error} />}
+      {aviso && <Mensaje tipo="ok" texto={aviso} />}
+      <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
+        En el horario nocturno, cada deal nuevo de <b>NOVONET</b> se sortea: al grupo <b>BOT</b> el bot le escribe primero
+        (se presenta como asesor de ventas y pregunta si quiere contratar o es servicio al cliente); el grupo <b>CONTROL</b> queda
+        para el asesor de la mañana. Así se compara quién cierra más. El bot envía máximo 1 saludo por minuto para cuidar la línea.
+      </div>
+
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-slate-800 flex items-center gap-2"><Moon className="w-5 h-5 text-indigo-600" /> Configuración</h2>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" checked={cfg.activo} onChange={(e) => set("activo", e.target.checked)} /> Activa
+          </label>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4 text-sm">
+          <label className="md:col-span-2">Línea desde la que escribe
+            <select value={cfg.linea} onChange={(e) => set("linea", e.target.value)} className="w-full border rounded-lg p-2 mt-1">
+              <option value="">— Elegir línea —</option>
+              {lineas.map((l) => <option key={l.id} value={l.id}>{l.name} {l.status === "connected" ? "" : "(desconectada)"}</option>)}
+            </select>
+          </label>
+          <label>Desde<input type="time" value={cfg.inicio} onChange={(e) => set("inicio", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
+          <label>Hasta<input type="time" value={cfg.fin} onChange={(e) => set("fin", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
+          <label>% de deals para el BOT
+            <input type="number" min={0} max={100} value={cfg.pctBot} onChange={(e) => set("pctBot", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
+          <label>Máximo de saludos por noche
+            <input type="number" min={1} value={cfg.max} onChange={(e) => set("max", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
+        </div>
+        <label className="block text-sm">Mensaje de saludo
+          <textarea value={cfg.mensaje} onChange={(e) => set("mensaje", e.target.value)} rows={3} className="w-full border rounded-lg p-2 mt-1" />
+        </label>
+        {cfg.linea && !lineaLista && (
+          <Mensaje tipo="error" texto={`Para que el bot conteste las respuestas, en la pestaña "Líneas WhatsApp" activa el bot en "${linea?.name || "esa línea"}" con el horario ${cfg.inicio} a ${cfg.fin}.`} />
+        )}
+        <div className="flex justify-end">
+          <button onClick={guardar} disabled={guardando}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50">
+            {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+          </button>
+        </div>
+      </div>
+
+      {resumen && (
+        <div className="bg-white rounded-xl border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-800">Resultados A/B (últimos {resumen.dias} días)</h2>
+            <button onClick={cargar} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><RefreshCw className="w-4 h-4" /></button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {["BOT", "CONTROL"].map((g) => {
+              const r = resumen.grupos.find((x) => x.grupo === g) || { deals: 0, enviados: 0, respondieron: 0, errores: 0 };
+              const etapas = resumen.etapas.filter((x) => x.grupo === g).slice(0, 6);
+              return (
+                <div key={g} className={`rounded-xl border p-3 ${g === "BOT" ? "bg-indigo-50 border-indigo-200" : "bg-slate-50"}`}>
+                  <div className="font-bold text-slate-800">{g === "BOT" ? "🤖 Atendidos por el bot" : "👤 Control (asesor en la mañana)"}</div>
+                  <div className="text-2xl font-extrabold text-slate-800">{r.deals} <span className="text-sm font-normal text-slate-500">deals</span></div>
+                  {g === "BOT" && <div className="text-xs text-slate-600">Saludos enviados: {r.enviados} · Respondieron: {r.respondieron} · Errores: {r.errores}</div>}
+                  <div className="mt-2 text-xs text-slate-500 font-semibold">Etapa actual en Bitrix</div>
+                  {etapas.length === 0 && <div className="text-xs text-slate-400">Sin datos aún</div>}
+                  {etapas.map((e) => (
+                    <div key={e.etapa} className="flex justify-between text-xs py-0.5"><span>{e.etapa}</span><b>{e.deals}</b></div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-slate-500 uppercase">
+                <tr><th className="text-left p-2">Deal</th><th className="text-left p-2">Grupo</th><th className="text-left p-2">Estado</th><th className="text-left p-2">Entró</th><th className="text-left p-2">¿Respondió?</th><th className="text-left p-2">Etapa Bitrix</th><th className="text-left p-2">Responsable</th></tr>
+              </thead>
+              <tbody>
+                {resumen.ultimos.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-400">Aún no hay deals nocturnos registrados.</td></tr>}
+                {resumen.ultimos.map((u) => (
+                  <tr key={u.bitrix_id} className="border-t">
+                    <td className="p-2 font-mono">{u.bitrix_id}</td>
+                    <td className="p-2">{u.grupo}</td>
+                    <td className="p-2" title={u.detalle || ""}>{u.estado}</td>
+                    <td className="p-2">{fecha(u.deal_creado)}</td>
+                    <td className="p-2">{u.grupo === "BOT" ? (u.respondio ? "Sí" : "No") : "—"}</td>
+                    <td className="p-2">{u.etapa_bitrix || "—"}</td>
+                    <td className="p-2">{u.responsible || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

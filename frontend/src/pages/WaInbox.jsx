@@ -690,8 +690,18 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
   // Llamar por Bitrix desde WABOT: encola la llamada; el Automarcador abierto en
   // Bitrix (PC o app móvil) la toma y marca por el teléfono de Bitrix del asesor.
   const [llamandoBitrix, setLlamandoBitrix] = useState(false);
+  // En la APK de WABOT (Android) se abre la negociación en la app de Bitrix del
+  // mismo celular; el asesor toca el ícono de teléfono y llama por Bitrix24.
+  const esApkWabot = () => Boolean(window.Capacitor?.isNativePlatform?.())
+    || (/Android/i.test(navigator.userAgent) && /; wv\)/.test(navigator.userAgent));
   const llamarPorBitrix = async () => {
     if (!selected?.id || llamandoBitrix) return;
+    const urlDeal = selected.bitrix_deal_id ? bitrixDealUrl(selected.bitrix_deal_id) : null;
+    if (esApkWabot() && urlDeal) {
+      // Fuera de allowNavigation, Capacitor lo abre con Android: entra a la app de Bitrix.
+      window.location.href = urlDeal;
+      return;
+    }
     setLlamandoBitrix(true);
     try {
       const r = await fetch(`${API}/conversations/${selected.id}/llamar-bitrix`, { method: "POST", headers: authH(false) });

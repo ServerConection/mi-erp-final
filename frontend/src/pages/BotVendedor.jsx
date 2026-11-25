@@ -3,7 +3,7 @@
 // Solo ADMINISTRADOR (el backend lo valida). Lo que se guarda aqui lo usa el bot
 // de WhatsApp en menos de un minuto, sin reiniciarlo.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone, ImagePlus, Image as ImageIcon, Moon } from "lucide-react";
+import { Bot, Save, Upload, FileText, Plus, Send, Loader2, Archive, RotateCcw, Pin, PinOff, Eye, X, RefreshCw, Smartphone, ImagePlus, Image as ImageIcon, Moon, MessagesSquare, Search, AlertTriangle, Sparkles } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
 const BASE = `${API}/api/bot-vendedor`;
@@ -23,6 +23,7 @@ async function pedir(url, opciones = {}) {
 
 const fecha = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" }) : "—");
 const PESTANAS = [
+  { id: "conversaciones", nombre: "Conversaciones" },
   { id: "prompt", nombre: "Prompt y reglas" },
   { id: "conocimiento", nombre: "Conocimiento" },
   { id: "planes", nombre: "Planes e imágenes" },
@@ -32,7 +33,7 @@ const PESTANAS = [
 ];
 
 export default function BotVendedor() {
-  const [pestana, setPestana] = useState("prompt");
+  const [pestana, setPestana] = useState("conversaciones");
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <div className="mb-4">
@@ -51,12 +52,183 @@ export default function BotVendedor() {
           </button>
         ))}
       </div>
+      {pestana === "conversaciones" && <PestanaConversaciones />}
       {pestana === "prompt" && <PestanaPrompt />}
       {pestana === "conocimiento" && <PestanaConocimiento />}
       {pestana === "planes" && <PestanaPlanes />}
       {pestana === "probar" && <PestanaProbar />}
       {pestana === "lineas" && <PestanaLineas />}
       {pestana === "nocturno" && <PestanaNocturno />}
+    </div>
+  );
+}
+
+// ─── Conversaciones atendidas por el bot ─────────────────────────────────────
+const hora = (f) => (f ? new Date(f).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" }) : "—");
+const COLOR_ETAPA = (e = "") =>
+  /ACUERDO|PENDIENTE CIERRE|REQUISITOS/.test(e) ? "bg-green-100 text-green-800"
+    : /SEGUIMIENTO|CONTACTO|VOLVER/.test(e) ? "bg-amber-100 text-amber-800"
+      : /SOPORTE|DUPLICADO|DISCAPACIDAD/.test(e) ? "bg-sky-100 text-sky-800"
+        : "bg-red-100 text-red-700";
+
+function PestanaConversaciones() {
+  const [datos, setDatos] = useState(null);
+  const [dias, setDias] = useState(7);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState("todas");
+  const [sel, setSel] = useState(null);
+  const [detalle, setDetalle] = useState(null);
+  const [recomendando, setRecomendando] = useState(false);
+  const [error, setError] = useState("");
+  const fin = useRef(null);
+
+  const cargar = useCallback(async () => {
+    setError("");
+    try { setDatos(await pedir(`${BASE}/conversaciones?dias=${dias}`, { headers: headers() })); } catch (e) { setError(e.message); }
+  }, [dias]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const recomendar = useCallback(async (id) => {
+    setRecomendando(true);
+    try {
+      const r = await pedir(`${BASE}/conversaciones/${id}/recomendar`, { method: "POST", headers: headers() });
+      setDetalle((d) => (d && d.conversacion.id === id ? { ...d, clasificacion: r } : d));
+      setDatos((d) => d && { ...d, conversaciones: d.conversaciones.map((c) => (c.id === id ? { ...c, etapa_recomendada: r.etapa, motivo_etapa: r.motivo } : c)) });
+    } catch (e) { setError(e.message); }
+    setRecomendando(false);
+  }, []);
+
+  const abrir = async (c) => {
+    setSel(c.id); setDetalle(null); setError("");
+    try {
+      const d = await pedir(`${BASE}/conversaciones/${c.id}`, { headers: headers() });
+      setDetalle(d);
+      if (!d.clasificacion) recomendar(c.id);
+    } catch (e) { setError(e.message); }
+  };
+  useEffect(() => { fin.current?.scrollIntoView(); }, [detalle]);
+
+  const lista = (datos?.conversaciones || []).filter((c) => {
+    if (filtro === "asesor" && !c.paso_asesor) return false;
+    if (filtro === "venta" && !c.bot_venta_en) return false;
+    if (filtro === "sin_respuesta" && c.msgs_cliente > 0) return false;
+    const q = busca.trim().toLowerCase();
+    return !q || `${c.wa_number} ${c.bitrix_id || ""} ${c.linea || ""}`.toLowerCase().includes(q);
+  });
+  const t = datos?.conversaciones || [];
+
+  return (
+    <div className="space-y-3">
+      {error && <Mensaje tipo="error" texto={error} />}
+      {datos?.ia_ultimo_error && (
+        <div className="flex gap-2 items-start text-xs rounded-lg px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span><b>Último error de la IA</b> ({hora(datos.ia_ultimo_error.actualizado_en)}): {datos.ia_ultimo_error.valor}</span>
+        </div>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {[
+          ["Conversaciones", t.length],
+          ["Respondieron", t.filter((c) => c.msgs_cliente > 0).length],
+          ["Pasaron a asesor", t.filter((c) => c.paso_asesor).length],
+          ["Venta confirmada", t.filter((c) => c.bot_venta_en).length],
+          ["Con deal Bitrix", t.filter((c) => c.bitrix_id).length],
+        ].map(([k, v]) => (
+          <div key={k} className="bg-white rounded-xl border p-3">
+            <div className="text-xs text-slate-500">{k}</div>
+            <div className="text-2xl font-extrabold text-slate-800">{v}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-[360px_1fr] gap-3 h-[70vh]">
+        <div className="bg-white rounded-xl border flex flex-col overflow-hidden">
+          <div className="p-2 border-b space-y-2">
+            <div className="flex gap-2">
+              <div className="flex-1 flex items-center gap-1 border rounded-lg px-2">
+                <Search className="w-4 h-4 text-slate-400" />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Número o deal…" className="flex-1 py-1.5 text-sm outline-none" />
+              </div>
+              <select value={dias} onChange={(e) => setDias(Number(e.target.value))} className="border rounded-lg text-sm px-1">
+                {[1, 3, 7, 15, 30].map((d) => <option key={d} value={d}>{d} día{d > 1 ? "s" : ""}</option>)}
+              </select>
+              <button onClick={cargar} title="Actualizar" className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><RefreshCw className="w-4 h-4" /></button>
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {[["todas", "Todas"], ["asesor", "Pasó a asesor"], ["venta", "Venta"], ["sin_respuesta", "Sin respuesta"]].map(([k, n]) => (
+                <button key={k} onClick={() => setFiltro(k)}
+                  className={`text-xs px-2 py-1 rounded-full border ${filtro === k ? "bg-blue-600 text-white border-blue-600" : "text-slate-600 hover:bg-slate-50"}`}>{n}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {!datos && !error && <Cargando />}
+            {datos && lista.length === 0 && <p className="p-6 text-center text-sm text-slate-400">No hay conversaciones del bot en este periodo.</p>}
+            {lista.map((c) => (
+              <button key={c.id} onClick={() => abrir(c)}
+                className={`w-full text-left px-3 py-2 border-b hover:bg-slate-50 ${sel === c.id ? "bg-blue-50" : ""}`}>
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-sm text-slate-800">{c.wa_number}</span>
+                  <span className="text-[10px] text-slate-400">{hora(c.ultimo)}</span>
+                </div>
+                <div className="text-xs text-slate-500 truncate">{c.ultimo_mensaje || "—"}</div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {c.bitrix_id && <span className="text-[10px] px-1.5 rounded bg-slate-100 text-slate-600">Deal {c.bitrix_id}</span>}
+                  {c.msgs_cliente === 0 && <span className="text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">Sin respuesta</span>}
+                  {c.paso_asesor && <span className="text-[10px] px-1.5 rounded bg-amber-100 text-amber-800">Pasó a asesor</span>}
+                  {c.bot_venta_en && <span className="text-[10px] px-1.5 rounded bg-green-100 text-green-800">Venta</span>}
+                  {c.etapa_recomendada && <span className={`text-[10px] px-1.5 rounded ${COLOR_ETAPA(c.etapa_recomendada)}`}>{c.etapa_recomendada}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border flex flex-col overflow-hidden">
+          {!sel && (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-sm">
+              <MessagesSquare className="w-10 h-10 mb-2" /> Elige una conversación para verla.
+            </div>
+          )}
+          {sel && !detalle && <Cargando />}
+          {detalle && (
+            <>
+              <div className="p-3 border-b">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div className="font-bold text-slate-800">{detalle.conversacion.wa_number}</div>
+                    <div className="text-xs text-slate-500">Línea {detalle.conversacion.linea || "—"} · {detalle.mensajes.length} mensajes</div>
+                  </div>
+                  <button onClick={() => recomendar(detalle.conversacion.id)} disabled={recomendando}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-blue-600 text-blue-700 font-semibold hover:bg-blue-50 disabled:opacity-50">
+                    {recomendando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Recalcular etapa
+                  </button>
+                </div>
+                <div className="mt-2 rounded-lg bg-indigo-50 border border-indigo-200 p-2 text-sm">
+                  <span className="text-slate-600">Etapa recomendada en Bitrix: </span>
+                  {detalle.clasificacion
+                    ? <><b className="text-indigo-800">{detalle.clasificacion.etapa}</b><div className="text-xs text-slate-600 mt-0.5">{detalle.clasificacion.motivo}</div></>
+                    : <span className="text-slate-400">{recomendando ? "analizando la conversación…" : "—"}</span>}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#efeae2]">
+                {detalle.mensajes.map((m) => (
+                  <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
+                    <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap shadow-sm ${m.direction === "in" ? "bg-white" : m.es_bot ? "bg-[#d9fdd3]" : "bg-sky-100"}`}>
+                      <div className="text-[10px] font-semibold mb-0.5 text-slate-500">
+                        {m.direction === "in" ? "Cliente" : m.es_bot ? "🤖 Bot" : "👤 Asesor"}{m.accion && m.accion !== "null" ? ` · ${m.accion}` : ""}
+                      </div>
+                      {m.content || <i className="text-slate-400">[{m.type}]</i>}
+                      <div className="text-[10px] text-slate-400 mt-1 text-right">{hora(m.timestamp)}</div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={fin} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

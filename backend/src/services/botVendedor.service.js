@@ -168,11 +168,11 @@ async function llamarModelo(messages, modelo) {
 
 // 429 = limite por minuto del plan gratis: espera lo que pide Groq y reintenta.
 async function llamarConEspera(messages, modelo) {
-  for (let intento = 0; intento < 3; intento++) {
+  for (let intento = 0; intento < 5; intento++) {
     try {
       return await llamarModelo(messages, modelo);
     } catch (e) {
-      if (e.status !== 429 || intento === 2) throw e;
+      if (e.status !== 429 || intento === 4) throw e;
       const seg = Number((e.message.match(/try again in ([\d.]+)s/) || [])[1] || 10);
       await esperar(Math.ceil(seg * 1000) + 500);
     }
@@ -271,6 +271,60 @@ async function responder(historial) {
   return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, modelo, ms: Date.now() - inicio };
 }
 
+// ─── Etapa recomendada ───────────────────────────────────────────────────────
+// Etapas del pipeline NOVONET (53 en total) que tienen sentido para una conversacion de WhatsApp.
+const ETAPAS_RECOMENDABLES = [
+  ['CONTACTO NUEVO', 'El cliente no respondio o la conversacion no avanzo.'],
+  ['VOLVER A LLAMAR NO CONTESTA', 'Respondio poco y dejo de contestar; hay que volver a contactarlo.'],
+  ['SEGUIMIENTO NEGOCIACION', 'Mostro interes y pregunto por planes/precios, pero no decidio.'],
+  ['PENDIENTE CIERRE', 'Eligio un plan o esta por decidir; falta cerrar.'],
+  ['ENVIO REQUISITOS/DOCUMENTOS PENDIENTES', 'Acepto contratar y faltan cedula, planilla u otros datos.'],
+  ['CLIENTE CON ACUERDO', 'Confirmo la venta con todos los datos; listo para subir.'],
+  ['FUERA DE COBERTURA', 'La direccion no tiene cobertura.'],
+  ['NO INTERESA COSTO PLAN', 'El precio del plan le parecio caro.'],
+  ['NO INTERESA COSTO INSTALACIÓN', 'No acepta el valor de instalacion.'],
+  ['MANTIENE PROVEEDOR', 'Se queda con su proveedor actual.'],
+  ['DESISTE DE COMPRA', 'Dijo que ya no quiere el servicio.'],
+  ['NO VOLVER A CONTACTAR', 'Pidio no ser contactado.'],
+  ['ATC/SOPORTE', 'Ya es cliente y escribio por soporte o servicio al cliente.'],
+  ['CLIENTE DISCAPACIDAD', 'Califica al plan de discapacidad.'],
+  ['DUPLICADO', 'Ya esta siendo atendido por otro deal o asesor.'],
+];
+
+/** Lee la conversacion y recomienda a que etapa de Bitrix moverla. Devuelve { etapa, motivo, modelo }. */
+async function recomendarEtapa(mensajes) {
+  if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
+  const transcripcion = mensajes
+    .map((m) => `${m.quien}: ${String(m.texto || '').replace(/\s+/g, ' ').slice(0, 400)}`)
+    .join('\n').slice(-6000);
+  const lista = ETAPAS_RECOMENDABLES.map(([e, d]) => `- ${e}: ${d}`).join('\n');
+  const { texto, modelo } = await llamarConRespaldo([
+    { role: 'system', content: `Eres supervisor comercial de NETLIFE. Lee la conversacion de WhatsApp y elige UNA etapa de Bitrix a la que deberia pasar la negociacion. Responde SOLO un JSON: {"etapa": "<nombre exacto de la lista>", "motivo": "<una frase corta en espanol>"}.\nETAPAS:\n${lista}` },
+    { role: 'user', content: transcripcion || '(sin mensajes)' },
+  ]);
+  let etapa = 'SEGUIMIENTO NEGOCIACION';
+  let motivo = '';
+  try {
+    const j = JSON.parse((String(texto).match(/\{[\s\S]*\}/) || ['{}'])[0]);
+    const valida = ETAPAS_RECOMENDABLES.find(([e]) => normalizar(e) === normalizar(j.etapa || ''));
+    if (valida) etapa = valida[0];
+    motivo = String(j.motivo || '').slice(0, 300);
+  } catch (_) {
+    motivo = 'No se pudo interpretar la respuesta de la IA.';
+  }
+  return { etapa, motivo, modelo };
+}
+
+// Ultimo error de la IA (para mostrarlo en el modulo; WABOT corre en otro proceso).
+async function registrarErrorIA(mensaje) {
+  try {
+    await pool.query(
+      `INSERT INTO public.bv_config (clave, valor, actualizado_por, actualizado_en) VALUES ('ia_ultimo_error', $1, 'wabot', NOW())
+       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = 'wabot', actualizado_en = NOW()`,
+      [String(mensaje).slice(0, 500)]);
+  } catch (_) {}
+}
+
 // Imagen de un plan (cache en memoria para no leer la BD en cada envio).
 const cacheImagenes = new Map(); // id -> { buffer, mime, nombre, en }
 async function imagenPlan(id) {
@@ -328,6 +382,7 @@ async function extraerTexto(buffer, nombre) {
 
 module.exports = {
   asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen, enHorario, aMinutos,
+  recomendarEtapa, registrarErrorIA, ETAPAS_RECOMENDABLES,
   transcribirAudio, describirImagen, extraerTexto,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

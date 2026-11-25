@@ -69,3 +69,12 @@ CREATE INDEX IF NOT EXISTS idx_bv_nocturno_creado ON public.bv_nocturno(creado_e
 
 -- Carrera bot vs asesor: momento en que el cliente confirmo la venta con el bot.
 ALTER TABLE public.bv_nocturno ADD COLUMN IF NOT EXISTS bot_venta_en TIMESTAMPTZ;
+
+-- Etapa de Bitrix recomendada por la IA para cada conversacion que atendio el bot.
+CREATE TABLE IF NOT EXISTS public.bv_clasificacion (
+  conversation_id UUID PRIMARY KEY,
+  etapa           VARCHAR(80) NOT NULL,
+  motivo          TEXT,
+  modelo          VARCHAR(80),
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

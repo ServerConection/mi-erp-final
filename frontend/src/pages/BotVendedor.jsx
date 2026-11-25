@@ -518,9 +518,10 @@ function PestanaNocturno() {
       {error && <Mensaje tipo="error" texto={error} />}
       {aviso && <Mensaje tipo="ok" texto={aviso} />}
       <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
-        En el horario nocturno, cada deal nuevo de <b>NOVONET</b> se sortea: al grupo <b>BOT</b> el bot le escribe primero
-        (se presenta como asesor de ventas y pregunta si quiere contratar o es servicio al cliente); el grupo <b>CONTROL</b> queda
-        para el asesor de la mañana. Así se compara quién cierra más. El bot envía máximo 1 saludo por minuto para cuidar la línea.
+        En el horario nocturno, a <b>cada deal nuevo de NOVONET</b> el bot le escribe primero: se presenta como asesor de ventas
+        y pregunta si quiere contratar o es servicio al cliente. Al día siguiente el repartidor también lo asigna a un asesor.
+        Aquí se compara <b>quién cierra primero</b> al mismo cliente: el bot (el cliente le confirma la venta) o el asesor
+        (registra la venta en el ERP). El bot envía máximo 1 saludo por minuto para cuidar la línea.
       </div>
 
       <div className="bg-white rounded-xl border p-4 space-y-3">
@@ -539,8 +540,6 @@ function PestanaNocturno() {
           </label>
           <label>Desde<input type="time" value={cfg.inicio} onChange={(e) => set("inicio", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
           <label>Hasta<input type="time" value={cfg.fin} onChange={(e) => set("fin", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
-          <label>% de deals para el BOT
-            <input type="number" min={0} max={100} value={cfg.pctBot} onChange={(e) => set("pctBot", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
           <label>Máximo de saludos por noche
             <input type="number" min={1} value={cfg.max} onChange={(e) => set("max", e.target.value)} className="w-full border rounded-lg p-2 mt-1" /></label>
         </div>
@@ -561,42 +560,46 @@ function PestanaNocturno() {
       {resumen && (
         <div className="bg-white rounded-xl border p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-slate-800">Resultados A/B (últimos {resumen.dias} días)</h2>
+            <h2 className="font-bold text-slate-800">Carrera bot vs asesor (últimos {resumen.dias} días)</h2>
             <button onClick={cargar} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><RefreshCw className="w-4 h-4" /></button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {["BOT", "CONTROL"].map((g) => {
-              const r = resumen.grupos.find((x) => x.grupo === g) || { deals: 0, enviados: 0, respondieron: 0, errores: 0 };
-              const etapas = resumen.etapas.filter((x) => x.grupo === g).slice(0, 6);
-              return (
-                <div key={g} className={`rounded-xl border p-3 ${g === "BOT" ? "bg-indigo-50 border-indigo-200" : "bg-slate-50"}`}>
-                  <div className="font-bold text-slate-800">{g === "BOT" ? "🤖 Atendidos por el bot" : "👤 Control (asesor en la mañana)"}</div>
-                  <div className="text-2xl font-extrabold text-slate-800">{r.deals} <span className="text-sm font-normal text-slate-500">deals</span></div>
-                  {g === "BOT" && <div className="text-xs text-slate-600">Saludos enviados: {r.enviados} · Respondieron: {r.respondieron} · Errores: {r.errores}</div>}
-                  <div className="mt-2 text-xs text-slate-500 font-semibold">Etapa actual en Bitrix</div>
-                  {etapas.length === 0 && <div className="text-xs text-slate-400">Sin datos aún</div>}
-                  {etapas.map((e) => (
-                    <div key={e.etapa} className="flex justify-between text-xs py-0.5"><span>{e.etapa}</span><b>{e.deals}</b></div>
-                  ))}
-                </div>
-              );
-            })}
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border p-3 bg-slate-50">
+              <div className="text-xs text-slate-500 font-semibold">Deals nocturnos</div>
+              <div className="text-2xl font-extrabold text-slate-800">{resumen.totales.deals}</div>
+              <div className="text-xs text-slate-600">Saludos enviados: {resumen.totales.enviados} · Respondieron: {resumen.totales.respondieron} · Errores: {resumen.totales.errores}</div>
+            </div>
+            <div className="rounded-xl border p-3 bg-indigo-50 border-indigo-200">
+              <div className="text-xs text-slate-500 font-semibold">🤖 Bot vendedor</div>
+              <div className="text-2xl font-extrabold text-indigo-700">{resumen.totales.gana_bot} <span className="text-sm font-normal text-slate-500">cerró primero</span></div>
+              <div className="text-xs text-slate-600">Ventas confirmadas: {resumen.totales.cierres_bot} · Tiempo promedio: {resumen.totales.prom_min_bot ?? "—"} min</div>
+            </div>
+            <div className="rounded-xl border p-3 bg-emerald-50 border-emerald-200">
+              <div className="text-xs text-slate-500 font-semibold">👤 Asesor</div>
+              <div className="text-2xl font-extrabold text-emerald-700">{resumen.totales.gana_asesor} <span className="text-sm font-normal text-slate-500">cerró primero</span></div>
+              <div className="text-xs text-slate-600">Ventas registradas: {resumen.totales.cierres_asesor} · Tiempo promedio: {resumen.totales.prom_min_asesor ?? "—"} min</div>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase">
-                <tr><th className="text-left p-2">Deal</th><th className="text-left p-2">Grupo</th><th className="text-left p-2">Estado</th><th className="text-left p-2">Entró</th><th className="text-left p-2">¿Respondió?</th><th className="text-left p-2">Etapa Bitrix</th><th className="text-left p-2">Responsable</th></tr>
+                <tr>
+                  <th className="text-left p-2">Deal</th><th className="text-left p-2">Entró</th><th className="text-left p-2">Saludo</th>
+                  <th className="text-left p-2">¿Respondió?</th><th className="text-left p-2">Cierre bot</th><th className="text-left p-2">Cierre asesor</th>
+                  <th className="text-left p-2">Ganó</th><th className="text-left p-2">Asesor</th>
+                </tr>
               </thead>
               <tbody>
-                {resumen.ultimos.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-400">Aún no hay deals nocturnos registrados.</td></tr>}
+                {resumen.ultimos.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-slate-400">Aún no hay deals nocturnos registrados.</td></tr>}
                 {resumen.ultimos.map((u) => (
                   <tr key={u.bitrix_id} className="border-t">
                     <td className="p-2 font-mono">{u.bitrix_id}</td>
-                    <td className="p-2">{u.grupo}</td>
-                    <td className="p-2" title={u.detalle || ""}>{u.estado}</td>
                     <td className="p-2">{fecha(u.deal_creado)}</td>
-                    <td className="p-2">{u.grupo === "BOT" ? (u.respondio ? "Sí" : "No") : "—"}</td>
-                    <td className="p-2">{u.etapa_bitrix || "—"}</td>
+                    <td className="p-2" title={u.detalle || ""}>{u.estado}</td>
+                    <td className="p-2">{u.respondio ? "Sí" : "No"}</td>
+                    <td className="p-2">{u.bot_venta_en ? `${fecha(u.bot_venta_en)} (${u.min_bot} min)` : "—"}</td>
+                    <td className="p-2">{u.asesor_venta_en ? `${fecha(u.asesor_venta_en)} (${u.min_asesor} min)` : "—"}</td>
+                    <td className="p-2 font-bold">{u.ganador === "BOT" ? "🤖 Bot" : u.ganador === "ASESOR" ? "👤 Asesor" : "—"}</td>
                     <td className="p-2">{u.responsible || "—"}</td>
                   </tr>
                 ))}

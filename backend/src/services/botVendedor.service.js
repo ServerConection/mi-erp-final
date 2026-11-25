@@ -244,6 +244,10 @@ async function responder(historial) {
     role: 'system',
     content: `BASE DE CONOCIMIENTO (usa solo esto para precios, planes y condiciones. Si el cliente no dice su forma de pago, muestra el precio promo con tarjeta de credito y aclara que con cuenta bancaria la promo cambia):\n\n${contexto || '(sin documentos cargados; si necesitas un dato que no tienes, aplica la regla de pasar a un asesor)'}`,
   });
+  messages.push({
+    role: 'system',
+    content: 'CIERRE: cuando el cliente confirme que el resumen final de su solicitud esta correcto (acepta contratar el plan), escribe al FINAL de tu mensaje la etiqueta [VENTA_CERRADA]. Usala una sola vez y solo con esa confirmacion. No la menciones en el texto.',
+  });
   if (base.planesConImagen.length) {
     const lista = base.planesConImagen.map((p) => `[IMG:${p.id}] ${p.nombre} (${p.velocidad_mbps} Mbps, ${p.segmento})`).join('\n');
     messages.push({
@@ -258,12 +262,13 @@ async function responder(historial) {
   const validos = new Set(base.planesConImagen.map((p) => p.id));
   const imagenes = [...new Set([...String(texto).matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))]
     .filter((id) => validos.has(id)).slice(0, 2);
-  let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
+  const ventaCerrada = /\[VENTA_CERRADA\]/.test(String(texto));
+  let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/\[VENTA_CERRADA\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
   let accion = null;
   if (/FUERA_DE_HORARIO/.test(salida)) { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
   else if (/ESCALAR_ASESOR/.test(salida)) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
   if (!salida) salida = 'Disculpa, no te entendi bien. ¿Me lo puedes repetir?';
-  return { texto: salida, accion, imagenes: accion ? [] : imagenes, modelo, ms: Date.now() - inicio };
+  return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, modelo, ms: Date.now() - inicio };
 }
 
 // Imagen de un plan (cache en memoria para no leer la BD en cada envio).

@@ -167,6 +167,16 @@ async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType })
   }
   console.log(`[BOT-VENDEDOR-WA] linea ${lineId} conv ${conv.id}: respondio en ${(r.ms / 1000).toFixed(1)} s${r.accion ? ` <<${r.accion}>>` : ''}`);
 
+  if (r.ventaCerrada) {
+    // Carrera nocturna: primera confirmacion de venta del cliente con el bot.
+    const marca = await pool.query(
+      `UPDATE public.bv_nocturno SET bot_venta_en = NOW()
+        WHERE line_id = $1 AND telefono = $2 AND bot_venta_en IS NULL AND enviado_en > NOW() - INTERVAL '7 days'
+        RETURNING bitrix_id`,
+      [lineId, String(conv.wa_number || '').replace(/\D/g, '')]).catch(() => ({ rows: [] }));
+    console.log(`[BOT-VENDEDOR-WA] linea ${lineId} conv ${conv.id}: VENTA CONFIRMADA con el bot${marca.rows[0] ? ` (deal ${marca.rows[0].bitrix_id})` : ''}`);
+  }
+
   if (r.accion) {
     pausas.set(conv.id, Date.now() + PAUSA_MIN * 60 * 1000);
     console.log(`[BOT-VENDEDOR-WA] *** PASAR A ASESOR: linea ${lineId} conv ${conv.id} ***`);

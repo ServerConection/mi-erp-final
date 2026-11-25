@@ -55,6 +55,9 @@ async function lineaActiva(lineId) {
 
 function invalidarLineas() { lineasEn = 0; }
 
+// Aviso de "dame un momento" ya enviado por conversacion (para no repetirlo).
+const avisosEspera = new Map();
+
 // Pausas por conversacion tras pasar a un asesor (en memoria).
 const pausas = new Map(); // conversation_id -> timestamp hasta
 
@@ -137,12 +140,24 @@ async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType })
   const hist = await historial(conv.id, msg.key?.id);
   hist.push({ role: 'user', content: entrada });
 
-  let r;
-  try {
-    r = await bot.responder(hist);
-  } catch (e) {
-    console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: IA no disponible:`, e.message);
-    r = { texto: 'Disculpa, estoy teniendo un inconveniente. Un asesor te escribira en breve.', accion: 'ESCALAR', ms: 0, modelo: '-' };
+  // Si la IA falla (limite por minuto, red, clave), se reintenta 2 veces con espera.
+  // Una falla tecnica NO pasa el chat a un asesor: el cliente recibe a lo sumo un
+  // "dame un momento" y el error queda visible en el modulo.
+  let r = null;
+  for (let intento = 1; intento <= 3 && !r; intento++) {
+    try {
+      r = await bot.responder(hist);
+    } catch (e) {
+      console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: IA no disponible (intento ${intento}/3):`, e.message);
+      await bot.registrarErrorIA(`${new Date().toISOString()} · linea ${lineId} · intento ${intento}/3 · ${e.message}`);
+      if (intento < 3) await new Promise((res) => setTimeout(res, 20000 * intento));
+    }
+  }
+  if (!r) {
+    const yaAviso = avisosEspera.get(conv.id);
+    if (yaAviso && Date.now() - yaAviso < 30 * 60 * 1000) return; // no repetir el aviso
+    avisosEspera.set(conv.id, Date.now());
+    r = { texto: 'Dame un momento por favor, ya te ayudo 🙏', accion: null, imagenes: [], ms: 0, modelo: '-' };
   }
 
   const enviado = await manager.sendText(lineId, remoteJid, r.texto);

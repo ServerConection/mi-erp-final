@@ -5,7 +5,6 @@ const {
   verifyCallActionToken,
   resolveDealPhone,
   consumeCallNonce,
-  queueAutomarcadorDirectCall,
 } = require('../services/bitrixCallPlacement.service')
 
 function escapeHtml(value) {
@@ -47,6 +46,11 @@ function createBitrixCallPlacementController({
   automarcadorApiKey,
   fetchImpl = fetch,
   now = () => Date.now(),
+  resolverTelefono = resolveDealPhone,
+  // Misma cola que usa "Llamar por Bitrix" en WABOT: el Automarcador abierto en
+  // Bitrix toma la llamada y marca con el teléfono del asesor. Ya no depende del
+  // Automarcador externo por ngrok (/api/direct-call), que rechazaba las llamadas.
+  encolar = (...args) => require('../services/automarcadorBitrix.service').encolarLlamadaDirecta(...args),
 }) {
   function setPrivateEmbedHeaders(res) {
     res.set('Content-Type', 'text/html; charset=utf-8')
@@ -106,16 +110,11 @@ function createBitrixCallPlacementController({
       const firstUse = await consumeCallNonce(pool, payload.nonce, payload.erpUserId)
       if (!firstUse) return res.status(409).send(renderResult({ success: false, title: 'Confirmación utilizada', message: 'Vuelve a abrir LLAMAR para solicitar una nueva llamada.' }))
 
-      const contact = await resolveDealPhone(bitrixApp, payload.authId, payload.dealId)
-      await queueAutomarcadorDirectCall(fetchImpl, {
-        baseUrl: automarcadorUrl,
-        apiKey: automarcadorApiKey,
-        userId: payload.userId,
-        phone: contact.phone,
-        dealId: payload.dealId,
-        contactName: contact.contactName,
-      })
-      return res.status(202).send(renderResult({ success: true, title: 'Llamada enviada', message: 'El automarcador está iniciando la llamada con tu usuario.' }))
+      const contact = await resolverTelefono(bitrixApp, payload.authId, payload.dealId)
+      const emp = await pool.query(`SELECT empresa FROM usuarios WHERE id = $1`, [payload.erpUserId])
+      await encolar(payload.erpUserId, emp.rows[0]?.empresa,
+        { telefono: contact.phone, nombre: contact.contactName || null, deal_id: payload.dealId }, pool)
+      return res.status(202).send(renderResult({ success: true, title: 'Llamada enviada', message: 'Abre la app Automarcador en Bitrix y pulsa Iniciar: esta llamada sale primero.' }))
     } catch (error) {
       const clientError = /inválida|expiró|sin acceso|no tiene un teléfono|asesor|automarcador|disponible|conectado|autorizado/i.test(error.message)
       console.error('[BITRIX-CALL] No se pudo iniciar la llamada. error=%s', error.message)

@@ -96,27 +96,40 @@ function numerosControlDe(empresa) {
     : NUMEROS_CONTROL_POR_EMPRESA.NOVONET
 }
 
-// ── Cierre diario de campañas (2026-11-19) ──────────────────────────────
-// Ninguna campaña envía después de las 20:00 (hora Ecuador). Si terminó antes,
-// queda ABIERTA (status 'abierta') para medir lecturas y respuestas, y su bot
-// (si tiene) sigue atendiendo. Se CIERRA a una hora aleatoria entre 20:00 y
-// 20:30 (cierre_at) enviando un resumen a WA_NUMERO_CIERRE_CAMPANA.
-const HORA_CORTE_CAMPANAS   = parseInt(process.env.WA_CAMPANA_HORA_CORTE || '20', 10)
-const VENTANA_CIERRE_MIN    = parseInt(process.env.WA_CAMPANA_VENTANA_CIERRE_MIN || '30', 10)
-const NUMERO_CIERRE_CAMPANA = normalizarNumeroControl(process.env.WA_NUMERO_CIERRE_CAMPANA || '593962517928')
+// ── Jornada de campañas (2026-11-25) ─────────────────────────────────────
+// Ventana GLOBAL de envío: 07:00 a 21:00 (hora Ecuador), para TODAS las
+// campañas, además del horario propio que tenga cada una. Si a las 21:00
+// quedan pendientes, la campaña se pausa sola y sigue al día siguiente a las
+// 07:00 (no se pierde nadie).
+// Si una campaña TERMINA de enviar antes, queda ABIERTA (status 'abierta')
+// midiendo lecturas y respuestas (y su bot sigue atendiendo) hasta una hora
+// aleatoria entre 20:00 y 21:00 (cierre_at); ahí se cierra y se manda un
+// resumen a WA_NUMERO_CIERRE_CAMPANA.
+const OFFSET_HORAS_ECUADOR_CIERRE = -5
+const HORA_INICIO_CAMPANAS  = parseInt(process.env.WA_CAMPANA_HORA_INICIO || '7', 10)
+const HORA_FIN_CAMPANAS     = parseInt(process.env.WA_CAMPANA_HORA_FIN || '21', 10)
+const HORA_CIERRE_DESDE     = parseInt(process.env.WA_CAMPANA_CIERRE_DESDE || '20', 10)
+const NUMERO_CIERRE_CAMPANA = normalizarNumeroControl(process.env.WA_NUMERO_CIERRE_CAMPANA || '593958693149')
 
-// Instante (UTC) de las HORA_CORTE:00 del día de Ecuador de `ahora`.
-function corteDelDia(ahora = new Date()) {
+// Instante (UTC) de la hora `h`:00 del día de Ecuador de `ahora`.
+function horaDelDia(ahora, h) {
   const local = new Date(ahora.getTime() + OFFSET_HORAS_ECUADOR_CIERRE * 3600e3)
-  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), HORA_CORTE_CAMPANAS)
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), h)
     - OFFSET_HORAS_ECUADOR_CIERRE * 3600e3)
 }
-const pasoHoraCorte = (ahora = new Date()) => ahora.getTime() >= corteDelDia(ahora).getTime()
-// Hora de cierre aleatoria entre el corte y corte + VENTANA_CIERRE_MIN.
-function cierreAleatorioDelDia(ahora = new Date(), aleatorio = Math.random) {
-  return new Date(corteDelDia(ahora).getTime() + Math.floor(aleatorio() * VENTANA_CIERRE_MIN * 60e3))
+// ¿Estamos dentro de la jornada global de envío (07:00–21:00)?
+function dentroJornadaGlobal(ahora = new Date()) {
+  const t = ahora.getTime()
+  return t >= horaDelDia(ahora, HORA_INICIO_CAMPANAS).getTime() && t < horaDelDia(ahora, HORA_FIN_CAMPANAS).getTime()
 }
-const OFFSET_HORAS_ECUADOR_CIERRE = -5
+// Hora de cierre aleatoria entre las 20:00 y las 21:00 de hoy (nunca antes de
+// "ahora": si la campaña termina a las 20:40, cierra entre 20:40 y 21:00).
+function cierreAleatorioDelDia(ahora = new Date(), aleatorio = Math.random) {
+  const desde = Math.max(ahora.getTime(), horaDelDia(ahora, HORA_CIERRE_DESDE).getTime())
+  const hasta = horaDelDia(ahora, HORA_FIN_CAMPANAS).getTime()
+  if (desde >= hasta) return new Date(ahora.getTime())
+  return new Date(desde + Math.floor(aleatorio() * (hasta - desde)))
+}
 
 // ── Aviso de exclusión automático (opt-out) ─────────────────────────────
 const AGREGAR_OPT_OUT = process.env.WA_AGREGAR_OPT_OUT !== 'false'
@@ -153,6 +166,8 @@ function horaYDiaEcuador(ahora = new Date()) {
 }
 
 function dentroDeHorarioPermitido(camp, ahora = new Date()) {
+  // Primero la jornada global 07:00–21:00, que nadie puede saltarse.
+  if (!dentroJornadaGlobal(ahora)) return false
   const sendDays  = camp?.send_days
   const horaDesde = camp?.send_hour_from
   const horaHasta = camp?.send_hour_to
@@ -194,20 +209,14 @@ class CampaignEngine {
     if (!camp) throw new Error('Campaña no encontrada')
     if (camp.status === 'completed') throw new Error('La campaña ya terminó')
     if (camp.status === 'abierta') {
-      throw new Error('La campaña ya envió a todos; queda abierta midiendo respuestas hasta el cierre de las 20:00–20:30')
+      throw new Error('La campaña ya envió a todos; queda abierta midiendo respuestas hasta su cierre (entre 20:00 y 21:00)')
     }
-    if (pasoHoraCorte()) {
-      throw new Error(`Después de las ${HORA_CORTE_CAMPANAS}:00 no se inician campañas: todas cierran entre ` +
-        `las ${HORA_CORTE_CAMPANAS}:00 y las ${HORA_CORTE_CAMPANAS}:${String(VENTANA_CIERRE_MIN).padStart(2, '0')}. Iníciala mañana.`)
-    }
-
-    // cierre_at: hora aleatoria entre 20:00 y 20:30 de HOY. Se conserva al
-    // pausar/reanudar el mismo día; si quedó de un día anterior se recalcula.
+    // Fuera de la jornada 07:00–21:00 no hay error: el loop la deja pausada
+    // y el Scheduler la arranca sola a las 07:00.
     await query(
-      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()), paused_for_schedule=false,
-              cierre_at = CASE WHEN cierre_at IS NULL OR cierre_at < NOW() THEN $2 ELSE cierre_at END
+      `UPDATE campaigns SET status='running', started_at=COALESCE(started_at, NOW()), paused_for_schedule=false
         WHERE id=$1`,
-      [campaignId, cierreAleatorioDelDia()]
+      [campaignId]
     )
 
     this.running[campaignId] = { abortFlag: false }
@@ -311,20 +320,13 @@ class CampaignEngine {
         break
       }
 
-      // 🌙 Corte de las 20:00: no se envía nada más; los pendientes se
-      // descartan y la campaña queda abierta hasta su cierre (20:00–20:30).
-      if (pasoHoraCorte()) {
-        await this._dejarAbierta(campaignId, 'corte')
-        return
-      }
-
-      // 🕐 Guarda de horario: si la campaña tiene días/horas configurados y
-      // ahora mismo está fuera de esa ventana, se pausa sola. El
+      // 🕐 Guarda de horario: fuera de la jornada global (07:00–21:00) o del
+      // horario propio de la campaña, se pausa sola. El
       // SchedulerService la reanuda automáticamente apenas vuelva a estar
       // dentro del horario permitido — no hace falta reanudarla a mano.
       if (!dentroDeHorarioPermitido(camp)) {
         console.log(
-          `[CampaignEngine] 🕐 "${camp.name}" está fuera de su horario de envío configurado. ` +
+          `[CampaignEngine] 🕐 "${camp.name}" está fuera de su horario de envío (jornada ${HORA_INICIO_CAMPANAS}:00–${HORA_FIN_CAMPANAS}:00 o su horario propio). ` +
           `Se pausa hasta que vuelva a entrar en la ventana permitida.`
         )
         await query(`UPDATE campaigns SET status='paused', paused_for_schedule=true WHERE id=$1`, [campaignId])
@@ -594,17 +596,11 @@ class CampaignEngine {
     } catch { return 'NOVONET' }
   }
 
-  // Termina el envío y deja la campaña ABIERTA hasta su cierre (20:00–20:30).
-  // motivo 'corte' = llegaron las 20:00 con pendientes (se descartan).
+  // Ya no quedan pendientes: la campaña queda ABIERTA midiendo respuestas
+  // hasta su cierre aleatorio de hoy entre 20:00 y 21:00.
   async _dejarAbierta(campaignId, motivo) {
-    if (motivo === 'corte') {
-      const r = await query(
-        `UPDATE campaign_recipients SET status='skipped', error='Cierre del día (20:00): no alcanzó a enviarse'
-          WHERE campaign_id=$1 AND status IN ('pending','sending')`, [campaignId])
-      console.log(`[CampaignEngine] 🌙 Corte de las ${HORA_CORTE_CAMPANAS}:00 en ${campaignId}: ${r.rowCount} pendiente(s) descartado(s)`)
-    }
     await query(
-      `UPDATE campaigns SET status='abierta', cierre_at = COALESCE(cierre_at, $2) WHERE id=$1`,
+      `UPDATE campaigns SET status='abierta', cierre_at=$2 WHERE id=$1`,
       [campaignId, cierreAleatorioDelDia()]
     )
     delete this.running[campaignId]
@@ -612,20 +608,18 @@ class CampaignEngine {
     console.log(`[CampaignEngine] 📭 Campaña ${campaignId} abierta (${motivo}) hasta su cierre`)
   }
 
-  // ── Cierre (20:00–20:30): finaliza y envía el resumen ─────────────────
-  // Lo llama el Scheduler cuando cierre_at ya pasó. Idempotente: solo cierra
-  // si la campaña sigue en running/paused/abierta.
+  // ── Cierre (20:00–21:00): finaliza y envía el resumen ─────────────────
+  // Lo llama el Scheduler cuando cierre_at ya pasó. Solo cierra campañas
+  // ABIERTAS (que ya enviaron a todos); las que tienen pendientes siguen
+  // mañana. Idempotente.
   async cerrar(campaignId) {
     if (this.running[campaignId]) this.running[campaignId].abortFlag = true
     delete this.running[campaignId]
     delete this.paused[campaignId]
     const upd = await query(
       `UPDATE campaigns SET status='completed', finished_at=NOW(), paused_for_schedule=false
-        WHERE id=$1 AND status IN ('running','paused','abierta') RETURNING *`, [campaignId])
+        WHERE id=$1 AND status = 'abierta' RETURNING *`, [campaignId])
     if (!upd.rows.length) return false
-    await query(
-      `UPDATE campaign_recipients SET status='skipped', error='Cierre del día (20:00): no alcanzó a enviarse'
-        WHERE campaign_id=$1 AND status IN ('pending','sending')`, [campaignId])
     const camp = upd.rows[0]
     this._emit(campaignId, 'campaign:completed', { campaignId })
     console.log(`[CampaignEngine] ✅ Cierre de campaña "${camp.name}" (${campaignId})`)
@@ -836,8 +830,7 @@ CampaignEngine.normalizarNumeroControl = normalizarNumeroControl
 CampaignEngine.conOptOut = conOptOut
 CampaignEngine.NUMEROS_CONTROL_POR_EMPRESA = NUMEROS_CONTROL_POR_EMPRESA
 CampaignEngine.numerosControlDe = numerosControlDe
-CampaignEngine.corteDelDia = corteDelDia
-CampaignEngine.pasoHoraCorte = pasoHoraCorte
+CampaignEngine.dentroJornadaGlobal = dentroJornadaGlobal
 CampaignEngine.cierreAleatorioDelDia = cierreAleatorioDelDia
 CampaignEngine.CONTROL_CADA_N = CONTROL_CADA_N
 CampaignEngine.dentroDeHorarioPermitido = dentroDeHorarioPermitido

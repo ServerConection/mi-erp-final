@@ -63,7 +63,8 @@ const DIAS_SEMANA = [
   { value: 6, label: "Sáb" },
   { value: 0, label: "Dom" },
 ];
-const HORAS_DIA = Array.from({ length: 24 }, (_, h) => h);
+// Jornada global de campañas: 07:00 a 21:00 (el backend la aplica a todas).
+const HORAS_DIA = Array.from({ length: 15 }, (_, i) => i + 7);
 
 // Preview de mensaje con variables de ejemplo
 const PREVIEW_VARS = { nombre: "María", numero: "0999999999" };
@@ -555,7 +556,7 @@ export default function WaCampanas() {
                   <select value={form.send_hour_from}
                     onChange={e => setForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -564,7 +565,7 @@ export default function WaCampanas() {
                   <select value={form.send_hour_to}
                     onChange={e => setForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -726,7 +727,7 @@ export default function WaCampanas() {
                   <select value={editForm.send_hour_from}
                     onChange={e => setEditForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -735,7 +736,7 @@ export default function WaCampanas() {
                   <select value={editForm.send_hour_to}
                     onChange={e => setEditForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -866,8 +867,9 @@ function SelectorBotCampana({ bots, value, onChange }) {
 function AvisoCierreCampana() {
   return (
     <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
-      🌙 La campaña envía hasta las <b>20:00</b>. Si termina antes, queda <b>abierta</b> midiendo lecturas y respuestas,
-      y se cierra sola entre las <b>20:00 y 20:30</b> con un resumen. Antes del primer cliente se envía a los números de prueba de tu empresa.
+      🕖 Las campañas envían solo de <b>07:00 a 21:00</b>. Si a las 21:00 quedan pendientes, se pausa sola y sigue al día
+      siguiente a las 07:00. Si termina antes, queda <b>abierta</b> midiendo lecturas y respuestas y se cierra sola entre las
+      <b> 20:00 y 21:00</b> con un resumen. Antes del primer cliente se envía a los números de prueba de tu empresa.
     </div>
   );
 }

@@ -1,6 +1,7 @@
 const test = require('node:test')
-// Sin corte de 20:00 en los tests (si no, fallarían al correrlos de noche).
-process.env.WA_CAMPANA_HORA_CORTE = '24'
+// Jornada global abierta todo el día en los tests (si no, fallarían de noche).
+process.env.WA_CAMPANA_HORA_INICIO = '0'
+process.env.WA_CAMPANA_HORA_FIN = '24'
 const assert = require('node:assert/strict')
 const { elegirLinea, esResponsable } = require('../src/services/campaignLineas')
 

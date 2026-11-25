@@ -1,4 +1,4 @@
-// Pruebas por empresa, cierre diario 20:00–20:30 y bot de campaña (2026-11-19).
+// Pruebas por empresa, jornada 07:00–21:00, cierre 20:00–21:00 y bot de campaña.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
@@ -22,17 +22,21 @@ test('números de prueba por empresa: VELSA y NOVONET (SEMILLERO usa NOVONET)', 
   assert.deepEqual(E.numerosControlDe('SEMILLERO'), E.numerosControlDe('NOVONET'))
 })
 
-test('corte a las 20:00 Ecuador y cierre aleatorio entre 20:00 y 20:30', () => {
-  const E = cargar(enginePath, async () => ({ rows: [] }), { WA_CAMPANA_HORA_CORTE: '20' })
-  const manana = new Date('2026-11-19T15:00:00Z') // 10:00 Ecuador
-  assert.equal(E.corteDelDia(manana).toISOString(), '2026-11-20T01:00:00.000Z')
-  assert.equal(E.pasoHoraCorte(new Date('2026-11-20T00:59:59Z')), false) // 19:59
-  assert.equal(E.pasoHoraCorte(new Date('2026-11-20T01:00:00Z')), true)  // 20:00
-  assert.equal(E.pasoHoraCorte(new Date('2026-11-20T05:00:00Z')), false) // 00:00 del día siguiente
-  const min = E.cierreAleatorioDelDia(manana, () => 0).getTime()
-  const max = E.cierreAleatorioDelDia(manana, () => 0.9999).getTime()
-  assert.equal(new Date(min).toISOString(), '2026-11-20T01:00:00.000Z')
-  assert.ok(max < Date.parse('2026-11-20T01:30:00Z') && max > Date.parse('2026-11-20T01:29:00Z'))
+test('jornada global 07:00–21:00 y cierre aleatorio entre 20:00 y 21:00', () => {
+  const E = cargar(enginePath, async () => ({ rows: [] }), { WA_CAMPANA_HORA_INICIO: '7', WA_CAMPANA_HORA_FIN: '21' })
+  assert.equal(E.dentroJornadaGlobal(new Date('2026-11-25T11:59:00Z')), false) // 06:59
+  assert.equal(E.dentroJornadaGlobal(new Date('2026-11-25T12:00:00Z')), true)  // 07:00
+  assert.equal(E.dentroJornadaGlobal(new Date('2026-11-26T01:59:00Z')), true)  // 20:59
+  assert.equal(E.dentroJornadaGlobal(new Date('2026-11-26T02:00:00Z')), false) // 21:00
+  // Una campaña SIN horario propio tampoco envía de madrugada.
+  assert.equal(E.dentroDeHorarioPermitido({}, new Date('2026-11-25T08:37:00Z')), false) // 03:37
+  // El horario propio se cruza con la jornada: 6 a 23 → efectivo 7 a 21.
+  assert.equal(E.dentroDeHorarioPermitido({ send_hour_from: 6, send_hour_to: 23 }, new Date('2026-11-25T11:30:00Z')), false) // 06:30
+  const once = new Date('2026-11-25T16:00:00Z') // 11:00 Ecuador
+  assert.equal(E.cierreAleatorioDelDia(once, () => 0).toISOString(), '2026-11-26T01:00:00.000Z')      // 20:00
+  assert.ok(E.cierreAleatorioDelDia(once, () => 0.9999).getTime() < Date.parse('2026-11-26T02:00:00Z')) // antes de 21:00
+  // Si termina a las 20:40, el cierre nunca queda antes de "ahora".
+  assert.equal(E.cierreAleatorioDelDia(new Date('2026-11-26T01:40:00Z'), () => 0).toISOString(), '2026-11-26T01:40:00.000Z')
 })
 
 test('una campaña VELSA manda la prueba a los números de VELSA, con la imagen', async () => {
@@ -45,7 +49,7 @@ test('una campaña VELSA manda la prueba a los números de VELSA, con la imagen'
     if (sql.includes('FROM lines')) return { rows: [{ id: 'l1', name: 'L1', created_at: '2020-01-01' }] }
     return { rows: [] }
   }
-  const E = cargar(enginePath, query, { WA_CAMPANA_HORA_CORTE: '24' })
+  const E = cargar(enginePath, query, { WA_CAMPANA_HORA_INICIO: '0', WA_CAMPANA_HORA_FIN: '24' })
   const engine = new E({
     sendText: async (l, n) => { pruebas.push(['texto', n]); return {} },
     sendMedia: async (l, n, o) => { pruebas.push([o.type, n]); return {} },
@@ -66,7 +70,7 @@ test('sin pendientes la campaña queda ABIERTA (no se completa) hasta su cierre'
     if (sql.includes('FROM lines')) return { rows: [{ id: 'l1', name: 'L1', created_at: '2020-01-01' }] }
     return { rows: [] }
   }
-  const E = cargar(enginePath, query, { WA_CAMPANA_HORA_CORTE: '24' })
+  const E = cargar(enginePath, query, { WA_CAMPANA_HORA_INICIO: '0', WA_CAMPANA_HORA_FIN: '24' })
   const engine = new E({ sendText: async () => ({}) }, { emit() {} })
   engine.running.c2 = { abortFlag: false }
   await engine._run('c2')
@@ -74,7 +78,7 @@ test('sin pendientes la campaña queda ABIERTA (no se completa) hasta su cierre'
   assert.ok(!sqls.some(q => /SET status='completed'/.test(q.sql)))
 })
 
-test('cerrar: finaliza, descarta pendientes y manda el resumen a 593962517928', async () => {
+test('cerrar: finaliza la campaña abierta y manda el resumen a 593958693149', async () => {
   const enviados = []
   const sqls = []
   const query = async (sql, params) => {
@@ -90,19 +94,27 @@ test('cerrar: finaliza, descarta pendientes y manda el resumen a 593962517928', 
   const E = cargar(enginePath, query)
   const engine = new E({ getStatus: () => 'connected', sendText: async (l, n, t) => { enviados.push([n, t]); return {} } }, { emit() {} })
   assert.equal(await engine.cerrar('c3'), true)
-  assert.ok(sqls.some(s => /SET status='skipped'/.test(s)))
-  assert.equal(enviados[0][0], '593962517928')
+  assert.ok(sqls.some(s => /status = 'abierta'/.test(s)))
+  assert.equal(enviados[0][0], '593958693149')
   assert.match(enviados[0][1], /RMK/)
   assert.match(enviados[0][1], /Leídos: 4 \(50%\)/)
   assert.match(enviados[0][1], /Respondieron: 2 \(25%\)/)
 })
 
-test('no se inicia una campaña después de las 20:00', async () => {
-  const E = cargar(enginePath, async (sql) => (sql.includes('FROM campaigns WHERE id') ? { rows: [{ id: 'c', status: 'draft' }] } : { rows: [] }),
-    { WA_CAMPANA_HORA_CORTE: '0' }) // corte a medianoche = siempre pasado
-  const engine = new E({}, { emit() {} })
-  await assert.rejects(engine.start('c'), /no se inician campañas/)
-  process.env.WA_CAMPANA_HORA_CORTE = '24'
+test('fuera de la jornada la campaña no falla: queda pausada para seguir a las 07:00', async () => {
+  const sqls = []
+  const query = async (sql) => {
+    sqls.push(sql)
+    if (sql.includes('SELECT * FROM campaigns WHERE id')) return { rows: [{ id: 'c', name: 'N', status: 'running', line_id: 'l1', sent_count: 0 }] }
+    if (sql.includes('FROM lines')) return { rows: [{ id: 'l1', name: 'L1', created_at: '2020-01-01' }] }
+    return { rows: [] }
+  }
+  const E = cargar(enginePath, query, { WA_CAMPANA_HORA_INICIO: '0', WA_CAMPANA_HORA_FIN: '0' }) // jornada cerrada
+  const engine = new E({ sendText: async () => { throw new Error('no debe enviar') } }, { emit() {} })
+  engine.running.c = { abortFlag: false }
+  await engine._run('c')
+  assert.ok(sqls.some(s => /status='paused', paused_for_schedule=true/.test(s)))
+  process.env.WA_CAMPANA_HORA_INICIO = '0'; process.env.WA_CAMPANA_HORA_FIN = '24'
 })
 
 test('bot de campaña: solo para números de la base de una campaña activa en esa línea', async () => {

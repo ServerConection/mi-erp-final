@@ -19,7 +19,13 @@
 'use strict';
 
 const pool = require('../config/db');
+const poolErp = require('../config/dbErp');
+const { bitrixCallNovonet } = require('./bitrix.service');
 const bot = require('./botVendedor.service');
+
+// Linea por defecto desde la que escribe el bot (si no se elige otra en el modulo).
+const TELEFONO_LINEA_DEFECTO = process.env.BOT_NOCTURNO_TELEFONO || '593962517928';
+const CATEGORIA_NOVONET = String(process.env.RECONCILIACION_BITRIX_CATEGORIA || '19');
 
 const INTERVALO_MS = 60 * 1000;
 const VENTANA_DEAL_MIN = 20;
@@ -42,9 +48,17 @@ async function leerConfig() {
   const { rows } = await pool.query("SELECT clave, valor FROM public.bv_config WHERE clave LIKE 'nocturno_%'");
   const cfg = { ...DEFECTOS };
   for (const r of rows) cfg[r.clave] = r.valor;
+  let linea = cfg.nocturno_linea;
+  if (!linea) {
+    const sufijo = TELEFONO_LINEA_DEFECTO.slice(-9);
+    const r = await pool.query(
+      `SELECT id::text AS id FROM lines WHERE regexp_replace(COALESCE(phone_number, ''), '\\D', '', 'g') LIKE $1 LIMIT 1`,
+      ['%' + sufijo]).catch(() => ({ rows: [] }));
+    linea = r.rows[0]?.id || '';
+  }
   return {
     activo: cfg.nocturno_activo === 'true',
-    linea: cfg.nocturno_linea,
+    linea,
     inicio: cfg.nocturno_inicio,
     fin: cfg.nocturno_fin,
     max: Math.max(1, parseInt(cfg.nocturno_max, 10) || 80),
@@ -63,43 +77,91 @@ function normalizarTelefono(valor) {
 
 let manager = null;
 let ocupado = false;
+let ultimoEstado = { msg: '', en: 0 };
+
+// Guarda en bv_config el resultado del ultimo chequeo, para verlo en el modulo
+// (el modulo corre en otro proceso). Solo escribe si cambia o cada 5 minutos.
+async function estado(msg) {
+  if (msg === ultimoEstado.msg && Date.now() - ultimoEstado.en < 5 * 60 * 1000) return;
+  ultimoEstado = { msg, en: Date.now() };
+  await pool.query(
+    `INSERT INTO public.bv_config (clave, valor, actualizado_por, actualizado_en) VALUES ('nocturno_estado', $1, 'wabot', NOW())
+     ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = 'wabot', actualizado_en = NOW()`,
+    [msg]).catch(() => {});
+}
 
 async function tick() {
   if (ocupado || !manager) return;
   ocupado = true;
   try {
     const cfg = await leerConfig();
-    if (!cfg.activo || !cfg.linea) return;
-    if (!bot.enHorario(cfg.inicio, cfg.fin)) return;
+    if (!cfg.activo) return estado('Apagado: la atencion nocturna no esta activa.');
+    if (!cfg.linea) return estado(`No se encontro la linea ${TELEFONO_LINEA_DEFECTO} en WABOT: elegila en el modulo.`);
+    if (!bot.enHorario(cfg.inicio, cfg.fin)) return estado(`En espera: fuera del horario ${cfg.inicio} a ${cfg.fin}.`);
     // Solo trabaja el proceso que tiene la linea conectada (evita envios dobles).
-    if (manager.getStatus(cfg.linea) !== 'connected') return;
+    if (manager.getStatus(cfg.linea) !== 'connected') return estado(`La linea elegida no esta conectada en WABOT (estado: ${manager.getStatus(cfg.linea)}).`);
 
-    // 1) Registrar deals nuevos. ON CONFLICT: un deal se registra una sola vez.
-    const nuevos = await pool.query(
-      `SELECT l.bitrix_id::text AS bitrix_id, l.phone, l.created_at
-         FROM bitrix_webhook_leads l
-        WHERE l.empresa = 'novonet'
-          AND l.created_at > NOW() - ($1 || ' minutes')::interval
-          AND NOT EXISTS (SELECT 1 FROM public.bv_nocturno n WHERE n.bitrix_id = l.bitrix_id::text)
-        ORDER BY l.created_at
-        LIMIT 50`,
-      [String(VENTANA_DEAL_MIN)]);
-    for (const d of nuevos.rows) {
-      if (!bot.enHorario(cfg.inicio, cfg.fin, new Date(d.created_at))) continue; // creado fuera del horario
-      const telefono = normalizarTelefono(d.phone);
-      const grupo = 'BOT';
+    // 1) Deals nuevos de NOVONET: los que el bot de gestionables recibio en "Contacto nuevo"
+    //    (estacion/cola fuera de horario + log del webhook) y, de respaldo, bitrix_webhook_leads.
+    const candidatos = new Map(); // bitrix_id -> { creado, phone }
+    try {
+      const erp = await poolErp.query(
+        `SELECT bitrix_id, MIN(creado_en) AS creado FROM (
+           SELECT bitrix_deal_id::text AS bitrix_id, creado_en FROM gestionables_cola
+            WHERE creado_en > NOW() - ($1 || ' minutes')::interval
+           UNION ALL
+           SELECT bitrix_id::text, creado_en FROM gestionables_webhook_log
+            WHERE creado_en > NOW() - ($1 || ' minutes')::interval AND bitrix_id ~ '^[0-9]+$'
+         ) x GROUP BY bitrix_id`,
+        [String(VENTANA_DEAL_MIN)]);
+      for (const r of erp.rows) candidatos.set(String(r.bitrix_id), { creado: r.creado, phone: null });
+    } catch (e) {
+      console.error('[BOT-NOCTURNO] no se pudo leer gestionables:', e.message);
+    }
+    const bwl = await pool.query(
+      `SELECT bitrix_id::text AS bitrix_id, phone, created_at FROM bitrix_webhook_leads
+        WHERE empresa = 'novonet' AND created_at > NOW() - ($1 || ' minutes')::interval`,
+      [String(VENTANA_DEAL_MIN)]).catch(() => ({ rows: [] }));
+    for (const r of bwl.rows) {
+      const c = candidatos.get(r.bitrix_id);
+      if (c) c.phone = c.phone || r.phone;
+      else candidatos.set(r.bitrix_id, { creado: r.created_at, phone: r.phone });
+    }
+    const ids = [...candidatos.keys()];
+    const ya = ids.length
+      ? (await pool.query('SELECT bitrix_id FROM public.bv_nocturno WHERE bitrix_id = ANY($1)', [ids])).rows.map((r) => r.bitrix_id)
+      : [];
+    let registrados = 0;
+    for (const id of ids.filter((x) => !ya.includes(x)).slice(0, 20)) {
+      const c = candidatos.get(id);
+      if (!bot.enHorario(cfg.inicio, cfg.fin, new Date(c.creado))) continue; // entro fuera del horario nocturno
+      let phone = c.phone;
+      let detalle = null;
+      try {
+        const deal = (await bitrixCallNovonet('crm.deal.get', { id })).result;
+        if (!deal) continue;
+        if (String(deal.CATEGORY_ID) !== CATEGORIA_NOVONET) continue; // no es del pipeline NOVONET
+        if (!phone && deal.CONTACT_ID && deal.CONTACT_ID !== '0') {
+          const ct = (await bitrixCallNovonet('crm.contact.get', { id: deal.CONTACT_ID })).result;
+          phone = ct?.PHONE?.[0]?.VALUE || '';
+        }
+      } catch (e) {
+        detalle = `Bitrix: ${String(e.message).slice(0, 150)}`;
+      }
+      const telefono = normalizarTelefono(phone);
       await pool.query(
         `INSERT INTO public.bv_nocturno (bitrix_id, telefono, grupo, line_id, estado, detalle, deal_creado)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (bitrix_id) DO NOTHING`,
-        [d.bitrix_id, telefono, grupo, cfg.linea,
-          telefono ? 'pendiente' : 'error',
-          telefono ? null : `Telefono invalido: ${d.phone || 'vacio'}`, d.created_at]);
+         VALUES ($1, $2, 'BOT', $3, $4, $5, $6) ON CONFLICT (bitrix_id) DO NOTHING`,
+        [id, telefono, cfg.linea, telefono ? 'pendiente' : 'error',
+          telefono ? null : (detalle || `Sin telefono valido: ${phone || 'vacio'}`), c.creado]);
+      registrados++;
     }
+    if (registrados) console.log(`[BOT-NOCTURNO] ${registrados} deal(s) nuevo(s) registrados`);
 
     // 2) Tope por noche.
     const enviadosNoche = await pool.query(
       `SELECT COUNT(*)::int n FROM public.bv_nocturno WHERE estado = 'enviado' AND enviado_en > NOW() - INTERVAL '12 hours'`);
-    if (enviadosNoche.rows[0].n >= cfg.max) return;
+    if (enviadosNoche.rows[0].n >= cfg.max) return estado(`Tope alcanzado: ${cfg.max} saludos esta noche.`);
 
     // 3) Enviar UN saludo por minuto (el mas antiguo pendiente, de hasta 2 horas).
     const pend = await pool.query(
@@ -110,7 +172,7 @@ async function tick() {
            ORDER BY creado_en LIMIT 1 FOR UPDATE SKIP LOCKED)
         RETURNING bitrix_id, telefono`);
     const p = pend.rows[0];
-    if (!p) return;
+    if (!p) return estado(`Trabajando: sin deals pendientes por saludar (revisado ${ids.length} candidato(s)).`);
     try {
       const enviado = await manager.sendText(cfg.linea, p.telefono, cfg.mensaje);
       if (enviado?.key?.id) {
@@ -120,6 +182,7 @@ async function tick() {
       }
       await pool.query(`UPDATE public.bv_nocturno SET estado = 'enviado', enviado_en = NOW() WHERE bitrix_id = $1`, [p.bitrix_id]);
       console.log(`[BOT-NOCTURNO] saludo enviado al deal ${p.bitrix_id}`);
+      await estado(`Trabajando: ultimo saludo enviado al deal ${p.bitrix_id}.`);
     } catch (e) {
       await pool.query(`UPDATE public.bv_nocturno SET estado = 'error', detalle = $2 WHERE bitrix_id = $1`,
         [p.bitrix_id, String(e.message).slice(0, 300)]);
@@ -127,6 +190,7 @@ async function tick() {
     }
   } catch (e) {
     console.error('[BOT-NOCTURNO]', e.message);
+    await estado(`Error: ${String(e.message).slice(0, 200)}`);
   } finally {
     ocupado = false;
   }
@@ -140,4 +204,14 @@ function iniciar(baileysManager) {
   console.log('[BOT-NOCTURNO] servicio iniciado (revisa cada minuto)');
 }
 
-module.exports = { iniciar, leerConfig, normalizarTelefono, DEFECTOS };
+// ¿Esta linea es la del bot nocturno y estamos en su horario? (cache 30 s)
+let cacheCfg = { cfg: null, en: 0 };
+async function lineaNocturnaActiva(lineId) {
+  if (!cacheCfg.cfg || Date.now() - cacheCfg.en > 30 * 1000) {
+    try { cacheCfg = { cfg: await leerConfig(), en: Date.now() }; } catch (_) { return false; }
+  }
+  const c = cacheCfg.cfg;
+  return !!(c && c.activo && c.linea && String(c.linea) === String(lineId) && bot.enHorario(c.inicio, c.fin));
+}
+
+module.exports = { iniciar, leerConfig, normalizarTelefono, lineaNocturnaActiva, DEFECTOS };

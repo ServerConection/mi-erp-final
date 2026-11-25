@@ -509,8 +509,6 @@ function PestanaNocturno() {
 
   if (!cfg && !error) return <Cargando />;
   if (!cfg) return <Mensaje tipo="error" texto={error} />;
-  const linea = lineas.find((l) => l.id === cfg.linea);
-  const lineaLista = linea && linea.bot_activo && linea.horario_inicio === cfg.inicio && linea.horario_fin === cfg.fin;
   const set = (k, v) => setCfg({ ...cfg, [k]: v });
 
   return (
@@ -518,10 +516,15 @@ function PestanaNocturno() {
       {error && <Mensaje tipo="error" texto={error} />}
       {aviso && <Mensaje tipo="ok" texto={aviso} />}
       <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
-        En el horario nocturno, a <b>cada deal nuevo de NOVONET</b> el bot le escribe primero: se presenta como asesor de ventas
+        En el horario nocturno, a <b>cada cliente que entra a "Contacto nuevo" en NOVONET</b> (lo detecta el bot de gestionables)
+        el bot le escribe primero desde la línea elegida (por defecto +593 96 251 7928): se presenta como asesor de ventas
         y pregunta si quiere contratar o es servicio al cliente. Al día siguiente el repartidor también lo asigna a un asesor.
         Aquí se compara <b>quién cierra primero</b> al mismo cliente: el bot (el cliente le confirma la venta) o el asesor
         (registra la venta en el ERP). El bot envía máximo 1 saludo por minuto para cuidar la línea.
+      </div>
+
+      <div className={`rounded-xl border p-3 text-sm ${/^Trabajando/.test(cfg.estado || "") ? "bg-green-50 border-green-200 text-green-800" : /^Error|no esta conectada|No se encontro/.test(cfg.estado || "") ? "bg-red-50 border-red-200 text-red-700" : "bg-slate-50 text-slate-600"}`}>
+        <b>Estado en WABOT:</b> {cfg.estado} {cfg.estado_en && <span className="text-xs opacity-70">({fecha(cfg.estado_en)})</span>}
       </div>
 
       <div className="bg-white rounded-xl border p-4 space-y-3">
@@ -546,9 +549,6 @@ function PestanaNocturno() {
         <label className="block text-sm">Mensaje de saludo
           <textarea value={cfg.mensaje} onChange={(e) => set("mensaje", e.target.value)} rows={3} className="w-full border rounded-lg p-2 mt-1" />
         </label>
-        {cfg.linea && !lineaLista && (
-          <Mensaje tipo="error" texto={`Para que el bot conteste las respuestas, en la pestaña "Líneas WhatsApp" activa el bot en "${linea?.name || "esa línea"}" con el horario ${cfg.inicio} a ${cfg.fin}.`} />
-        )}
         <div className="flex justify-end">
           <button onClick={guardar} disabled={guardando}
             className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50">

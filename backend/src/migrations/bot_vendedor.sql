@@ -66,3 +66,6 @@ CREATE TABLE IF NOT EXISTS public.bv_nocturno (
   enviado_en   TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_bv_nocturno_creado ON public.bv_nocturno(creado_en);
+
+-- Carrera bot vs asesor: momento en que el cliente confirmo la venta con el bot.
+ALTER TABLE public.bv_nocturno ADD COLUMN IF NOT EXISTS bot_venta_en TIMESTAMPTZ;

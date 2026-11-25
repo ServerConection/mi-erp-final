@@ -16,6 +16,9 @@
 // POST /api/bot-vendedor/planes/:id/imagen      multipart: imagen (JPG/PNG/WEBP, max 3 MB)
 // POST /api/bot-vendedor/planes                 { nombre, velocidad_mbps, segmento, descripcion }
 // PUT  /api/bot-vendedor/planes/:id             { nombre?, velocidad_mbps?, segmento?, descripcion?, activo? }
+// GET  /api/bot-vendedor/nocturno               config de atencion nocturna
+// PUT  /api/bot-vendedor/nocturno               { activo, linea, inicio, fin, pctBot, max, mensaje }
+// GET  /api/bot-vendedor/nocturno/resumen       resultados A/B (?dias=30)
 // POST /api/bot-vendedor/probar                 { historial: [{role, content}] }
 //
 // No hay DELETE: los documentos se archivan (activo = false) y se pueden reactivar.
@@ -155,7 +158,7 @@ router.get('/lineas', async (_req, res) => {
     await bot.asegurarTablas();
     const { rows } = await pool.query(
       `SELECT l.id, l.name, l.phone_number, l.status,
-              COALESCE(b.activo, FALSE) AS bot_activo, b.actualizado_por, b.actualizado_en
+              COALESCE(b.activo, FALSE) AS bot_activo, b.horario_inicio, b.horario_fin, b.actualizado_por, b.actualizado_en
          FROM lines l
          LEFT JOIN public.bv_lineas b ON b.line_id = l.id
         ORDER BY COALESCE(b.activo, FALSE) DESC, l.name`);
@@ -169,12 +172,90 @@ router.put('/lineas/:id', async (req, res) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return fallo(res, 'Linea invalida', 400);
     const existe = await pool.query('SELECT 1 FROM lines WHERE id = $1', [id]);
     if (!existe.rows.length) return fallo(res, 'La linea no existe', 404);
+    const hora = (v) => {
+      const t = String(v ?? '').trim();
+      if (!t) return null;
+      if (bot.aMinutos(t) === null || bot.aMinutos(t) >= 24 * 60) throw Object.assign(new Error('Hora invalida, usa HH:MM'), { status: 400 });
+      return t.padStart(5, '0');
+    };
+    const inicio = hora(req.body?.horario_inicio);
+    const fin = hora(req.body?.horario_fin);
+    if ((inicio && !fin) || (!inicio && fin)) return fallo(res, 'Indica hora de inicio y de fin, o deja ambas vacias', 400);
     await bot.asegurarTablas();
     await pool.query(
-      `INSERT INTO public.bv_lineas (line_id, activo, actualizado_por, actualizado_en) VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (line_id) DO UPDATE SET activo = EXCLUDED.activo, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
-      [id, aBool(req.body?.activo), req.user.usuario]);
+      `INSERT INTO public.bv_lineas (line_id, activo, horario_inicio, horario_fin, actualizado_por, actualizado_en)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (line_id) DO UPDATE SET activo = EXCLUDED.activo, horario_inicio = EXCLUDED.horario_inicio,
+         horario_fin = EXCLUDED.horario_fin, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
+      [id, aBool(req.body?.activo), inicio, fin, req.user.usuario]);
     ok(res, { actualizado: true });
+  } catch (e) { fallo(res, e, e.status || 500); }
+});
+
+// ─── Atencion nocturna (deals nuevos de NOVONET) ─────────────────────────────
+const nocturno = require('../services/botVendedorNocturno.service');
+
+router.get('/nocturno', async (_req, res) => {
+  try { ok(res, await nocturno.leerConfig()); } catch (e) { fallo(res, e); }
+});
+
+router.put('/nocturno', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const valores = {
+      nocturno_activo: aBool(b.activo) ? 'true' : 'false',
+      nocturno_linea: String(b.linea || ''),
+      nocturno_inicio: String(b.inicio || '22:30').trim(),
+      nocturno_fin: String(b.fin || '07:00').trim(),
+      nocturno_pct_bot: String(Math.min(100, Math.max(0, parseInt(b.pctBot, 10) || 0))),
+      nocturno_max: String(Math.max(1, parseInt(b.max, 10) || 80)),
+      nocturno_mensaje: String(b.mensaje || '').trim().slice(0, 1000),
+    };
+    if (bot.aMinutos(valores.nocturno_inicio) === null || bot.aMinutos(valores.nocturno_fin) === null) return fallo(res, 'Hora invalida, usa HH:MM', 400);
+    if (valores.nocturno_mensaje.length < 10) return fallo(res, 'Escribe el mensaje de saludo', 400);
+    if (valores.nocturno_activo === 'true') {
+      if (!/^[0-9a-f-]{36}$/i.test(valores.nocturno_linea)) return fallo(res, 'Elige la linea desde la que escribe el bot', 400);
+      const l = await pool.query('SELECT 1 FROM lines WHERE id = $1', [valores.nocturno_linea]);
+      if (!l.rows.length) return fallo(res, 'La linea no existe', 400);
+    }
+    await bot.asegurarTablas();
+    for (const [clave, valor] of Object.entries(valores)) {
+      await pool.query(
+        `INSERT INTO public.bv_config (clave, valor, actualizado_por, actualizado_en) VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = NOW()`,
+        [clave, valor, req.user.usuario]);
+    }
+    ok(res, { guardado: true });
+  } catch (e) { fallo(res, e); }
+});
+
+// Resultados A/B: por grupo, cuantos respondieron y en que etapa estan hoy en Bitrix.
+router.get('/nocturno/resumen', async (req, res) => {
+  try {
+    await bot.asegurarTablas();
+    const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 30));
+    const base = `
+      WITH n AS (
+        SELECT n.*, l.etapa, l.etapa_bitrix, l.responsible,
+               EXISTS (SELECT 1 FROM messages m
+                        WHERE m.line_id = n.line_id AND m.wa_number = n.telefono AND m.direction = 'in'
+                          AND m.timestamp > n.enviado_en) AS respondio
+          FROM public.bv_nocturno n
+          LEFT JOIN bitrix_webhook_leads l ON l.empresa = n.empresa AND l.bitrix_id::text = n.bitrix_id
+         WHERE n.creado_en > NOW() - ($1 || ' days')::interval)`;
+    const grupos = await pool.query(`${base}
+      SELECT grupo, COUNT(*)::int AS deals,
+             COUNT(*) FILTER (WHERE estado = 'enviado')::int AS enviados,
+             COUNT(*) FILTER (WHERE respondio)::int AS respondieron,
+             COUNT(*) FILTER (WHERE estado = 'error')::int AS errores
+        FROM n GROUP BY grupo ORDER BY grupo`, [String(dias)]);
+    const etapas = await pool.query(`${base}
+      SELECT grupo, COALESCE(etapa_bitrix, 'SIN ETAPA') AS etapa, COUNT(*)::int AS deals
+        FROM n GROUP BY 1, 2 ORDER BY 1, 3 DESC`, [String(dias)]);
+    const ultimos = await pool.query(`${base}
+      SELECT bitrix_id, grupo, estado, detalle, deal_creado, enviado_en, respondio, etapa_bitrix, responsible
+        FROM n ORDER BY creado_en DESC LIMIT 100`, [String(dias)]);
+    ok(res, { dias, grupos: grupos.rows, etapas: etapas.rows, ultimos: ultimos.rows });
   } catch (e) { fallo(res, e); }
 });
 

@@ -23,7 +23,7 @@ const PAUSA_MIN = Number(process.env.BOT_PAUSA_MIN || 120);
 const CACHE_LINEAS_MS = 30 * 1000;
 const MAX_ANTIGUEDAD_MS = 5 * 60 * 1000; // no responder mensajes viejos (sincronizacion al reconectar)
 
-let lineasActivas = new Set();
+let lineasActivas = new Map(); // line_id -> { inicio, fin }
 let lineasEn = 0;
 let cargando = null;
 
@@ -33,8 +33,9 @@ async function lineaActiva(lineId) {
       cargando = (async () => {
         try {
           await bot.asegurarTablas();
-          const { rows } = await pool.query('SELECT line_id::text AS id FROM public.bv_lineas WHERE activo = TRUE');
-          lineasActivas = new Set(rows.map((r) => r.id));
+          const { rows } = await pool.query(
+            'SELECT line_id::text AS id, horario_inicio, horario_fin FROM public.bv_lineas WHERE activo = TRUE');
+          lineasActivas = new Map(rows.map((r) => [r.id, { inicio: r.horario_inicio, fin: r.horario_fin }]));
           lineasEn = Date.now();
         } catch (e) {
           console.error('[BOT-VENDEDOR-WA] no se pudieron leer las lineas:', e.message);
@@ -46,7 +47,8 @@ async function lineaActiva(lineId) {
     }
     await cargando;
   }
-  return lineasActivas.has(String(lineId));
+  const cfg = lineasActivas.get(String(lineId));
+  return !!cfg && bot.enHorario(cfg.inicio, cfg.fin);
 }
 
 function invalidarLineas() { lineasEn = 0; }
@@ -190,4 +192,4 @@ async function atenderSiAplica({ manager, lineId, msg, conv, remoteJid, text, ms
   }
 }
 
-module.exports = { atenderSiAplica, invalidarLineas };
+module.exports = { atenderSiAplica, invalidarLineas, lineaActiva };

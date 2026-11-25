@@ -48,7 +48,9 @@ async function lineaActiva(lineId) {
     await cargando;
   }
   const cfg = lineasActivas.get(String(lineId));
-  return !!cfg && bot.enHorario(cfg.inicio, cfg.fin);
+  if (cfg && bot.enHorario(cfg.inicio, cfg.fin)) return true;
+  // La linea del bot nocturno responde en su horario aunque no este activada en "Lineas".
+  try { return await require('./botVendedorNocturno.service').lineaNocturnaActiva(lineId); } catch (_) { return false; }
 }
 
 function invalidarLineas() { lineasEn = 0; }

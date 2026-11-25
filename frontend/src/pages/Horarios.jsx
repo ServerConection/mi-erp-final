@@ -23,6 +23,14 @@ const empresaSesion = () => {
     return "NOVONET";
   }
 };
+const esAdministrador = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("userProfile") || localStorage.getItem("user") || "{}");
+    return sinTildes(user?.perfil) === "ADMINISTRADOR";
+  } catch {
+    return false;
+  }
+};
 // Admin / Gerencia pueden alternar entre NOVONET y VELSA; el supervisor queda fijo en su empresa.
 const puedeElegirEmpresa = () => {
   try {
@@ -140,6 +148,8 @@ export default function Horarios() {
   const [editando, setEditando] = useState(null); // { fila, fecha, turno }
   const [guardando, setGuardando] = useState(false);
   const [verCarga, setVerCarga] = useState(false);
+  const [verAtrasos, setVerAtrasos] = useState(false);
+  const soloAdmin = useMemo(esAdministrador, []);
 
   const cargarSemanas = useCallback(() => {
     fetch(`${API}/api/horarios/semanas?empresa=${EMPRESA}`, { headers })
@@ -219,6 +229,11 @@ export default function Horarios() {
             {verCarga ? "Cerrar carga" : "📤 Cargar Excel"}
           </button>
         )}
+        {soloAdmin && datos?.ve_todo && (
+          <button style={btn(verAtrasos ? "#374151" : "#B45309")} onClick={() => setVerAtrasos((v) => !v)}>
+            {verAtrasos ? "Cerrar reporte" : "📋 Reporte de atrasos"}
+          </button>
+        )}
       </div>
 
       {verCarga && datos?.puede_cargar && (
@@ -261,6 +276,8 @@ export default function Horarios() {
 
       {error && <div style={{ ...card, background: "#FEE2E2", color: "#991B1B", borderColor: "#FCA5A5" }}>{error}</div>}
       {aviso && <div style={{ ...card, background: "#D1FAE5", color: "#065F46", borderColor: "#6EE7B7" }}>{aviso}</div>}
+
+      {verAtrasos && soloAdmin && datos?.ve_todo && <ReporteAtrasos datos={datos} filas={filas} empresa={EMPRESA} />}
 
       {/* Alertas de hoy vs NOVONET ACCESS */}
       {alertasHoy && (alertasHoy.tarde.length > 0 || alertasHoy.falta.length > 0) && (
@@ -525,6 +542,123 @@ function PanelCarga({ headers, empresa: EMPRESA, onCargado }) {
           <button style={{ ...btn(), marginTop: 8 }} onClick={() => onCargado(resultado.desde)}>Ver horarios</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Reporte de atrasos (solo ADMINISTRADOR) ─────────────────────────────────
+// Agrupa por hora de entrada: cada turno de la mañana en su propia sección
+// (08:00, 08:30, 10:30...) y todo lo que entra desde las 12:00 en "Tarde".
+const seccionDe = (hora) => (aMin(hora) >= 12 * 60 ? "TARDE" : hora);
+const tituloSeccion = (k) => (k === "TARDE" ? "Tarde (desde 12:00)" : `Entrada ${k}`);
+
+function ReporteAtrasos({ datos, filas, empresa }) {
+  const diasPasados = datos.dias.filter((d) => d <= datos.hoy);
+  const [dia, setDia] = useState(diasPasados.includes(datos.hoy) ? datos.hoy : "TODOS");
+  const [conSinMarcar, setConSinMarcar] = useState(true);
+
+  const secciones = useMemo(() => {
+    const items = [];
+    const fechas = dia === "TODOS" ? diasPasados : [dia];
+    for (const f of filas) {
+      for (const fecha of fechas) {
+        const t = f.dias[fecha];
+        const p = puntualidad(t, fecha, datos.hoy, datos.tolerancia_min, !!f.usuario_id);
+        if (!p || (p.k !== "tarde" && !(conSinMarcar && p.k === "falta"))) continue;
+        items.push({ f, t, p, fecha, sec: seccionDe(t.hora_inicio) });
+      }
+    }
+    const mapa = new Map();
+    for (const it of items) {
+      if (!mapa.has(it.sec)) mapa.set(it.sec, []);
+      mapa.get(it.sec).push(it);
+    }
+    const orden = (k) => (k === "TARDE" ? 24 * 60 : aMin(k));
+    return [...mapa.entries()]
+      .sort(([a], [b]) => orden(a) - orden(b))
+      .map(([k, lista]) => [k, lista.sort((a, b) =>
+        a.fecha.localeCompare(b.fecha) || a.t.hora_inicio.localeCompare(b.t.hora_inicio) ||
+        (b.p.dif ?? 9999) - (a.p.dif ?? 9999) || a.f.asesor.localeCompare(b.f.asesor))]);
+  }, [filas, dia, conSinMarcar, datos]);
+
+  const total = secciones.reduce((n, [, l]) => n + l.length, 0);
+
+  const exportar = () => {
+    const rows = [];
+    for (const [k, lista] of secciones) {
+      for (const { f, t, p, fecha } of lista) {
+        rows.push({
+          "Sección": tituloSeccion(k),
+          Fecha: fmtFecha(fecha),
+          Asesor: f.asesor,
+          Supervisor: f.supervisor || "",
+          "Hora entrada": t.hora_inicio,
+          "Hora marcación": t.ingreso || "",
+          "Minutos tarde": p.k === "tarde" ? p.dif : "",
+          Estado: p.k === "tarde" ? "ATRASO" : "SIN MARCAR",
+          Modalidad: t.modalidad || "",
+        });
+      }
+    }
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 20 }, { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 12 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Atrasos");
+    const sufijo = dia === "TODOS" ? `${datos.lunes}_al_${datos.domingo}` : dia;
+    XLSX.writeFile(wb, `Atrasos_${empresa}_${sufijo}.xlsx`);
+  };
+
+  const th = { textAlign: "left", padding: "6px 10px", fontSize: 12, color: "#6B7280", borderBottom: "1px solid #E5E7EB" };
+  const td = { padding: "6px 10px", fontSize: 13, borderBottom: "1px solid #F3F4F6" };
+
+  return (
+    <div style={{ ...card, borderColor: "#FCD34D" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>📋 Reporte de atrasos · {total}</div>
+        <select style={sel} value={dia} onChange={(e) => setDia(e.target.value)}>
+          <option value="TODOS">Toda la semana (hasta hoy)</option>
+          {diasPasados.map((d, i) => <option key={d} value={d}>{DIAS_CORTOS[datos.dias.indexOf(d)] ?? i} {fmtFecha(d)}</option>)}
+        </select>
+        <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={conSinMarcar} onChange={(e) => setConSinMarcar(e.target.checked)} /> Incluir sin marcar
+        </label>
+        <button style={btn("#065F46")} onClick={exportar} disabled={!total}>⬇ Exportar Excel</button>
+        <span style={{ fontSize: 12, color: "#6B7280" }}>Tolerancia {datos.tolerancia_min} min</span>
+      </div>
+
+      {!total && <div style={{ color: "#6B7280", fontSize: 13 }}>Sin atrasos para el periodo elegido. 🎉</div>}
+
+      {secciones.map(([k, lista]) => (
+        <div key={k} style={{ marginBottom: 14 }}>
+          <div style={{ background: OP, color: O, fontWeight: 800, padding: "6px 10px", borderRadius: 8, marginBottom: 4 }}>
+            {tituloSeccion(k)} · {lista.length}
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Fecha</th><th style={th}>Asesor</th><th style={th}>Supervisor</th>
+                <th style={th}>Entrada</th><th style={th}>Marcó</th><th style={th}>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map(({ f, t, p, fecha }) => (
+                <tr key={`${f.asesor_clave}|${fecha}`}>
+                  <td style={td}>{fmtFecha(fecha)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{f.asesor}</td>
+                  <td style={td}>{f.supervisor || "—"}</td>
+                  <td style={td}>{t.hora_inicio}</td>
+                  <td style={td}>{t.ingreso || "—"}</td>
+                  <td style={td}>
+                    <span style={{ background: p.bg, color: p.c, borderRadius: 999, padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>
+                      {p.k === "tarde" ? `+${p.dif} min` : "Sin marcar"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

@@ -151,7 +151,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
         if(!j.success) throw new Error(j.error||'Error'); error(''); return j.data; });
   }
   function bx(metodo, params){ return new Promise(function(ok,ko){ BX24.callMethod(metodo, params, function(r){ r.error()?ko(new Error(r.error().ex?r.error().ex.error_description:String(r.error()))):ok(r.data()); }); }); }
-  function refrescar(){ return api('cola').then(function(d){ $('quien').textContent='Asesor: '+(d.asesor||''); $('pend').textContent=d.pendientes; $('ok').textContent=d.contestadas_hoy; $('nc').textContent=d.no_contesta_hoy; $('btnIniciar').disabled=corriendo||!d.pendientes; }).catch(function(e){ error(e.message); }); }
+  function refrescar(){ return api('cola').then(function(d){ $('quien').textContent='Asesor: '+(d.asesor||''); $('pend').textContent=d.pendientes; $('ok').textContent=d.contestadas_hoy; $('nc').textContent=d.no_contesta_hoy; $('btnIniciar').disabled=corriendo; }).catch(function(e){ error(e.message); }); }
 
   function pararCuenta(){ clearInterval(cuenta); cuenta=null; $('btnYa').classList.add('hidden'); $('cuenta').textContent=''; }
   // Al colgar: se muestran las tipificaciones y una cuenta regresiva antes de la siguiente llamada.

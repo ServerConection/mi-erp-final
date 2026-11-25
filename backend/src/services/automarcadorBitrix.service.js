@@ -26,7 +26,6 @@ const TIPIFICACIONES_REINTENTO = ['No contesta', 'Buzón de voz', 'Apagado / fue
 const MAX_INTENTOS = 3          // intentos por número dentro de una campaña
 const HORAS_ENTRE_INTENTOS = 2  // espera mínima entre intentos
 const HORARIO = { desde: 8, hasta: 19 } // horas de inicio permitidas (hora Ecuador)
-const DIAS_RECIENTE = 7         // no se carga un número llamado en los últimos N días
 const OFFSET_EC_MS = -5 * 3600000 // Ecuador: UTC-5 fijo, sin horario de verano
 
 const DDL = `
@@ -103,50 +102,6 @@ async function listarAsesores(user, db) {
 }
 
 // Reparte los teléfonos en ronda entre los asesores elegidos y crea la campaña.
-// Lista de exclusión: quita de la base los números que no conviene llamar.
-//  - tipificacion: ya se cerraron (Contrata, No desea, Número errado, …)
-//  - reciente: se llamaron en los últimos DIAS_RECIENTE días
-//  - en_otra_campana: siguen pendientes en otra campaña activa
-//  - duplicados: el mismo número viene dos veces en la base
-async function filtrarExcluidos(empresa, items, db) {
-  const tel9 = (v) => String(v || '').replace(/\D/g, '').slice(-9)
-  const tels = [...new Set(items.map(it => tel9(it.wa_number)).filter(Boolean))]
-  const deals = [...new Set(items.map(it => String(it.variables?.bitrix_id || '')).filter(Boolean))]
-  const r = await db.query(
-    `SELECT RIGHT(regexp_replace(i.telefono, '\\D', '', 'g'), 9) AS tel, i.deal_id,
-            CASE WHEN i.tipificacion = ANY($2::text[]) THEN 'tipificacion'
-                 WHEN i.estado = 'pendiente' AND c.estado = 'activa' THEN 'en_otra_campana'
-                 ELSE 'reciente' END AS motivo
-       FROM automarcador_bx_items i
-       JOIN automarcador_bx_campanas c ON c.id = i.campana_id AND c.empresa = $1
-      WHERE (RIGHT(regexp_replace(i.telefono, '\\D', '', 'g'), 9) = ANY($3::text[]) OR i.deal_id = ANY($4::text[]))
-        AND (i.tipificacion = ANY($2::text[])
-             OR (i.estado = 'pendiente' AND c.estado = 'activa')
-             OR i.ultimo_intento > NOW() - make_interval(days => $5))`,
-    [empresa, TIPIFICACIONES_FINALES, tels, deals, DIAS_RECIENTE]
-  )
-  // Un número puede salir varias veces: gana el motivo más fuerte.
-  const peso = { tipificacion: 3, en_otra_campana: 2, reciente: 1 }
-  const porTel = new Map(), porDeal = new Map()
-  const guardar = (mapa, k, m) => { if (k && (peso[m] || 0) > (peso[mapa.get(k)] || 0)) mapa.set(k, m) }
-  for (const f of r.rows) { guardar(porTel, f.tel, f.motivo); guardar(porDeal, f.deal_id, f.motivo) }
-
-  const excluidos = { tipificacion: 0, reciente: 0, en_otra_campana: 0, duplicados: 0 }
-  const vistos = new Set()
-  const aptos = []
-  for (const it of items) {
-    const t = tel9(it.wa_number)
-    const d = String(it.variables?.bitrix_id || '')
-    const ta = porTel.get(t), de = porDeal.get(d)
-    const motivo = (peso[ta] || 0) >= (peso[de] || 0) ? ta : de
-    if (motivo) { excluidos[motivo]++; continue }
-    if (t && vistos.has(t)) { excluidos.duplicados++; continue }
-    if (t) vistos.add(t)
-    aptos.push(it)
-  }
-  return { aptos, excluidos }
-}
-
 async function crearCampana(user, { nombre, filtros, asesorIds, items }, db) {
   const asesores = [...new Set((asesorIds || []).map(v => parseInt(v, 10)).filter(n => n > 0))]
   if (!asesores.length) { const e = new Error('Selecciona al menos un asesor'); e.status = 400; throw e }
@@ -159,13 +114,6 @@ async function crearCampana(user, { nombre, filtros, asesorIds, items }, db) {
   )
   const ids = validos.rows.map(r => Number(r.id))
   if (ids.length !== asesores.length) { const e = new Error('Hay asesores inactivos o de otra empresa'); e.status = 400; throw e }
-
-  const { aptos, excluidos } = await filtrarExcluidos(empresaDe(user), items, db)
-  if (!aptos.length) {
-    const e = new Error('Todos los números fueron excluidos (ya cerrados, llamados en los últimos 7 días o en otra campaña activa)')
-    e.status = 400; throw e
-  }
-  items = aptos
 
   return db.transaction(async (client) => {
     const c = await client.query(
@@ -193,7 +141,7 @@ async function crearCampana(user, { nombre, filtros, asesorIds, items }, db) {
         `INSERT INTO automarcador_bx_items (campana_id, usuario_id, telefono, nombre_cliente, deal_id)
          VALUES ${valores.join(',')}`, params)
     }
-    return { campana_id: campanaId, total: items.length, por_asesor: porAsesor, excluidos }
+    return { campana_id: campanaId, total: items.length, por_asesor: porAsesor }
   })
 }
 
@@ -590,7 +538,7 @@ async function encolarLlamadaDirecta(usuarioId, empresa, { telefono, nombre, dea
 }
 
 module.exports = {
-  DDL, ESTADOS_CAMPANA, TIPIFICACIONES_FINALES, TIPIFICACIONES_REINTENTO, MAX_INTENTOS, proximoIntento, contactabilidad, filtrarExcluidos, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
+  DDL, ESTADOS_CAMPANA, TIPIFICACIONES_FINALES, TIPIFICACIONES_REINTENTO, MAX_INTENTOS, proximoIntento, contactabilidad, ESTADOS_FINALES, TIPIFICACIONES, tipificar, reporte, resumen, control, cambiarEstadoCampana, asegurarEsquema, listarAsesores, crearCampana, listarCampanas, reintentarNoContestados,
   resumenAsesor, siguiente, registrarResultado, itemEnLlamada, encolarLlamadaDirecta,
   _reset: () => { esquemaListo = null; tasasCache = { exp: 0, valor: {} } },
 }

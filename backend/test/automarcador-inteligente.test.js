@@ -75,40 +75,6 @@ test('tipificar: una tipificación final cancela el reintento y queda en el inte
   assert.ok(q.params[4].includes('Buzón de voz'))
 })
 
-// ── Lista de exclusión ───────────────────────────────────────────────────
-test('exclusión: saca tipificados finales, llamados hace poco, en otra campaña y duplicados', async () => {
-  svc._reset()
-  const db = dbFalsa({
-    'FROM usuarios WHERE id = ANY': [{ id: 1 }],
-    'AS motivo': [
-      { tel: '991111111', deal_id: null, motivo: 'tipificacion' },
-      { tel: null, deal_id: '22', motivo: 'reciente' },
-      { tel: '993333333', deal_id: null, motivo: 'en_otra_campana' },
-    ],
-    'INSERT INTO automarcador_bx_campanas': [{ id: 7 }],
-  })
-  const items = [
-    { wa_number: '593991111111', name: 'A', variables: { bitrix_id: '11' } },
-    { wa_number: '593992222222', name: 'B', variables: { bitrix_id: '22' } },
-    { wa_number: '593993333333', name: 'C', variables: { bitrix_id: '33' } },
-    { wa_number: '593994444444', name: 'D', variables: { bitrix_id: '44' } },
-    { wa_number: '0994444444', name: 'D2', variables: { bitrix_id: '45' } },
-  ]
-  const r = await svc.crearCampana({ empresa: 'NOVONET', id: 1 }, { nombre: 'X', asesorIds: [1], items }, db)
-  assert.equal(r.total, 1)
-  assert.deepEqual(r.excluidos, { tipificacion: 1, reciente: 1, en_otra_campana: 1, duplicados: 1 })
-})
-
-test('exclusión: si todo queda excluido avisa y no crea la campaña', async () => {
-  svc._reset()
-  const db = dbFalsa({
-    'FROM usuarios WHERE id = ANY': [{ id: 1 }],
-    'AS motivo': [{ tel: '991111111', deal_id: null, motivo: 'tipificacion' }],
-  })
-  await assert.rejects(svc.crearCampana({ empresa: 'NOVONET' }, { asesorIds: [1], items: [{ wa_number: '593991111111' }] }, db), /excluidos/)
-  assert.ok(!db.consultas.some(c => /INSERT INTO automarcador_bx_campanas/.test(c.sql)))
-})
-
 // ── Contactabilidad por cliente ──────────────────────────────────────────
 test('contactabilidad: agrupa por deal y exige rango válido', async () => {
   svc._reset()

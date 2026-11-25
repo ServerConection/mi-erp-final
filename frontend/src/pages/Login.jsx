@@ -435,17 +435,30 @@ export default function Login() {
 
         /* ── Responsive ── */
         @media (max-width: 640px) {
-          .lp { justify-content: center; }
+          .lp { justify-content: center; align-items: center; }
+          /* El fondo llena toda la pantalla (sin franjas vacías) y se atenúa
+             para que la tarjeta y el texto resalten bien en el celular. */
+          .lp-bg {
+            background-size: cover;
+            background-position: top center;
+            filter: brightness(0.7);
+          }
           .lp-right {
-            padding: 1.5rem 1rem;
+            padding: 1.25rem 1rem;
             max-width: 100%;
-            min-height: auto;
+            min-height: 100vh;
+            justify-content: center;
           }
           .lp-overlay {
-            background: rgba(5, 15, 60, 0.72);
+            background: linear-gradient(180deg, rgba(5,15,60,0.55) 0%, rgba(5,15,60,0.88) 100%);
           }
-          .login-card { padding: 2rem 1.5rem; }
-          .lc-brand-name { font-size: 1.65rem; }
+          .login-card {
+            padding: 1.75rem 1.25rem 1.5rem;
+            border-radius: 22px;
+          }
+          .lc-brand-name { font-size: 1.5rem; }
+          .lc-title { font-size: 1.35rem; }
+          .lc-subtitle { font-size: 0.9rem; }
         }
       `}</style>
 

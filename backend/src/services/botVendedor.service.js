@@ -189,6 +189,25 @@ async function llamarConRespaldo(messages) {
   }
 }
 
+// Minutos desde medianoche en hora de Ecuador.
+function minutosEcuador(fecha = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(fecha);
+  const [h, m] = partes.split(':').map(Number);
+  return (h % 24) * 60 + m;
+}
+const aMinutos = (hhmm) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+// ¿La fecha cae dentro del horario? Sin horario = siempre. Si inicio > fin, cruza medianoche.
+function enHorario(inicio, fin, fecha = new Date()) {
+  const i = aMinutos(inicio);
+  const f = aMinutos(fin);
+  if (i === null || f === null || i === f) return true;
+  const ahora = minutosEcuador(fecha);
+  return i < f ? (ahora >= i && ahora < f) : (ahora >= i || ahora < f);
+}
+
 function fechaHoraActual() {
   return new Intl.DateTimeFormat('es-EC', {
     timeZone: TZ, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -303,7 +322,7 @@ async function extraerTexto(buffer, nombre) {
 }
 
 module.exports = {
-  asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen,
+  asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen, enHorario, aMinutos,
   transcribirAudio, describirImagen, extraerTexto,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

@@ -917,23 +917,8 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
                 className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-60 whitespace-nowrap">
                 {llamandoBitrix ? "Enviando…" : "📞 Llamar (Bitrix)"}
               </button>
-              {/* Dentro de la pestaña WABOT de un Deal ya estás viendo esa
-                  negociación en Bitrix -- el enlace/botón sería redundante. */}
-              {pilotoPc ? (
-                <>
-                  <button onClick={llamarDesdePc} disabled={llamandoPc || !!llamadaPc}
-                    title="Llamar desde esta PC"
-                    className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
-                    {llamandoPc ? "Llamando…" : "📞 Llamar (PC)"}
-                  </button>
-                </>
-              ) : (
-              <button onClick={openWhatsAppForCall}
-                title="Abrir este contacto en WhatsApp para iniciar una llamada de voz o video"
-                className="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-                📞 Abrir para llamar
-              </button>
-              )}
+              {/* Llamadas: solo por Bitrix (botón de arriba). Se retiran el piloto
+                  de WhatsApp Desktop y el enlace wa.me para evitar confusión. */}
               {!dealId && (selected.bitrix_deal_id ? (
                 <a href={bitrixDealUrl(selected.bitrix_deal_id) || "#"} target="_blank" rel="noopener noreferrer"
                   onClick={e => { if (!bitrixDealUrl(selected.bitrix_deal_id)) { e.preventDefault(); alert("Tu empresa no tiene enlace de Bitrix configurado."); } }}

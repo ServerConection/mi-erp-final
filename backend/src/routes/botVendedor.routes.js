@@ -196,7 +196,11 @@ router.put('/lineas/:id', async (req, res) => {
 const nocturno = require('../services/botVendedorNocturno.service');
 
 router.get('/nocturno', async (_req, res) => {
-  try { ok(res, await nocturno.leerConfig()); } catch (e) { fallo(res, e); }
+  try {
+    const cfg = await nocturno.leerConfig();
+    const est = await pool.query("SELECT valor, actualizado_en FROM public.bv_config WHERE clave = 'nocturno_estado'");
+    ok(res, { ...cfg, estado: est.rows[0]?.valor || 'WABOT aun no reporta (despliega WABOT y espera 1 minuto).', estado_en: est.rows[0]?.actualizado_en || null });
+  } catch (e) { fallo(res, e); }
 });
 
 router.put('/nocturno', async (req, res) => {

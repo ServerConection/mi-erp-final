@@ -80,11 +80,7 @@ export default function AutomarcadorCargaBitrix() {
       if (!r.ok || !j.success) throw new Error(j.error || "No se pudo crear la campaña");
       // Se limpia todo para que no se cree la misma campaña dos veces.
       setForm(formVacio()); setPreview(null); setAsesorIds([]); setCreadaBx(null);
-      const ex = j.data.excluidos || {};
-      const partes = [[ex.tipificacion, "ya cerrados (Contrata, No desea, Número errado…)"], [ex.reciente, "llamados en los últimos 7 días"],
-        [ex.en_otra_campana, "pendientes en otra campaña"], [ex.duplicados, "duplicados"]].filter(([n]) => n > 0).map(([n, t]) => `${n} ${t}`);
-      mostrarPopup("ok", `Campaña #${j.data.campana_id} creada con ${j.data.total} número(s) para ${Object.keys(j.data.por_asesor || {}).length} asesor(es).`
-        + (partes.length ? ` Se excluyeron: ${partes.join(", ")}.` : ""));
+      mostrarPopup("ok", `Campaña #${j.data.campana_id} creada con ${j.data.total} número(s) para ${Object.keys(j.data.por_asesor || {}).length} asesor(es).`);
       cargarCampanas();
     } catch (e) { mostrarPopup("error", e.message || "No se pudo crear la campaña"); }
     finally { setBusy(false); }

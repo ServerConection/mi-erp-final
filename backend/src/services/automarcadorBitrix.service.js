@@ -531,8 +531,10 @@ async function encolarLlamadaDirecta(usuarioId, empresa, { telefono, nombre, dea
     campanaId = c.rows[0].id
   }
   const r = await db.query(
-    `INSERT INTO automarcador_bx_items (campana_id, usuario_id, telefono, nombre_cliente, deal_id, estado)
-     VALUES ($1, $2, $3, $4, $5, 'pendiente') RETURNING id`,
+    // proximo_intento = NOW(): la cola atiende primero lo programado, así la
+    // llamada directa sale antes que los números pendientes de las campañas.
+    `INSERT INTO automarcador_bx_items (campana_id, usuario_id, telefono, nombre_cliente, deal_id, estado, proximo_intento)
+     VALUES ($1, $2, $3, $4, $5, 'pendiente', NOW()) RETURNING id`,
     [campanaId, uid, tel, nombre ? String(nombre).slice(0, 200) : null, deal_id ? String(deal_id).slice(0, 30) : null])
   return { item_id: r.rows[0].id }
 }

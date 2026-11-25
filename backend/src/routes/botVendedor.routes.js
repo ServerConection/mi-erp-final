@@ -17,8 +17,8 @@
 // POST /api/bot-vendedor/planes                 { nombre, velocidad_mbps, segmento, descripcion }
 // PUT  /api/bot-vendedor/planes/:id             { nombre?, velocidad_mbps?, segmento?, descripcion?, activo? }
 // GET  /api/bot-vendedor/nocturno               config de atencion nocturna
-// PUT  /api/bot-vendedor/nocturno               { activo, linea, inicio, fin, pctBot, max, mensaje }
-// GET  /api/bot-vendedor/nocturno/resumen       resultados A/B (?dias=30)
+// PUT  /api/bot-vendedor/nocturno               { activo, linea, inicio, fin, max, mensaje }
+// GET  /api/bot-vendedor/nocturno/resumen       carrera bot vs asesor por deal (?dias=30)
 // POST /api/bot-vendedor/probar                 { historial: [{role, content}] }
 //
 // No hay DELETE: los documentos se archivan (activo = false) y se pueden reactivar.
@@ -205,9 +205,8 @@ router.put('/nocturno', async (req, res) => {
     const valores = {
       nocturno_activo: aBool(b.activo) ? 'true' : 'false',
       nocturno_linea: String(b.linea || ''),
-      nocturno_inicio: String(b.inicio || '22:30').trim(),
-      nocturno_fin: String(b.fin || '07:00').trim(),
-      nocturno_pct_bot: String(Math.min(100, Math.max(0, parseInt(b.pctBot, 10) || 0))),
+      nocturno_inicio: String(b.inicio || '20:30').trim(),
+      nocturno_fin: String(b.fin || '07:30').trim(),
       nocturno_max: String(Math.max(1, parseInt(b.max, 10) || 80)),
       nocturno_mensaje: String(b.mensaje || '').trim().slice(0, 1000),
     };
@@ -229,33 +228,55 @@ router.put('/nocturno', async (req, res) => {
   } catch (e) { fallo(res, e); }
 });
 
-// Resultados A/B: por grupo, cuantos respondieron y en que etapa estan hoy en Bitrix.
+// Carrera bot vs asesor: por cada deal nocturno, quien cerro primero.
+//   Bot    = el cliente confirmo la venta con el bot (bv_nocturno.bot_venta_en).
+//   Asesor = primera venta registrada en el ERP para ese deal (envios_ventas.fecha_registro_sistema).
 router.get('/nocturno/resumen', async (req, res) => {
   try {
     await bot.asegurarTablas();
     const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 30));
-    const base = `
-      WITH n AS (
-        SELECT n.*, l.etapa, l.etapa_bitrix, l.responsible,
-               EXISTS (SELECT 1 FROM messages m
-                        WHERE m.line_id = n.line_id AND m.wa_number = n.telefono AND m.direction = 'in'
-                          AND m.timestamp > n.enviado_en) AS respondio
-          FROM public.bv_nocturno n
-          LEFT JOIN bitrix_webhook_leads l ON l.empresa = n.empresa AND l.bitrix_id::text = n.bitrix_id
-         WHERE n.creado_en > NOW() - ($1 || ' days')::interval)`;
-    const grupos = await pool.query(`${base}
-      SELECT grupo, COUNT(*)::int AS deals,
-             COUNT(*) FILTER (WHERE estado = 'enviado')::int AS enviados,
-             COUNT(*) FILTER (WHERE respondio)::int AS respondieron,
-             COUNT(*) FILTER (WHERE estado = 'error')::int AS errores
-        FROM n GROUP BY grupo ORDER BY grupo`, [String(dias)]);
-    const etapas = await pool.query(`${base}
-      SELECT grupo, COALESCE(etapa_bitrix, 'SIN ETAPA') AS etapa, COUNT(*)::int AS deals
-        FROM n GROUP BY 1, 2 ORDER BY 1, 3 DESC`, [String(dias)]);
-    const ultimos = await pool.query(`${base}
-      SELECT bitrix_id, grupo, estado, detalle, deal_creado, enviado_en, respondio, etapa_bitrix, responsible
-        FROM n ORDER BY creado_en DESC LIMIT 100`, [String(dias)]);
-    ok(res, { dias, grupos: grupos.rows, etapas: etapas.rows, ultimos: ultimos.rows });
+    const { rows } = await pool.query(
+      `SELECT n.bitrix_id, n.estado, n.detalle, n.deal_creado, n.enviado_en, n.bot_venta_en,
+              EXISTS (SELECT 1 FROM messages m
+                       WHERE m.line_id = n.line_id AND m.wa_number = n.telefono AND m.direction = 'in'
+                         AND m.timestamp > n.enviado_en) AS respondio,
+              (SELECT MIN(ev.fecha_registro_sistema) FROM public.envios_ventas ev
+                WHERE BTRIM(ev.id_bitrix::text) = n.bitrix_id) AS asesor_venta_en,
+              l.etapa_bitrix, l.responsible
+         FROM public.bv_nocturno n
+         LEFT JOIN bitrix_webhook_leads l ON l.empresa = n.empresa AND l.bitrix_id::text = n.bitrix_id
+        WHERE n.creado_en > NOW() - ($1 || ' days')::interval
+        ORDER BY n.creado_en DESC`,
+      [String(dias)]);
+
+    const ganador = (r) => {
+      const b = r.bot_venta_en ? new Date(r.bot_venta_en).getTime() : null;
+      const a = r.asesor_venta_en ? new Date(r.asesor_venta_en).getTime() : null;
+      if (b && (!a || b <= a)) return 'BOT';
+      if (a) return 'ASESOR';
+      return null;
+    };
+    const minutos = (desde, hasta) => (desde && hasta ? Math.round((new Date(hasta) - new Date(desde)) / 60000) : null);
+    const deals = rows.map((r) => ({
+      ...r,
+      ganador: ganador(r),
+      min_bot: minutos(r.deal_creado, r.bot_venta_en),
+      min_asesor: minutos(r.deal_creado, r.asesor_venta_en),
+    }));
+    const prom = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+    const totales = {
+      deals: deals.length,
+      enviados: deals.filter((d) => d.estado === 'enviado').length,
+      respondieron: deals.filter((d) => d.respondio).length,
+      errores: deals.filter((d) => d.estado === 'error').length,
+      cierres_bot: deals.filter((d) => d.bot_venta_en).length,
+      cierres_asesor: deals.filter((d) => d.asesor_venta_en).length,
+      gana_bot: deals.filter((d) => d.ganador === 'BOT').length,
+      gana_asesor: deals.filter((d) => d.ganador === 'ASESOR').length,
+      prom_min_bot: prom(deals.map((d) => d.min_bot).filter((x) => x !== null)),
+      prom_min_asesor: prom(deals.map((d) => d.min_asesor).filter((x) => x !== null)),
+    };
+    ok(res, { dias, totales, ultimos: deals.slice(0, 150) });
   } catch (e) { fallo(res, e); }
 });
 

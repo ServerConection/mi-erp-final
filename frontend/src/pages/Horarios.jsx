@@ -23,10 +23,11 @@ const empresaSesion = () => {
     return "NOVONET";
   }
 };
-const esJasimbana = () => {
+// Admin / Gerencia pueden alternar entre NOVONET y VELSA; el supervisor queda fijo en su empresa.
+const puedeElegirEmpresa = () => {
   try {
     const user = JSON.parse(localStorage.getItem("userProfile") || localStorage.getItem("user") || "{}");
-    return String(user?.usuario || user?.username || "").trim().toLowerCase() === "jasimbana";
+    return !String(user?.perfil || "").trim().toUpperCase().startsWith("SUPERVISOR");
   } catch {
     return false;
   }
@@ -124,7 +125,7 @@ const sel = { border: "1px solid #D1D5DB", borderRadius: 8, padding: "6px 8px", 
 export default function Horarios() {
   const token = localStorage.getItem("token");
   const [EMPRESA, setEmpresa] = useState(empresaSesion);
-  const puedeCambiarEmpresa = useMemo(esJasimbana, []);
+  const elegirEmpresa = useMemo(puedeElegirEmpresa, []);
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }), [token]);
 
   const [lunes, setLunes] = useState(lunesDe(hoyLocal()));
@@ -160,6 +161,11 @@ export default function Horarios() {
   useEffect(() => { cargarSemana(lunes); }, [lunes, cargarSemana]);
 
   const nCambios = Object.keys(cambios).length;
+  const cambiarEmpresa = (e) => {
+    if (e === EMPRESA) return;
+    if (nCambios && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) return;
+    setDatos(null); setSemanas([]); setFiltroSup(""); setVerCarga(false); setEmpresa(e);
+  };
   const irSemana = (n) => {
     if (nCambios && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) return;
     setLunes(sumarDias(lunes, n * 7));
@@ -205,21 +211,9 @@ export default function Horarios() {
     <div style={{ padding: 16, maxWidth: 1400, margin: "0 auto", fontFamily: "inherit" }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 14 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: "#111827" }}>⏰ Horarios {EMPRESA}</h1>
-        {puedeCambiarEmpresa && (
-          <select
-            style={sel}
-            value={EMPRESA}
-            onChange={(e) => {
-              setEmpresa(e.target.value);
-              setFiltroSup("");
-              setBusca("");
-              setCambios({});
-            }}
-          >
-            <option value="NOVONET">NOVONET</option>
-            <option value="VELSA">VELSA</option>
-          </select>
-        )}
+        {elegirEmpresa && ["NOVONET", "VELSA"].map((e) => (
+          <button key={e} style={btn(EMPRESA === e ? O : OP, EMPRESA === e ? "#fff" : O)} onClick={() => cambiarEmpresa(e)}>{e}</button>
+        ))}
         {datos?.puede_cargar && (
           <button style={btn(verCarga ? "#374151" : O)} onClick={() => setVerCarga((v) => !v)}>
             {verCarga ? "Cerrar carga" : "📤 Cargar Excel"}

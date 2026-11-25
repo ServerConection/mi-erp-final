@@ -140,7 +140,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
 </div>
 <script>
 (function(){
-  var API='/api/llamadas/bitrix-dialer/', corriendo=false, actual=null, sondeo=null, ultimo=null, cuenta=null;
+  var API='/api/llamadas/bitrix-dialer/', corriendo=false, actual=null, sondeo=null, ultimo=null, cuenta=null, espera=null;
   var $=function(id){return document.getElementById(id)};
   function error(m){ $('err').textContent=m||''; }
   function token(){ return new Promise(function(ok){ var a=BX24.getAuth(); if(a&&a.access_token) return ok(a.access_token); BX24.refreshAuth(function(n){ ok(n&&n.access_token); }); }); }
@@ -190,7 +190,7 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
   function llamar(){
     error('');
     api('siguiente',{}).then(function(item){
-      if(!item){ corriendo=false; $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('No tienes números pendientes en campañas activas (si tu campaña está en pausa, espera a que la reanuden).'); return refrescar(); }
+      if(!item){ if(corriendo){ $('cardActual').classList.add('hidden'); error('En espera de llamadas… (quédate aquí; marcará solo cuando llegue una)'); clearTimeout(espera); espera=setTimeout(llamar, 5000); return refrescar(); } $('btnDetener').classList.add('hidden'); $('cardActual').classList.add('hidden'); error('Detenido.'); return refrescar(); }
       actual=item; pararCuenta(); $('cardTipo').classList.add('hidden');
       $('cardActual').classList.remove('hidden');
       $('cliente').textContent=item.nombre_cliente||'Cliente';
@@ -210,11 +210,12 @@ h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{disp
       Array.prototype.forEach.call(document.querySelectorAll('#tipos button'),function(x){ x.classList.toggle('sel', x===b); });
     }).catch(function(e){ error(e.message); });
   }; });
-  $('btnDetener').onclick=function(){ corriendo=false; this.classList.add('hidden'); if(cuenta){ pararCuenta(); $('cuenta').textContent='Detenido. Puedes tipificar igual.'; } $('estado').textContent=actual?'Se detendrá al terminar esta llamada.':'Detenido.'; refrescar(); };
+  $('btnDetener').onclick=function(){ corriendo=false; clearTimeout(espera); this.classList.add('hidden'); if(cuenta){ pararCuenta(); $('cuenta').textContent='Detenido. Puedes tipificar igual.'; } $('estado').textContent=actual?'Se detendrá al terminar esta llamada.':'Detenido.'; refrescar(); };
   Array.prototype.forEach.call(document.querySelectorAll('#manual button'),function(b){ b.onclick=function(){ terminar(b.getAttribute('data-r'),0); }; });
   BX24.init(function(){
     BX24.fitWindow && BX24.fitWindow();
     refrescar();
+    setInterval(function(){ if(!actual && !corriendo) refrescar(); }, 5000);
   });
 })();
 </script></body></html>`

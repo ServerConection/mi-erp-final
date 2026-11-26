@@ -148,17 +148,30 @@ function buscar(fragmentos, consulta, max) {
 // ─── Groq ────────────────────────────────────────────────────────────────────
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function llamarModelo(messages, modelo) {
-  const cuerpo = { model: modelo, messages, temperature: 0.4, max_tokens: 500 };
-  if (/gpt-oss/.test(modelo)) cuerpo.reasoning_effort = 'low';
-  const resp = await fetch(`${BASE_URL}/chat/completions`, {
+// Proveedores de IA en orden. Si uno responde 429 (limite por minuto del plan gratis)
+// se pasa AL INSTANTE al siguiente, sin esperar. Gemini se suma si hay GEMINI_API_KEY.
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const MODELO_GEMINI = process.env.BOT_GEMINI_MODEL || 'gemini-3.8-flash';
+function proveedores() {
+  const lista = [
+    { url: BASE_URL, key: apiKey(), modelo: MODELO },
+    { url: BASE_URL, key: apiKey(), modelo: MODELO_RESPALDO },
+  ];
+  if (process.env.GEMINI_API_KEY) lista.push({ url: GEMINI_URL, key: process.env.GEMINI_API_KEY, modelo: MODELO_GEMINI });
+  return lista.filter((p) => p.key);
+}
+
+async function llamarModelo(messages, prov) {
+  const cuerpo = { model: prov.modelo, messages, temperature: 0.4, max_tokens: 400 };
+  if (/gpt-oss|gemini/.test(prov.modelo)) cuerpo.reasoning_effort = 'low';
+  const resp = await fetch(`${prov.url}/chat/completions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${prov.key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(45000),
   });
   if (!resp.ok) {
-    const err = new Error(`IA ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+    const err = new Error(`IA ${prov.modelo} ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
     err.status = resp.status;
     throw err;
   }
@@ -166,27 +179,27 @@ async function llamarModelo(messages, modelo) {
   return (data.choices?.[0]?.message?.content || '').trim();
 }
 
-// 429 = limite por minuto del plan gratis: espera lo que pide Groq y reintenta.
-async function llamarConEspera(messages, modelo) {
-  for (let intento = 0; intento < 5; intento++) {
-    try {
-      return await llamarModelo(messages, modelo);
-    } catch (e) {
-      if (e.status !== 429 || intento === 4) throw e;
-      const seg = Number((e.message.match(/try again in ([\d.]+)s/) || [])[1] || 10);
-      await esperar(Math.ceil(seg * 1000) + 500);
-    }
-  }
-  return '';
-}
-
+// Recorre los proveedores; si TODOS estan en limite, espera lo minimo que pidan y reintenta (max 3 vueltas).
 async function llamarConRespaldo(messages) {
-  try {
-    return { texto: await llamarConEspera(messages, MODELO), modelo: MODELO };
-  } catch (e) {
-    console.error(`[BOT-VENDEDOR] ${MODELO} fallo (${e.message.slice(0, 120)}); uso ${MODELO_RESPALDO}`);
-    return { texto: await llamarConEspera(messages, MODELO_RESPALDO), modelo: MODELO_RESPALDO };
+  const lista = proveedores();
+  if (!lista.length) throw new Error('Falta GROQ_API_KEY (o GEMINI_API_KEY) en el entorno');
+  let ultimo;
+  for (let vuelta = 0; vuelta < 3; vuelta++) {
+    let espera = 0;
+    for (const prov of lista) {
+      try {
+        const texto = await llamarModelo(messages, prov);
+        if (texto) return { texto, modelo: prov.modelo };
+      } catch (e) {
+        ultimo = e;
+        const seg = Number((e.message.match(/try again in ([\d.]+)s/) || [])[1] || (e.status === 429 ? 8 : 0));
+        if (seg) espera = espera ? Math.min(espera, seg) : seg;
+      }
+    }
+    if (!espera) break; // errores que no son de limite: no sirve esperar
+    await esperar(Math.min(20, Math.ceil(espera)) * 1000 + 300);
   }
+  throw ultimo || new Error('La IA no respondio');
 }
 
 // Minutos desde medianoche en hora de Ecuador.
@@ -206,6 +219,11 @@ function enHorario(inicio, fin, fecha = new Date()) {
   if (i === null || f === null || i === f) return true;
   const ahora = minutosEcuador(fecha);
   return i < f ? (ahora >= i && ahora < f) : (ahora >= i || ahora < f);
+}
+
+function horarioLaboral(fecha = new Date()) {
+  const dia = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(fecha);
+  return !['Sat', 'Sun'].includes(dia) && enHorario('09:00', '18:00', fecha);
 }
 
 function fechaHoraActual() {
@@ -233,7 +251,7 @@ async function responder(historial) {
   if (/precio|cuest|cuanto|valor|plan|recomi|mbps|megas|velocidad|promo|pag|tarifa|instal|ofert/i.test(normalizar(consulta)) || delCliente.length >= 3) {
     consulta += ' precio final con iva sin iva promo facturas mbps defense forma de pago tarjeta instalacion';
   }
-  const contexto = [...base.siempre, ...buscar(base.fragmentos, consulta, 2)].join('\n\n---\n\n');
+  const contexto = [...base.siempre, ...buscar(base.fragmentos, consulta, base.siempre.length ? 1 : 3)].join('\n\n---\n\n');
 
   const messages = [
     { role: 'system', content: base.prompt },
@@ -265,8 +283,11 @@ async function responder(historial) {
   const ventaCerrada = /\[VENTA_CERRADA\]/.test(String(texto));
   let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/\[VENTA_CERRADA\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
   let accion = null;
-  if (/FUERA_DE_HORARIO/.test(salida)) { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
-  else if (/ESCALAR_ASESOR/.test(salida)) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
+  // La IA solo decide SI pasa a un asesor; el horario lo decide el codigo (lun-vie 9:00-18:00 Ecuador).
+  if (/ESCALAR_ASESOR|FUERA_DE_HORARIO/.test(salida)) {
+    if (horarioLaboral()) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
+    else { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
+  }
   if (!salida) salida = 'Disculpa, no te entendi bien. ¿Me lo puedes repetir?';
   return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, modelo, ms: Date.now() - inicio };
 }
@@ -382,7 +403,8 @@ async function extraerTexto(buffer, nombre) {
 
 module.exports = {
   asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen, enHorario, aMinutos,
-  recomendarEtapa, registrarErrorIA, ETAPAS_RECOMENDABLES,
+  recomendarEtapa, registrarErrorIA, ETAPAS_RECOMENDABLES, horarioLaboral,
+  _llamarConRespaldo: llamarConRespaldo, // para pruebas
   transcribirAudio, describirImagen, extraerTexto,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

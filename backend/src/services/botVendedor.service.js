@@ -162,7 +162,7 @@ function proveedores() {
 }
 
 async function llamarModelo(messages, prov) {
-  const cuerpo = { model: prov.modelo, messages, temperature: 0.4, max_tokens: 400 };
+  const cuerpo = { model: prov.modelo, messages, temperature: 0.75, max_tokens: 400 };
   if (/gpt-oss|gemini/.test(prov.modelo)) cuerpo.reasoning_effort = 'low';
   const resp = await fetch(`${prov.url}/chat/completions`, {
     method: 'POST',
@@ -237,6 +237,15 @@ function fechaHoraActual() {
  * historial: [{ role: 'user'|'assistant', content }] (el ultimo debe ser del cliente).
  * Devuelve { texto, accion: null|'ESCALAR'|'FUERA_HORARIO', modelo, ms }.
  */
+const ESTILOS_APERTURA = [
+  'saludo calido y breve, y pregunta si el internet es para casa o negocio',
+  'saludo energico mencionando la fibra optica de Netlife, y pregunta en que sector vive',
+  'saludo cercano ofreciendo ayudarle a elegir el plan ideal, y pregunta cuantas personas lo usarian',
+  'saludo profesional y directo, y pregunta si ya tiene internet o seria su primera instalacion',
+  'saludo amable agradeciendo que escribio, y pregunta para que usa mas el internet (trabajo, estudios, series, juegos)',
+  'saludo simpatico y corto, y pregunta que le gustaria mejorar de su internet actual',
+];
+
 async function responder(historial) {
   if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
   const inicio = Date.now();
@@ -262,6 +271,12 @@ async function responder(historial) {
     role: 'system',
     content: `BASE DE CONOCIMIENTO (usa solo esto para precios, planes y condiciones. Si el cliente no dice su forma de pago, muestra el precio promo con tarjeta de credito y aclara que con cuenta bancaria la promo cambia):\n\n${contexto || '(sin documentos cargados; si necesitas un dato que no tienes, aplica la regla de pasar a un asesor)'}`,
   });
+  // Primer mensaje del bot en el chat: un estilo de apertura al azar para que la
+  // presentacion no sea siempre igual (el prompt pide no repetir saludos).
+  if (!hist.some((m) => m.role === 'assistant')) {
+    const estilo = ESTILOS_APERTURA[Math.floor(Math.random() * ESTILOS_APERTURA.length)];
+    messages.push({ role: 'system', content: `ESTILO DE APERTURA PARA ESTE CLIENTE (redactalo con tus palabras, sin copiar): ${estilo}` });
+  }
   messages.push({
     role: 'system',
     content: 'CIERRE: cuando el cliente confirme que el resumen final de su solicitud esta correcto (acepta contratar el plan), escribe al FINAL de tu mensaje la etiqueta [VENTA_CERRADA]. Usala una sola vez y solo con esa confirmacion. No la menciones en el texto.',

@@ -21,6 +21,7 @@
 const pool = require('../config/db');
 const bot = require('./botVendedor.service');
 const { bitrixCallNovonet } = require('./bitrix.service');
+const poolErp = require('../config/dbErp');
 
 const CATEGORIA = String(process.env.RECONCILIACION_BITRIX_CATEGORIA || '19');
 const MAX_ANTIGUEDAD_MS = 5 * 60 * 1000;
@@ -50,6 +51,16 @@ const DEFECTOS = {
   segundos: '90',
   reinicio_horas: '24',
   etapa_atc: 'ATC/SOPORTE',
+  // Atencion a CONTACTO NUEVO: el bot escribe primero, desde su propia linea, a cada deal nuevo de NOVONET.
+  saliente_activo: 'false',
+  saliente_linea: '',
+  saliente_inicio: '07:30',
+  saliente_fin: '20:30',
+  saliente_intervalo: '45',
+  saliente_max: '600',
+  saliente_pregunta: '¡Hola! 👋 Te escribimos de *NETLIFE* porque recibimos tu solicitud. ¿Buscas contratar internet o necesitas ayuda con un servicio que ya tienes? Cuéntanos en un mensaje 🙂',
+  saliente_plantilla: 'true',
+  confirmacion_ventas: '¡Genial! 😊 En breve un asesor de ventas te contacta para ayudarte con tu plan.',
 };
 
 // ─── Tablas ──────────────────────────────────────────────────────────────────
@@ -86,6 +97,11 @@ function asegurarTablas() {
       ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS motivo TEXT;
       ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS modo TEXT;
       ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS jid TEXT;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'entrante';
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS enviado_en TIMESTAMPTZ;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS ultimo_cliente_en TIMESTAMPTZ;
+      ALTER TABLE public.batc_sesiones ALTER COLUMN conversation_id DROP NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS batc_sesiones_saliente_deal_idx ON public.batc_sesiones (bitrix_id) WHERE origen = 'saliente';
       CREATE INDEX IF NOT EXISTS batc_sesiones_conv_idx ON public.batc_sesiones (conversation_id, inicio DESC);
       CREATE INDEX IF NOT EXISTS batc_sesiones_estado_idx ON public.batc_sesiones (estado, inicio);
     `).catch((e) => { tablasListas = null; throw e; });
@@ -103,6 +119,9 @@ async function leerConfig(sinCache = false) {
   for (const r of rows) if (r.clave in DEFECTOS && r.valor !== null) cfg[r.clave] = r.valor;
   cfg.segundosN = Math.min(600, Math.max(30, parseInt(cfg.segundos, 10) || 90));
   cfg.aplicar = cfg.modo === 'aplicar';
+  cfg.salienteActivo = cfg.saliente_activo === 'true';
+  cfg.salienteIntervalo = Math.min(600, Math.max(20, parseInt(cfg.saliente_intervalo, 10) || 45));
+  cfg.salienteMax = Math.max(1, parseInt(cfg.saliente_max, 10) || 600);
   cfg.reinicioN = Math.min(24 * 30, Math.max(1, parseInt(cfg.reinicio_horas, 10) || 24));
   cfgCache = cfg; cfgEn = Date.now();
   return cfg;
@@ -163,8 +182,8 @@ async function evaluarIA(transcripcion) {
   const r = await bot._llamarConRespaldo([
     { role: 'system', content:
       'Auditas chats que llegan a la linea de VENTAS de NETLIFE (internet de fibra en Ecuador). ' +
-      'Al inicio el bot pregunto si el cliente quiere contratar (1) o si ya es cliente (2). ' +
-      'NO te fies solo del numero que marco: muchos ponen 1 o 2 sin leer. Juzga por lo que el cliente ESCRIBE o DICE.\n' +
+      'Al inicio el bot le pregunto si busca contratar internet o si necesita ayuda con un servicio que ya tiene. ' +
+      'NO te fies solo de un numero (1 o 2) o de una palabra suelta: juzga por lo que el cliente ESCRIBE o DICE en toda la conversacion.\n' +
       'ATC/SOPORTE = ya tiene el servicio y busca soporte tecnico, facturacion, pagos de su cuenta, fallas, cortes, reclamos, ' +
       'cambio de plan de su servicio actual, traslado, cancelacion o datos de su contrato.\n' +
       'CONTACTO NUEVO = quiere contratar, conocer planes, precios, cobertura o instalar un servicio nuevo, o no hay forma de saberlo.\n' +
@@ -301,7 +320,7 @@ async function guardarTexto(sesionId, ctx) {
   const etiqueta = ctx.msgType === 'audio' ? '[audio] ' : (ctx.msgType === 'image' ? '[imagen] ' : '');
   if (!t) return;
   await pool.query(
-    `UPDATE public.batc_sesiones SET textos = textos || $2::jsonb WHERE id = $1`,
+    `UPDATE public.batc_sesiones SET textos = textos || $2::jsonb, ultimo_cliente_en = NOW() WHERE id = $1`,
     [sesionId, JSON.stringify([{ en: new Date().toISOString(), texto: (etiqueta + t).slice(0, 1000) }])]);
 }
 
@@ -314,10 +333,42 @@ async function atenderSiAplica(ctx) {
   const { lineId, msg, conv, remoteJid } = ctx;
   try {
     if (!conv?.id || !remoteJid || remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) return false;
-    if (!(await lineaActiva(lineId))) return false;
     const ts = Number(msg?.messageTimestamp || 0) * 1000;
     if (ts && Date.now() - ts > MAX_ANTIGUEDAD_MS) return false;
     const cfg = await leerConfig();
+
+    // Respuesta a un mensaje que el bot envio a un deal de Contacto nuevo (linea saliente).
+    if (cfg.saliente_linea && String(cfg.saliente_linea) === String(lineId)) {
+      const tel = normalizarTelefono(conv.wa_number);
+      const { rows: sal } = await pool.query(
+        `SELECT * FROM public.batc_sesiones
+          WHERE origen = 'saliente' AND line_id = $1 AND enviado_en > NOW() - INTERVAL '24 hours'
+            AND (conversation_id = $2 OR (conversation_id IS NULL AND telefono = $3))
+          ORDER BY enviado_en DESC LIMIT 1`, [lineId, conv.id, tel]);
+      const s = sal[0];
+      if (s) {
+        if (!s.conversation_id) await pool.query('UPDATE public.batc_sesiones SET conversation_id = $2, jid = $3 WHERE id = $1', [s.id, conv.id, remoteJid]);
+        if (s.estado === 'PENDIENTE' || s.estado === 'NO_DETECTADO') {
+          // Respuesta (aunque llegue tarde): se guarda y se evalua en cuanto el cliente termina de escribir.
+          if (s.estado === 'NO_DETECTADO') await pool.query(`UPDATE public.batc_sesiones SET estado = 'PENDIENTE' WHERE id = $1 AND estado = 'NO_DETECTADO'`, [s.id]);
+          enCola(conv.id, () => guardarTexto(s.id, ctx));
+          return true;
+        }
+        if (s.estado === 'EVALUANDO') { enCola(conv.id, () => guardarTexto(s.id, ctx)); return true; }
+        if (s.estado === 'ATC') {
+          if (!s.plantilla_en || Date.now() - new Date(s.plantilla_en).getTime() > REENVIO_PLANTILLA_HORAS * 3600 * 1000) {
+            enCola(conv.id, async () => {
+              await enviar(ctx.manager, lineId, remoteJid, cfg.plantilla);
+              await pool.query('UPDATE public.batc_sesiones SET plantilla_en = NOW() WHERE id = $1', [s.id]);
+            });
+          }
+          return true;
+        }
+        return false; // VENTAS: sigue el bot vendedor de la linea (si lo tiene) o el asesor
+      }
+    }
+
+    if (!(await lineaActiva(lineId))) return false;
 
     const { rows } = await pool.query(
       `SELECT * FROM public.batc_sesiones WHERE conversation_id = $1 AND inicio > NOW() - ($2 || ' hours')::interval
@@ -377,7 +428,8 @@ async function evaluar(s, cfg) {
   const respuesta = textos.map((t) => t.texto).join(' | ');
 
   let estado; let rec;
-  if (textos.length <= 1 && clasificarRapido(respuesta)?.tipo !== 'ATC') {
+  const saliente = s.origen === 'saliente';
+  if (saliente ? textos.length === 0 : (textos.length <= 1 && clasificarRapido(respuesta)?.tipo !== 'ATC')) {
     // Solo el primer mensaje (saludo o anuncio) y no respondio la pregunta.
     estado = 'NO_DETECTADO';
     rec = { etapa: 'CONTACTO NUEVO', confianza: 'baja', motivo: 'El cliente no respondió a la pregunta', metodo: 'tiempo' };
@@ -400,6 +452,20 @@ async function evaluar(s, cfg) {
       mover ? cfg.etapa_atc : null, mover ? 'pendiente' : 'consulta']);
   console.log(`[BOT-ATC] conv ${s.conversation_id}: ${estado} -> recomienda ${rec.etapa} (${rec.confianza})`);
 
+  if (saliente) {
+    // Contacto nuevo: si no es intencion de compra se envian los canales de ATC; si es venta, se confirma.
+    const destino = s.jid || s.telefono;
+    try {
+      if (gestor && destino && estado === 'ATC' && cfg.saliente_plantilla !== 'false') {
+        await enviar(gestor, s.line_id, destino, cfg.plantilla);
+        await pool.query('UPDATE public.batc_sesiones SET plantilla_en = NOW() WHERE id = $1', [s.id]);
+      } else if (gestor && destino && estado === 'VENTAS' && cfg.confirmacion_ventas.trim()) {
+        await enviar(gestor, s.line_id, destino, cfg.confirmacion_ventas);
+      }
+    } catch (e) { console.error('[BOT-ATC] no se pudo responder al deal', s.bitrix_id, e.message); }
+    if (mover) await moverEtapa(s.id);
+    return;
+  }
   if (mover) {
     if (gestor && s.jid) {
       try {
@@ -438,9 +504,15 @@ async function revisar() {
     // Sesiones que quedaron en EVALUANDO por un reinicio: se vuelven a evaluar.
     await pool.query(`UPDATE public.batc_sesiones SET estado = 'PENDIENTE' WHERE estado = 'EVALUANDO' AND inicio < NOW() - INTERVAL '10 minutes'`);
     const { rows } = await pool.query(
-      `SELECT * FROM public.batc_sesiones WHERE estado = 'PENDIENTE' AND inicio < NOW() - ($1 || ' seconds')::interval
+      `SELECT * FROM public.batc_sesiones WHERE estado = 'PENDIENTE' AND (
+          (origen = 'entrante' AND inicio < NOW() - ($1 || ' seconds')::interval)
+          OR (origen = 'saliente' AND enviado_en IS NOT NULL AND (
+                (jsonb_array_length(textos) = 0 AND enviado_en < NOW() - ($1 || ' seconds')::interval)
+                OR ultimo_cliente_en < NOW() - INTERVAL '15 seconds'
+                OR (ultimo_cliente_en IS NOT NULL AND enviado_en < NOW() - ($1 || ' seconds')::interval))))
         ORDER BY inicio LIMIT 20`, [String(cfg.segundosN)]);
     for (const s of rows) await evaluar(s, cfg);
+    await salienteTick(cfg);
     if (Date.now() - ultimoReintento > 60 * 1000) {
       ultimoReintento = Date.now();
       const p = await pool.query(
@@ -451,6 +523,100 @@ async function revisar() {
   } catch (e) { console.error('[BOT-ATC] revision:', e.message); }
   finally { ocupado = false; }
 }
+// ─── Atencion a CONTACTO NUEVO (el bot escribe primero) ──────────────────────
+let ultimaDeteccion = 0; let ultimoEnvio = 0; let ultimoEstadoSal = { msg: '', en: 0 };
+async function estadoSaliente(msg) {
+  if (msg === ultimoEstadoSal.msg && Date.now() - ultimoEstadoSal.en < 5 * 60 * 1000) return;
+  ultimoEstadoSal = { msg, en: Date.now() };
+  await pool.query(
+    `INSERT INTO public.batc_config (clave, valor, actualizado_por, actualizado_en) VALUES ('saliente_estado', $1, 'wabot', NOW())
+     ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = 'wabot', actualizado_en = NOW()`, [msg]).catch(() => {});
+}
+
+// Deals que el bot de gestionables recibio en "Contacto nuevo" en los ultimos 20 min (+ respaldo bitrix_webhook_leads).
+async function detectarDeals(cfg) {
+  const candidatos = new Map();
+  try {
+    const erp = await poolErp.query(
+      `SELECT bitrix_id, MIN(creado_en) AS creado FROM (
+         SELECT bitrix_deal_id::text AS bitrix_id, creado_en FROM gestionables_cola WHERE creado_en > NOW() - INTERVAL '20 minutes'
+         UNION ALL
+         SELECT bitrix_id::text, creado_en FROM gestionables_webhook_log
+          WHERE creado_en > NOW() - INTERVAL '20 minutes' AND bitrix_id ~ '^[0-9]+$'
+       ) x GROUP BY bitrix_id`);
+    for (const r of erp.rows) candidatos.set(String(r.bitrix_id), { creado: r.creado, phone: null });
+  } catch (e) { console.error('[BOT-ATC] no se pudo leer gestionables:', e.message); }
+  const bwl = await pool.query(
+    `SELECT bitrix_id::text AS bitrix_id, phone, created_at FROM bitrix_webhook_leads
+      WHERE empresa = 'novonet' AND created_at > NOW() - INTERVAL '20 minutes'`).catch(() => ({ rows: [] }));
+  for (const r of bwl.rows) {
+    const c = candidatos.get(r.bitrix_id);
+    if (c) c.phone = c.phone || r.phone; else candidatos.set(r.bitrix_id, { creado: r.created_at, phone: r.phone });
+  }
+  const ids = [...candidatos.keys()];
+  if (!ids.length) return 0;
+  const ya = new Set((await pool.query(
+    `SELECT bitrix_id FROM public.batc_sesiones WHERE origen = 'saliente' AND bitrix_id = ANY($1)`, [ids])).rows.map((r) => String(r.bitrix_id)));
+  // El bot nocturno ya le escribio: no se le escribe dos veces.
+  const noct = new Set((await pool.query('SELECT bitrix_id FROM public.bv_nocturno WHERE bitrix_id = ANY($1)', [ids])
+    .catch(() => ({ rows: [] }))).rows.map((r) => String(r.bitrix_id)));
+  let nuevos = 0;
+  for (const id of ids.filter((x) => !ya.has(x) && !noct.has(x)).slice(0, 15)) {
+    const c = candidatos.get(id);
+    if (!bot.enHorario(cfg.saliente_inicio, cfg.saliente_fin, new Date(c.creado))) continue;
+    let phone = c.phone; let detalle = null;
+    try {
+      const deal = (await bitrixCallNovonet('crm.deal.get', { id })).result;
+      if (!deal || String(deal.CATEGORY_ID) !== CATEGORIA) continue;
+      if (!phone && deal.CONTACT_ID && deal.CONTACT_ID !== '0') {
+        const ct = (await bitrixCallNovonet('crm.contact.get', { id: deal.CONTACT_ID })).result;
+        phone = (ct?.PHONE || []).map((p) => p.VALUE).find((v) => normalizarTelefono(v)) || '';
+      }
+    } catch (e) { detalle = `Bitrix: ${String(e.message).slice(0, 150)}`; }
+    const telefono = normalizarTelefono(phone);
+    await pool.query(
+      `INSERT INTO public.batc_sesiones (origen, bitrix_id, line_id, telefono, jid, estado, modo, etapa_detalle)
+       VALUES ('saliente', $1, $2, $3, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+      [id, cfg.saliente_linea, telefono, telefono ? 'POR_ENVIAR' : 'ERROR', cfg.aplicar ? 'aplicar' : 'recomendar',
+        telefono ? null : (detalle || `Sin teléfono válido: ${phone || 'vacío'}`)]);
+    nuevos++;
+  }
+  return nuevos;
+}
+
+async function salienteTick(cfg) {
+  if (!gestor) return;
+  if (!cfg.salienteActivo) return estadoSaliente('Apagado: la atención a Contacto nuevo no está activa.');
+  if (!cfg.saliente_linea) return estadoSaliente('Falta elegir la línea desde la que escribe el bot.');
+  if (!bot.enHorario(cfg.saliente_inicio, cfg.saliente_fin)) return estadoSaliente(`En espera: fuera del horario ${cfg.saliente_inicio} a ${cfg.saliente_fin}.`);
+  if (gestor.getStatus(cfg.saliente_linea) !== 'connected') return estadoSaliente(`La línea elegida no está conectada en WABOT (estado: ${gestor.getStatus(cfg.saliente_linea)}).`);
+  if (Date.now() - ultimaDeteccion > 60 * 1000) {
+    ultimaDeteccion = Date.now();
+    try { const n = await detectarDeals(cfg); if (n) console.log(`[BOT-ATC] ${n} deal(s) nuevo(s) de Contacto nuevo`); }
+    catch (e) { console.error('[BOT-ATC] deteccion:', e.message); }
+  }
+  if (Date.now() - ultimoEnvio < cfg.salienteIntervalo * 1000) return;
+  const hoy = await pool.query(
+    `SELECT COUNT(*)::int n FROM public.batc_sesiones WHERE origen = 'saliente' AND enviado_en > date_trunc('day', NOW() AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'America/Guayaquil'`);
+  if (hoy.rows[0].n >= cfg.salienteMax) return estadoSaliente(`Tope alcanzado: ${cfg.salienteMax} mensajes hoy.`);
+  const { rows } = await pool.query(
+    `UPDATE public.batc_sesiones SET estado = 'ENVIANDO' WHERE id = (
+       SELECT id FROM public.batc_sesiones WHERE origen = 'saliente' AND estado = 'POR_ENVIAR' AND inicio > NOW() - INTERVAL '2 hours'
+        ORDER BY inicio LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`);
+  const p = rows[0];
+  if (!p) return estadoSaliente('Trabajando: sin deals nuevos pendientes por escribir.');
+  ultimoEnvio = Date.now();
+  try {
+    await enviar(gestor, cfg.saliente_linea, p.telefono, cfg.saliente_pregunta);
+    await pool.query(`UPDATE public.batc_sesiones SET estado = 'PENDIENTE', enviado_en = NOW(), inicio = NOW() WHERE id = $1`, [p.id]);
+    console.log(`[BOT-ATC] mensaje enviado al deal ${p.bitrix_id}`);
+    await estadoSaliente(`Trabajando: último mensaje enviado al deal ${p.bitrix_id}.`);
+  } catch (e) {
+    await pool.query(`UPDATE public.batc_sesiones SET estado = 'ERROR', etapa_detalle = $2 WHERE id = $1`, [p.id, String(e.message).slice(0, 300)]);
+    console.error(`[BOT-ATC] no se pudo escribir al deal ${p.bitrix_id}:`, e.message);
+  }
+}
+
 function iniciar(manager) {
   if (manager) gestor = manager;
   if (timer) return;

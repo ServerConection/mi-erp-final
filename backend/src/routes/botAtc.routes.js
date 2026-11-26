@@ -32,6 +32,8 @@ router.get('/config', async (_req, res) => {
     const cfg = await atc.leerConfig(true);
     const datos = {};
     for (const k of Object.keys(atc.DEFECTOS)) datos[k] = cfg[k];
+    const est = await pool.query(`SELECT valor, actualizado_en FROM public.batc_config WHERE clave = 'saliente_estado'`);
+    datos.saliente_estado = est.rows[0] || null;
     ok(res, datos);
   } catch (e) { fallo(res, e); }
 });
@@ -43,6 +45,19 @@ router.put('/config', async (req, res) => {
     for (const k of Object.keys(atc.DEFECTOS)) if (b[k] !== undefined) valores[k] = String(b[k]).slice(0, 4000);
     for (const k of ['pregunta', 'plantilla']) if (valores[k] !== undefined && !valores[k].trim()) return fallo(res, new Error(`El mensaje "${k}" no puede quedar vacío`), 400);
     if (valores.modo !== undefined && !['recomendar', 'aplicar'].includes(valores.modo)) return fallo(res, new Error('Modo inválido'), 400);
+    if (valores.saliente_linea && !/^[0-9a-f-]{36}$/i.test(valores.saliente_linea)) return fallo(res, new Error('Línea inválida'), 400);
+    for (const k of ['saliente_inicio', 'saliente_fin']) {
+      if (valores[k] !== undefined && (bot.aMinutos(valores[k]) === null || bot.aMinutos(valores[k]) >= 1440)) return fallo(res, new Error('Hora inválida, usa HH:MM'), 400);
+    }
+    for (const [k, min, max] of [['saliente_intervalo', 20, 600], ['saliente_max', 1, 5000]]) {
+      if (valores[k] !== undefined) {
+        const n = parseInt(valores[k], 10);
+        if (!(n >= min && n <= max)) return fallo(res, new Error(`${k} debe estar entre ${min} y ${max}`), 400);
+        valores[k] = String(n);
+      }
+    }
+    if (valores.saliente_activo !== undefined) valores.saliente_activo = String(valores.saliente_activo === 'true');
+    if (valores.saliente_plantilla !== undefined) valores.saliente_plantilla = String(valores.saliente_plantilla !== 'false');
     if (valores.segundos !== undefined) {
       const n = parseInt(valores.segundos, 10);
       if (!(n >= 30 && n <= 600)) return fallo(res, new Error('Los segundos deben estar entre 30 y 600'), 400);
@@ -106,11 +121,11 @@ router.get('/sesiones', async (req, res) => {
   try {
     await atc.asegurarTablas();
     const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 7));
-    const estado = ['PENDIENTE', 'EVALUANDO', 'ATC', 'VENTAS', 'NO_DETECTADO'].includes(req.query.estado) ? req.query.estado : null;
+    const estado = ['POR_ENVIAR', 'PENDIENTE', 'EVALUANDO', 'ATC', 'VENTAS', 'NO_DETECTADO', 'ERROR'].includes(req.query.estado) ? req.query.estado : null;
     const filas = await pool.query(
       `SELECT s.id, s.conversation_id, s.estado, s.metodo, s.respuesta, s.telefono, s.bitrix_id,
               s.etapa_objetivo, s.etapa_anterior, s.etapa_estado, s.etapa_detalle, s.inicio, s.resuelto_en,
-              s.recomendacion, s.confianza, s.motivo, s.modo, s.textos,
+              s.recomendacion, s.confianza, s.motivo, s.modo, s.textos, s.origen, s.enviado_en,
               EXTRACT(EPOCH FROM (s.resuelto_en - s.inicio))::int AS segundos,
               l.name AS linea, COALESCE(c.name, '') AS cliente
          FROM public.batc_sesiones s
@@ -122,7 +137,7 @@ router.get('/sesiones', async (req, res) => {
     const resumen = await pool.query(
       `SELECT estado, COUNT(*)::int AS n FROM public.batc_sesiones
         WHERE inicio > NOW() - ($1 || ' days')::interval GROUP BY estado`, [String(dias)]);
-    const r = { total: 0, ATC: 0, VENTAS: 0, NO_DETECTADO: 0, PENDIENTE: 0 };
+    const r = { total: 0, ATC: 0, VENTAS: 0, NO_DETECTADO: 0, PENDIENTE: 0, POR_ENVIAR: 0, ERROR: 0 };
     for (const x of resumen.rows) { r[x.estado] = x.n; r.total += x.n; }
     ok(res, { resumen: r, sesiones: filas.rows });
   } catch (e) { fallo(res, e); }

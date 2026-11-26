@@ -22,6 +22,7 @@ import ContactabilidadQuality from './contactabilidad/ContactabilidadQuality.jsx
 import ContactabilidadOperationalTable from './contactabilidad/ContactabilidadOperationalTable.jsx';
 import ContactabilidadConversacion from './contactabilidad/ContactabilidadConversacion.jsx';
 import { buildAnalyticsQuery, readFilters } from '../utils/contactabilidadAnalytics.js';
+import { registrarAccionModulo, registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
 
 const API = import.meta.env.VITE_API_URL || '';
 const BASE = `${API}/api/bot-auditor/contactabilidad`;
@@ -59,6 +60,7 @@ const leerIntervalo = () => {
 };
 
 export default function Contactabilidad() {
+  usarAuditoriaModulo('CONTACTABILIDAD', useEffect);
   const [tab, setTab] = useState('alertas');
   const [filters, setFilters] = useState(() => readFilters(window.location.search));
   const [analytics, setAnalytics] = useState(EMPTY);
@@ -77,6 +79,13 @@ export default function Contactabilidad() {
   const admin = useMemo(() => esAdministrador(), []);
   const query = useMemo(() => buildAnalyticsQuery(filters), [filters]);
   const peticion = useRef(null);
+  const primeraAuditoriaFiltros = useRef(true);
+
+  useEffect(() => {
+    if (primeraAuditoriaFiltros.current) { primeraAuditoriaFiltros.current = false; return undefined; }
+    const id = setTimeout(() => registrarFiltrosModulo('CONTACTABILIDAD', filters, 'Filtros automáticos de Contactabilidad'), 700);
+    return () => clearTimeout(id);
+  }, [query]);
 
   const avisar = useCallback((texto, tipo = 'ok') => {
     setMensaje({ texto, tipo });
@@ -251,7 +260,7 @@ export default function Contactabilidad() {
     setTab('operacion');
   };
 
-  const tabButton = (valor, etiqueta, insignia) => <button type="button" onClick={() => setTab(valor)}
+  const tabButton = (valor, etiqueta, insignia) => <button type="button" data-audit-manual="true" onClick={() => { registrarAccionModulo('CONTACTABILIDAD', 'CAMBIO_VISTA', `Cambió a la vista ${etiqueta}`); setTab(valor); }}
     style={{
       padding: '10px 18px', border: 0, borderRadius: 9, cursor: 'pointer', fontWeight: 800,
       background: tab === valor ? '#1d4ed8' : '#e2e8f0', color: tab === valor ? '#fff' : '#334155',

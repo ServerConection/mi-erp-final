@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { StripCard, BarProgress } from "../components/kpi";
 import { fetchConSesion } from "../utils/sesion";
+import { registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -531,6 +532,7 @@ function AsesorCard({ row, rank }) {
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VistaAsesor({ apiBase = '/api/indicadores', empresa = 'NOVONET' } = {}) {
+  usarAuditoriaModulo('VISTA_ASESOR', useEffect, empresa);
   const [loading, setLoading]               = useState(false);
   const [asesores, setAsesores]             = useState([]);
   const [estadosNetlife, setEstadosNetlife] = useState([]);
@@ -714,7 +716,10 @@ export default function VistaAsesor({ apiBase = '/api/indicadores', empresa = 'N
     setFiltros((prev) => ({ ...prev, [campo]: valor }));
   };
 
-  const handleAplicar = () => fetchData(filtros);
+  const handleAplicar = () => {
+    registrarFiltrosModulo('VISTA_ASESOR', filtros, `Vista Asesor ${empresa}`, empresa);
+    fetchData(filtros);
+  };
 
   const handleEtapaJotform = (estado) => {
     const nuevo = filtros.etapaJotform === estado ? "" : estado;
@@ -842,7 +847,7 @@ export default function VistaAsesor({ apiBase = '/api/indicadores', empresa = 'N
             />
           </div>
 
-          <button onClick={handleAplicar}
+          <button onClick={handleAplicar} data-audit-manual="true"
             className="bg-sky-500 hover:bg-sky-400 text-white h-[42px] rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-sky-200 transition-all active:scale-95">
             {loading ? "CARGANDO..." : "APLICAR"}
           </button>

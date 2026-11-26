@@ -20,6 +20,7 @@ const fechaMatriz = (v) => new Intl.DateTimeFormat('es-EC', { day: '2-digit', mo
   .format(new Date(`${v}T12:00:00`));
 const diaSemana = (v) => new Intl.DateTimeFormat('es-EC', { weekday: 'short' })
   .format(new Date(`${v}T12:00:00`)).replace('.', '');
+const moduloEtiqueta = (fila) => `${String(fila.modulo || '').replaceAll('_', ' ')}${fila.modulo_empresa ? ` ${fila.modulo_empresa}` : ''}`;
 const rangoFechas = (desde, hasta) => {
   if (!desde || !hasta || desde > hasta) return [];
   const fechas = [];
@@ -79,10 +80,12 @@ export default function UsoHerramientas() {
   const [tab, setTab] = useState('uso');
   const [filtros, setFiltros] = useState({ desde: inicioMes(), hasta: hoy(), empresa: esAdmin ? '' : String(user.empresa || '').toUpperCase() });
   const [busqueda, setBusqueda] = useState('');
+  const [filtrosAuditoria, setFiltrosAuditoria] = useState({ usuario: '', evento: '', modulo: '', empresa: '' });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [paginaUso, setPaginaUso] = useState(1);
+  const [paginaAuditoria, setPaginaAuditoria] = useState(1);
   const [paginaCobertura, setPaginaCobertura] = useState(1);
   const [anchoMatriz, setAnchoMatriz] = useState(0);
   const scrollMatrizArriba = useRef(null);
@@ -95,7 +98,7 @@ export default function UsoHerramientas() {
       const r = await fetch(`${API}/api/wa/uso/reporte?${qs}`, { headers: { Authorization: `Bearer ${token()}` } });
       const body = await r.json();
       if (!r.ok || !body.success) throw new Error(body.error || 'No se pudo cargar el reporte');
-      setData(body.data); setPaginaUso(1); setPaginaCobertura(1);
+      setData(body.data); setPaginaUso(1); setPaginaAuditoria(1); setPaginaCobertura(1);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -103,8 +106,28 @@ export default function UsoHerramientas() {
 
   const q = busqueda.trim().toLowerCase();
   const uso = useMemo(() => (data?.uso?.wabot || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha}`.toLowerCase().includes(q)), [data, q]);
+  const accesos = useMemo(() => (data?.uso?.accesos || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha} ${f.modulo}`.toLowerCase().includes(q)), [data, q]);
+  const acciones = useMemo(() => (data?.uso?.acciones || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha} ${f.modulo} ${f.detalle}`.toLowerCase().includes(q)), [data, q]);
+  const auditoria = useMemo(() => [
+    ...accesos.map((f) => ({ ...f, evento: 'INGRESO', detalle: 'Ingresó al módulo' })),
+    ...acciones.map((f) => f.accion === 'CLICK'
+      ? { ...f, evento: 'REGISTRO_ANTERIOR', detalle: `${f.detalle || 'Acción'} · Sin contexto de filtros (registro previo a la auditoría detallada)` }
+      : { ...f, evento: f.accion, detalle: f.detalle || 'Realizó una acción' }),
+  ].sort((a, b) => Number(b.orden) - Number(a.orden)), [accesos, acciones]);
+  const opcionesAuditoria = useMemo(() => ({
+    usuarios: [...new Set(auditoria.map((f) => f.usuario).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    eventos: [...new Set(auditoria.map((f) => f.evento).filter(Boolean))].sort(),
+    modulos: [...new Set(auditoria.map(moduloEtiqueta).filter(Boolean))].sort(),
+    empresas: [...new Set(auditoria.map((f) => f.empresa).filter(Boolean))].sort(),
+  }), [auditoria]);
+  const auditoriaFiltrada = useMemo(() => auditoria.filter((f) =>
+    (!filtrosAuditoria.usuario || f.usuario === filtrosAuditoria.usuario)
+    && (!filtrosAuditoria.evento || f.evento === filtrosAuditoria.evento)
+    && (!filtrosAuditoria.modulo || moduloEtiqueta(f) === filtrosAuditoria.modulo)
+    && (!filtrosAuditoria.empresa || f.empresa === filtrosAuditoria.empresa)), [auditoria, filtrosAuditoria]);
   const cobertura = useMemo(() => (data?.cobertura || []).filter((f) => !q || `${f.usuario} ${f.empresa} ${f.fecha}`.toLowerCase().includes(q)), [data, q]);
   const usoPagina = uso.slice((paginaUso - 1) * POR_PAGINA, paginaUso * POR_PAGINA);
+  const auditoriaPagina = auditoriaFiltrada.slice((paginaAuditoria - 1) * POR_PAGINA, paginaAuditoria * POR_PAGINA);
   const fechasMatriz = useMemo(() => rangoFechas(
     data?.cobertura_desde && data.cobertura_desde > filtros.desde ? data.cobertura_desde : filtros.desde,
     filtros.hasta,
@@ -136,6 +159,7 @@ export default function UsoHerramientas() {
   const totalUso = uso.reduce((s, f) => s + Number(f.usos), 0);
   const totalChats = uso.reduce((s, f) => s + Number(f.conversaciones), 0);
   const usuariosActivos = new Set(uso.map((f) => `${f.empresa}|${f.usuario}`)).size;
+  const totalAccesosModulo = (modulo) => accesos.filter((f) => f.modulo === modulo).length;
   const tot = data?.totales || { gestionables: 0, consultados: 0, no_consultados: 0 };
   useEffect(() => {
     const contenido = scrollMatrizContenido.current;
@@ -181,11 +205,12 @@ export default function UsoHerramientas() {
       </header>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="grid grid-cols-2 gap-1">
+        <div className="grid grid-cols-3 gap-1">
           <button onClick={() => setTab('uso')} className={`rounded-xl px-4 py-2.5 text-sm font-bold ${tab === 'uso' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}><MessageCircle size={16} className="mr-2 inline" />Uso de herramientas</button>
           <button onClick={() => setTab('cobertura')} className={`rounded-xl px-4 py-2.5 text-sm font-bold ${tab === 'cobertura' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}><MapPin size={16} className="mr-2 inline" />Cobertura</button>
+          <button onClick={() => setTab('auditoria')} className={`rounded-xl px-4 py-2.5 text-sm font-bold ${tab === 'auditoria' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}><Users size={16} className="mr-2 inline" />Auditoría</button>
         </div>
-        <div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={17} /><input value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPaginaUso(1); setPaginaCobertura(1); }} placeholder="Buscar usuario, fecha o empresa" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-400 sm:w-80" /></div>
+        <div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={17} /><input value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPaginaUso(1); setPaginaAuditoria(1); setPaginaCobertura(1); }} placeholder="Buscar usuario, fecha, módulo o acción" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-400 sm:w-80" /></div>
       </div>
 
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700"><ShieldAlert className="mr-2 inline" size={18} />{error}</div>}
@@ -195,6 +220,23 @@ export default function UsoHerramientas() {
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-black text-slate-900">Actividad diaria en Wabot</h2><p className="text-xs text-slate-500">Mensajes salientes de la línea y chats con actividad entrante o saliente.</p></div><button onClick={() => exportarCsv(`uso-wabot-${filtros.desde}-${filtros.hasta}.csv`, uso)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Descargar CSV"><Download size={18} /></button></div>
           {loading ? <Empty><RefreshCw className="mb-2 animate-spin" />Cargando actividad…</Empty> : uso.length ? <><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Usuario</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3 text-right">Mensajes</th><th className="px-4 py-3 text-right">Chats activos</th></tr></thead><tbody className="divide-y divide-slate-100">{usoPagina.map((f, i) => <tr key={`${f.fecha}-${f.usuario_id}-${i}`} className="hover:bg-blue-50/40"><td className="whitespace-nowrap px-4 py-3 font-bold text-slate-700">{fechaCorta(f.fecha)}</td><td className="px-4 py-3 font-semibold text-slate-900">{f.usuario}</td><td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{f.empresa}</span></td><td className="px-4 py-3 text-right text-lg font-black text-blue-700">{num(f.usos)}</td><td className="px-4 py-3 text-right font-bold text-slate-600">{num(f.conversaciones)}</td></tr>)}</tbody></table></div><Paginacion pagina={paginaUso} total={uso.length} onChange={setPaginaUso} /></> : <Empty>No hay actividad de Wabot en el período seleccionado.</Empty>}
+        </section>
+      </> : tab === 'auditoria' ? <>
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Kpi icon={Activity} label="Ingresos a Indicadores" value={num(totalAccesosModulo('INDICADORES'))} detail="NOVONET y VELSA según el filtro" />
+          <Kpi icon={MessageCircle} label="Ingresos a Contactabilidad" value={num(totalAccesosModulo('CONTACTABILIDAD'))} detail="Aperturas del tablero" tone="emerald" />
+          <Kpi icon={Users} label="Ingresos a Vista Asesor" value={num(totalAccesosModulo('VISTA_ASESOR'))} detail="NOVONET y VELSA según el filtro" tone="amber" />
+        </section>
+        <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5">
+          <label className="text-xs font-bold text-slate-500">Usuario<select value={filtrosAuditoria.usuario} onChange={(e) => { setFiltrosAuditoria({ ...filtrosAuditoria, usuario: e.target.value }); setPaginaAuditoria(1); }} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"><option value="">Todos los usuarios</option>{opcionesAuditoria.usuarios.map((v) => <option key={v}>{v}</option>)}</select></label>
+          <label className="text-xs font-bold text-slate-500">Evento<select value={filtrosAuditoria.evento} onChange={(e) => { setFiltrosAuditoria({ ...filtrosAuditoria, evento: e.target.value }); setPaginaAuditoria(1); }} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"><option value="">Todos los eventos</option>{opcionesAuditoria.eventos.map((v) => <option key={v} value={v}>{v.replaceAll('_', ' ')}</option>)}</select></label>
+          <label className="text-xs font-bold text-slate-500">Módulo<select value={filtrosAuditoria.modulo} onChange={(e) => { setFiltrosAuditoria({ ...filtrosAuditoria, modulo: e.target.value }); setPaginaAuditoria(1); }} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"><option value="">Todos los módulos</option>{opcionesAuditoria.modulos.map((v) => <option key={v}>{v}</option>)}</select></label>
+          <label className="text-xs font-bold text-slate-500">Empresa del usuario<select value={filtrosAuditoria.empresa} onChange={(e) => { setFiltrosAuditoria({ ...filtrosAuditoria, empresa: e.target.value }); setPaginaAuditoria(1); }} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"><option value="">Todas las empresas</option>{opcionesAuditoria.empresas.map((v) => <option key={v}>{v}</option>)}</select></label>
+          <button onClick={() => { setFiltrosAuditoria({ usuario: '', evento: '', modulo: '', empresa: '' }); setPaginaAuditoria(1); }} className="mt-auto h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50">Limpiar filtros</button>
+        </section>
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-black text-slate-900">Auditoría de uso</h2><p className="text-xs text-slate-500">{num(auditoriaFiltrada.length)} eventos encontrados, ordenados por fecha y hora.</p></div><button onClick={() => exportarCsv(`auditoria-modulos-${filtros.desde}-${filtros.hasta}.csv`, auditoriaFiltrada)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Descargar CSV"><Download size={18} /></button></div>
+          {loading ? <Empty><RefreshCw className="mb-2 animate-spin" />Cargando auditoría…</Empty> : auditoriaFiltrada.length ? <><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Fecha y hora</th><th className="px-4 py-3">Usuario</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Módulo</th><th className="px-4 py-3">Evento</th><th className="px-4 py-3">Detalle de auditoría</th></tr></thead><tbody className="divide-y divide-slate-100">{auditoriaPagina.map((f, i) => <tr key={`${f.evento}-${f.id}-${i}`} className="align-top hover:bg-blue-50/40"><td className="whitespace-nowrap px-4 py-3 font-bold text-slate-700">{f.fecha_hora}</td><td className="px-4 py-3 font-semibold text-slate-900">{f.usuario}</td><td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{f.empresa}</span></td><td className="whitespace-nowrap px-4 py-3 font-bold text-slate-600">{moduloEtiqueta(f)}</td><td className="px-4 py-3"><span className="whitespace-nowrap rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{f.evento.replaceAll('_', ' ')}</span></td><td className="min-w-80 max-w-2xl whitespace-normal px-4 py-3 text-slate-700">{f.detalle}</td></tr>)}</tbody></table></div><Paginacion pagina={paginaAuditoria} total={auditoriaFiltrada.length} onChange={setPaginaAuditoria} /></> : <Empty>No hay actividad que coincida con los filtros seleccionados.</Empty>}
         </section>
       </> : <>
         {data?.cobertura_desde && data.cobertura_desde > filtros.desde && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><CalendarDays className="mr-2 inline" size={18} /><b>Período comparable desde {fechaCorta(data.cobertura_desde)}.</b> El historial de consultas no existía antes; esos días se excluyen para no marcar falsos incumplimientos.</div>}

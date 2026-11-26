@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { StripCard, BarProgress, PctKpiCard } from "../components/kpi";
 import { fetchConSesion } from "../utils/sesion";
+import { registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -415,6 +416,7 @@ function AsesorCard({ row, rank }) {
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VistaAsesorVelsa() {
+  usarAuditoriaModulo('VISTA_ASESOR', useEffect, 'VELSA');
   const [loading, setLoading]                         = useState(false);
   const [asesores, setAsesores]                       = useState([]);
   const [estadosNetlife, setEstadosNetlife]           = useState([]);
@@ -741,7 +743,7 @@ export default function VistaAsesorVelsa() {
             />
           </div>
 
-          <button onClick={() => fetchData()}
+          <button onClick={() => { registrarFiltrosModulo('VISTA_ASESOR', filtros, 'Vista Asesor VELSA', 'VELSA'); fetchData(); }} data-audit-manual="true"
             className="bg-purple-500 hover:bg-purple-400 text-white h-[42px] rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-purple-200 transition-all active:scale-95">
             {loading ? "CARGANDO..." : "APLICAR"}
           </button>

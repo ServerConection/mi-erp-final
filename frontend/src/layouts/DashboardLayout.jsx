@@ -511,6 +511,9 @@ const ALL_MENU_ITEMS = [
   // Bot Vendedor IA: prompt, reglas y conocimiento del bot de WhatsApp. Solo administración.
   { name: "Bot Vendedor IA", path: "/bot-vendedor", icon: "🤖", isChild: true, group: "wabot",
     accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
+  // Bot ATC (piloto): filtra servicio al cliente en chats nuevos. Solo administración.
+  { name: "Bot ATC", path: "/bot-atc", icon: "🎧", isChild: true, group: "wabot",
+    accessCheck: (p) => (p || '').toUpperCase() === 'ADMINISTRADOR' },
   { name: "Uso y cobertura", path: "/whatsapp/uso", icon: "📈", isChild: true, group: "wabot",
     accessCheck: (p) => ['ADMINISTRADOR', 'GERENCIA', 'GERENTE', 'ANALISTA', 'SUPERVISOR', 'COORDINADOR'].includes((p || '').toUpperCase()) },
 

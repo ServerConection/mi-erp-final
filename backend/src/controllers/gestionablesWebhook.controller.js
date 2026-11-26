@@ -624,6 +624,21 @@ const crearReparto = (empresa) => {
     }
   };
 
+  // Después de la espera del bot ATC: solo se reparte si sigue en Contacto nuevo.
+  const repartoTrasBotAtc = async (bitrixId, nombreAsesor) => {
+    try {
+      const etapa = await resolverEtapaContactoNuevo();
+      const deal = (await bx('crm.deal.get', { id: bitrixId })).result;
+      if (deal && deal.STAGE_ID !== etapa) {
+        await registrarLog({ bitrixId, nombreAsesor, encontrado: true, actualizado: false, error: `Bot ATC: pasó a ${deal.STAGE_ID}; no se reparte a un asesor` });
+        return;
+      }
+    } catch (e) {
+      console.warn(`[gestionables ${E.etiqueta}] Tras bot ATC, no se pudo validar el deal ${bitrixId}:`, e.message);
+    }
+    await repartoDiferido(bitrixId, nombreAsesor);
+  };
+
   const recibirGestionable = async (req, res) => {
     const bitrixId     = req.query.id || '';
     const nombreAsesor = (req.query.nombre_asesor || '').trim();
@@ -669,6 +684,17 @@ const crearReparto = (empresa) => {
       // 1) Fuera de horario (22:16:00 – 07:59:59) → estación
       if (!dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin)) {
         return res.status(200).send(await enviarAEstacion(bitrixId, nombreAsesor, 'fuera_de_horario', cfg));
+      }
+
+      // 1b) Bot ATC (piloto, NOVONET): si aún está preguntando al cliente si es
+      // ventas o servicio al cliente, se espera a que termine. Si lo mueve a ATC,
+      // el lead ya no está en Contacto nuevo y no se reparte a un asesor.
+      if (empresa === 'novonet') {
+        const esperaAtc = await require('../services/botAtc.service').msEsperaReparto(bitrixId);
+        if (esperaAtc) {
+          setTimeout(() => { repartoTrasBotAtc(bitrixId, nombreAsesor); }, esperaAtc);
+          return res.status(200).send('OK (esperando al bot ATC)');
+        }
       }
 
       // 2) Hay leads esperando antes que este → a la fila, para respetar el orden

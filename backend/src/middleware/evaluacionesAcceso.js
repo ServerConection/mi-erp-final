@@ -15,6 +15,11 @@ const puedeGestionarEvaluaciones = (perfil, usuario = '') =>
   String(usuario).trim().toLowerCase() === 'arengel'
   || (Boolean(perfil) && !['USUARIO', 'ATC'].includes(String(perfil).trim().toUpperCase()));
 
+// Administrador funcional solo dentro de Evaluaciones.
+const esAdministradorEvaluaciones = (usuario = {}) =>
+  String(usuario?.perfil || '').trim().toUpperCase() === 'ADMINISTRADOR'
+  || String(usuario?.usuario || usuario?.username || '').trim().toLowerCase() === 'arengel';
+
 const accesoEvaluaciones = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, error: 'No autenticado' });
@@ -35,7 +40,7 @@ const puedeCrearEvaluacion = (req, res, next) => {
 
 /** Solo ADMINISTRADOR. Se usa para borrar definitivamente una evaluación. */
 const soloAdministrador = (req, res, next) => {
-  if (req.user?.perfil !== 'ADMINISTRADOR') {
+  if (!esAdministradorEvaluaciones(req.user)) {
     return res.status(403).json({
       success: false,
       error: 'Solo un administrador puede eliminar evaluaciones. Puedes archivarla en su lugar.',
@@ -61,7 +66,7 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
     }
 
     const evaluacion = rows[0];
-    const esCreador = evaluacion.creado_por === req.user.id || req.user.perfil === 'ADMINISTRADOR';
+    const esCreador = evaluacion.creado_por === req.user.id || esAdministradorEvaluaciones(req.user);
 
     if (soloCreador && (!puedeGestionarEvaluaciones(req.user.perfil, req.user.usuario) || !esCreador)) {
       return res.status(403).json({ success: false, error: 'Tu perfil no puede gestionar esta evaluación.' });
@@ -76,4 +81,4 @@ const cargarEvaluacion = (soloCreador = false) => async (req, res, next) => {
   }
 };
 
-module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion, puedeGestionarEvaluaciones };
+module.exports = { accesoEvaluaciones, puedeCrearEvaluacion, soloAdministrador, cargarEvaluacion, puedeGestionarEvaluaciones, esAdministradorEvaluaciones };

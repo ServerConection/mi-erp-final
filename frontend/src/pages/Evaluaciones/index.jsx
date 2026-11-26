@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Archive, ArchiveRestore, Award, BarChart3, CheckCircle2, Clock, FileQuestion,
+  Archive, ArchiveRestore, Award, BarChart3, BookOpen, CheckCircle2, Clock, FileQuestion,
   GraduationCap, Hourglass, Plus, RotateCcw, Search, Sparkles, Trash2, TrendingUp, Users,
 } from 'lucide-react';
 import { evaluacionesApi } from '../../hooks/useEvaluaciones';
@@ -19,6 +19,8 @@ import {
 import CrearEvaluacionModal from './CrearEvaluacionModal';
 import TomarEvaluacion from './TomarEvaluacion';
 import ResultadosPanel from './ResultadosPanel';
+import CursosPanel from './CursosPanel';
+import KpiCard from './KpiCard';
 import './evaluaciones.css';
 
 export default function Evaluaciones() {
@@ -49,29 +51,30 @@ export default function Evaluaciones() {
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50">
       {/* ── Encabezado ──────────────────────────────────────────────────────── */}
-      <div className="eva-hero border-b border-slate-200">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-          <div className="flex flex-wrap items-center gap-4">
+      <div className="px-4 pt-5 sm:px-6">
+        <div className="mx-auto max-w-7xl overflow-hidden rounded-2xl bg-gradient-to-r from-slate-950 via-blue-950 to-blue-800 px-5 py-4 text-white shadow-lg sm:px-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 p-3 text-white shadow-lg shadow-indigo-200">
+              <div className="rounded-2xl bg-white/10 p-3 text-cyan-300 ring-1 ring-white/15 backdrop-blur">
                 <GraduationCap className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">
+                <h1 className="text-xl font-black tracking-tight text-white sm:text-2xl">
                   Evaluaciones
                 </h1>
-                <p className="text-sm text-slate-500">
-                  Capacitación y certificación por módulo del ERP
+                <p className="text-sm text-blue-100">
+                  Cursos breves, evaluaciones y progreso del equipo
                 </p>
               </div>
             </div>
 
-            <div className="ml-auto">
+            <div className="w-full sm:ml-auto sm:w-auto">
               <Pestanas
                 valor={tab}
                 onCambiar={setTab}
                 opciones={[
                   { id: 'mias', etiqueta: 'Mis evaluaciones', icono: Sparkles },
+                  { id: 'cursos', etiqueta: 'Cursos', icono: BookOpen },
                   ...(puedeGestionar
                     ? [{ id: 'gestionar', etiqueta: 'Gestionar', icono: BarChart3 }]
                     : []),
@@ -83,9 +86,11 @@ export default function Evaluaciones() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {tab === 'mias' || !puedeGestionar
-          ? <TabMias onTomar={setTomando} />
-          : <TabGestionar onVerResultados={setViendoResultados} notificar={notificar} />}
+        {tab === 'cursos'
+          ? <CursosPanel puedeGestionar={puedeGestionar} onEvaluar={setTomando} notificar={notificar} />
+          : tab === 'mias' || !puedeGestionar
+            ? <TabMias onTomar={setTomando} />
+            : <TabGestionar onVerResultados={setViendoResultados} notificar={notificar} />}
       </div>
 
       <Aviso mensaje={aviso?.mensaje} tipo={aviso?.tipo} onCerrar={() => setAviso(null)} />
@@ -98,19 +103,14 @@ export default function Evaluaciones() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function Pestanas({ valor, onCambiar, opciones }) {
-  const activo = Math.max(0, opciones.findIndex(o => o.id === valor));
   return (
-    <div className="relative flex rounded-xl bg-white/70 p-1 ring-1 ring-slate-200 backdrop-blur">
-      <span
-        className="absolute inset-y-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 shadow-md shadow-indigo-200 transition-all duration-300"
-        style={{ width: `calc((100% - 0.5rem) / ${opciones.length})`, left: `calc(0.25rem + ${activo} * (100% - 0.5rem) / ${opciones.length})` }}
-      />
+    <div className="flex w-full max-w-full gap-1 overflow-x-auto rounded-xl bg-white/10 p-1 ring-1 ring-white/15 backdrop-blur sm:w-auto">
       {opciones.map(o => (
         <button
           key={o.id}
           onClick={() => onCambiar(o.id)}
-          className={`relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            valor === o.id ? 'text-white' : 'text-slate-500 hover:text-slate-700'
+          className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:flex-none sm:text-sm ${
+            valor === o.id ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-100 hover:bg-white/10 hover:text-white'
           }`}
         >
           <o.icono className="h-4 w-4" /> {o.etiqueta}
@@ -207,6 +207,7 @@ function TabMias({ onTomar }) {
       completadas: hechas.length,
       aprobadas: hechas.filter(e => e.miAprobado).length,
       promedio,
+      tendencia: hechas.slice(-7).map(e => Number(e.miNota) || 0),
     };
   }, [lista]);
 
@@ -228,10 +229,10 @@ function TabMias({ onTomar }) {
   return (
     <div className="space-y-6">
       <div className="eva-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Indicador icono={Hourglass}    etiqueta="Por responder"   valor={stats.pendientes}  tono="amber" />
-        <Indicador icono={CheckCircle2} etiqueta="Completadas"     valor={stats.completadas} tono="indigo" />
-        <Indicador icono={Award}        etiqueta="Aprobadas"       valor={stats.aprobadas}   tono="emerald" />
-        <Indicador icono={TrendingUp}   etiqueta="Tu promedio"     valor={stats.promedio} sufijo="%" tono="cyan" />
+        <KpiCard icono={Hourglass} etiqueta="Por responder" valor={stats.pendientes} tono="amber" />
+        <KpiCard icono={CheckCircle2} etiqueta="Completadas" valor={stats.completadas} tono="indigo" />
+        <KpiCard icono={Award} etiqueta="Aprobadas" valor={stats.aprobadas} tono="emerald" />
+        <KpiCard icono={TrendingUp} etiqueta="Tu promedio" valor={stats.promedio} sufijo="%" tono="cyan" sparkline datos={stats.tendencia} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -370,6 +371,7 @@ function TabGestionar({ onVerResultados, notificar }) {
       activas: lista.filter(e => e.activa).length,
       intentos,
       tasa: intentos ? Math.round((aprobados / intentos) * 100) : 0,
+      tendencia: lista.filter(e => e.totalIntentos > 0).slice(-7).map(e => Math.round((e.totalAprobados / e.totalIntentos) * 100)),
     };
   }, [lista]);
 
@@ -427,10 +429,10 @@ function TabGestionar({ onVerResultados, notificar }) {
   return (
     <div className="space-y-6">
       <div className="eva-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Indicador icono={GraduationCap} etiqueta="Evaluaciones"    valor={stats.evaluaciones} tono="indigo" />
-        <Indicador icono={Sparkles}      etiqueta="Activas"         valor={stats.activas}      tono="cyan" />
-        <Indicador icono={Users}         etiqueta="Respuestas"      valor={stats.intentos}     tono="amber" />
-        <Indicador icono={Award}         etiqueta="Tasa aprobación" valor={stats.tasa} sufijo="%" tono="emerald" />
+        <KpiCard icono={GraduationCap} etiqueta="Evaluaciones" valor={stats.evaluaciones} tono="indigo" />
+        <KpiCard icono={Sparkles} etiqueta="Activas" valor={stats.activas} tono="cyan" />
+        <KpiCard icono={Users} etiqueta="Respuestas" valor={stats.intentos} tono="amber" />
+        <KpiCard icono={Award} etiqueta="Tasa aprobación" valor={stats.tasa} sufijo="%" tono="emerald" sparkline datos={stats.tendencia} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -449,7 +451,8 @@ function TabGestionar({ onVerResultados, notificar }) {
       ) : (
         <div className="eva-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtrada.map(e => {
-            const tasa = e.totalIntentos ? Math.round((e.totalAprobados / e.totalIntentos) * 100) : 0;
+            const promedioNota = e.notaPromedio == null || !Number.isFinite(Number(e.notaPromedio)) ? null : Number(e.notaPromedio);
+            const tonoNota = promedioNota == null ? 'bg-slate-300' : promedioNota < 70 ? 'bg-rose-500' : promedioNota < 85 ? 'bg-amber-500' : 'bg-emerald-500';
             return (
               <div
                 key={e.id}
@@ -486,7 +489,7 @@ function TabGestionar({ onVerResultados, notificar }) {
                     {e.titulo}
                   </h3>
                   {!e.activa && (
-                    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-400">
+                    <span className="shrink-0 rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                       Archivada
                     </span>
                   )}
@@ -504,10 +507,10 @@ function TabGestionar({ onVerResultados, notificar }) {
                 {e.totalIntentos > 0 && (
                   <>
                     <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Aprobación</span>
-                      <span className="font-semibold text-slate-600">{tasa}%</span>
+                      <span>Promedio de nota</span>
+                      <span className="font-semibold text-slate-600">{promedioNota == null ? 'Sin notas' : `${promedioNota.toFixed(1)}%`}</span>
                     </div>
-                    <BarraProgreso valor={tasa} alto="h-1.5" />
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${tonoNota}`} style={{ width: `${promedioNota || 0}%` }} /></div>
                   </>
                 )}
 

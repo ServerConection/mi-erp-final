@@ -12,6 +12,7 @@ import {
   MapPin, PhoneCall, Boxes, Target, Search, ArrowRight, LayoutGrid, ShieldCheck,
   CheckSquare, FileSpreadsheet, LifeBuoy, FolderOpen, MessageCircle, GraduationCap, Laptop,
   Activity, Bot,
+  Headset,
 } from "lucide-react";
 
 // Función para obtener el rol y nombre del usuario desde el token
@@ -112,6 +113,9 @@ export default function HomeModules() {
       desc: "Planillas colaborativas tipo hoja de cálculo: comparte con quien elijas, edición en tiempo real y exporta a Excel." },
     { title: "Bot Vendedor IA", path: "/bot-vendedor", icon: Bot, accent: "verde", cat: "botsIa",
       desc: "Configura el bot vendedor de WhatsApp: prompt, reglas, guía comercial y chat de prueba.",
+      rolesPermitidos: ['ADMINISTRADOR'] },
+    { title: "Bot ATC", path: "/bot-atc", icon: Headset, accent: "ambar", cat: "botsIa",
+      desc: "Piloto: en chats nuevos separa ventas de servicio al cliente y mueve los de ATC a su etapa en Bitrix.",
       rolesPermitidos: ['ADMINISTRADOR'] },
     { title: "Carpeta Compartida", path: "/carpeta-compartida", icon: FolderOpen, accent: "azul", cat: "equipo",
       desc: "Manuales y documentos del ERP: todos pueden verlos y descargarlos." },

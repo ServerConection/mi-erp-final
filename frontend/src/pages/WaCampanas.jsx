@@ -23,6 +23,7 @@ const STATUS_BADGE = {
   draft:     "bg-slate-100 text-slate-500",
   scheduled: "bg-purple-100 text-purple-600",
   running:   "bg-blue-100 text-blue-600",
+  abierta:   "bg-teal-100 text-teal-700",
   paused:    "bg-yellow-100 text-yellow-600",
   finished:  "bg-green-100 text-green-700",
   completed: "bg-green-100 text-green-700",
@@ -31,6 +32,7 @@ const STATUS_BADGE = {
 };
 const STATUS_LABEL = {
   draft:     "Borrador", scheduled: "Programada", running: "Enviando",
+  abierta:   "Abierta · midiendo respuestas",
   paused:    "Pausada",  finished:  "Finalizada", completed: "Finalizada",
   cancelled: "Cancelada", failed: "Error",
 };
@@ -61,7 +63,8 @@ const DIAS_SEMANA = [
   { value: 6, label: "Sáb" },
   { value: 0, label: "Dom" },
 ];
-const HORAS_DIA = Array.from({ length: 24 }, (_, h) => h);
+// Jornada global de campañas: 07:00 a 21:00 (el backend la aplica a todas).
+const HORAS_DIA = Array.from({ length: 15 }, (_, i) => i + 7);
 
 // Preview de mensaje con variables de ejemplo
 const PREVIEW_VARS = { nombre: "María", numero: "0999999999" };
@@ -73,6 +76,7 @@ const emptyForm = {
   min_delay_secs: 8, max_delay_secs: 20,
   batch_size: 50, batch_pause_secs: 120,
   send_days: [], send_hour_from: "", send_hour_to: "",
+  bot_id: "",
 };
 
 export default function WaCampanas() {
@@ -81,6 +85,7 @@ export default function WaCampanas() {
   const PUEDE_VER_REPORTE = puedeVerReporteCampanas();
   const [lines, setLines]           = useState([]);
   const [lists, setLists]           = useState([]);
+  const [bots, setBots]             = useState([]);
   const [loading, setLoading]       = useState(true);
   const [modal, setModal]           = useState(null); // "new" | campaign_id
   const [form, setForm]             = useState(emptyForm);
@@ -108,6 +113,9 @@ export default function WaCampanas() {
       // para no ocultar números que realmente están conectados.
       setLines(asArray(dL).filter(lineaEstaConectada));
       setLists(asArray(dLists));
+      // Bots para "bot de la campaña" (si el perfil no puede listarlos, queda vacío).
+      fetch(`${API}/bots`, { headers: authH(false) }).then(r => r.json())
+        .then(d => setBots(asArray(d).filter(b => b.is_active !== false))).catch(() => setBots([]));
     } catch (e) {
       console.error("[WaCampanas] Error cargando:", e);
     } finally {
@@ -133,6 +141,7 @@ export default function WaCampanas() {
       patch(campaignId, c => ({ ...c, sent_count: sent, failed_count: failed, total_recipients: total }));
     handlers["campaign:started"]   = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "running" }));
     handlers["campaign:paused"]    = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "paused" }));
+    handlers["campaign:abierta"]   = ({ campaignId }) => { patch(campaignId, c => ({ ...c, status: "abierta" })); load(); };
     handlers["campaign:cancelled"] = ({ campaignId }) => patch(campaignId, c => ({ ...c, status: "cancelled" }));
     handlers["campaign:completed"] = ({ campaignId }) => {
       patch(campaignId, c => ({ ...c, status: "completed" }));
@@ -171,6 +180,7 @@ export default function WaCampanas() {
       send_days: camp.send_days || [],
       send_hour_from: camp.send_hour_from ?? "",
       send_hour_to: camp.send_hour_to ?? "",
+      bot_id: camp.bot_id || "",
     });
     setVariants(msgs.length
       ? msgs.map(m => ({
@@ -198,6 +208,7 @@ export default function WaCampanas() {
       send_days: camp.send_days || [],
       send_hour_from: camp.send_hour_from ?? "",
       send_hour_to: camp.send_hour_to ?? "",
+      bot_id: camp.bot_id || "",
     });
     setEditCamp(camp);
   };
@@ -472,6 +483,8 @@ export default function WaCampanas() {
               <SelectorLineasCampana lines={lines} lineIds={form.line_ids}
                 onLineIds={ids => setForm(f => ({ ...f, line_ids: ids }))}
                 modo={form.modo_responsable} onModo={m => setForm(f => ({ ...f, modo_responsable: m }))} />
+              <SelectorBotCampana bots={bots} value={form.bot_id} onChange={v => setForm(f => ({ ...f, bot_id: v }))} />
+              <AvisoCierreCampana />
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Lista</label>
@@ -543,7 +556,7 @@ export default function WaCampanas() {
                   <select value={form.send_hour_from}
                     onChange={e => setForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -552,7 +565,7 @@ export default function WaCampanas() {
                   <select value={form.send_hour_to}
                     onChange={e => setForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -659,6 +672,7 @@ export default function WaCampanas() {
                   onLineIds={ids => setEditForm(f => ({ ...f, line_ids: ids }))}
                   modo={editForm.modo_responsable} onModo={m => setEditForm(f => ({ ...f, modo_responsable: m }))} />
               </div>
+              <SelectorBotCampana bots={bots} value={editForm.bot_id} onChange={v => setEditForm(f => ({ ...f, bot_id: v }))} />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Delay mín (seg)</label>
@@ -713,7 +727,7 @@ export default function WaCampanas() {
                   <select value={editForm.send_hour_from}
                     onChange={e => setEditForm(f => ({ ...f, send_hour_from: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -722,7 +736,7 @@ export default function WaCampanas() {
                   <select value={editForm.send_hour_to}
                     onChange={e => setEditForm(f => ({ ...f, send_hour_to: e.target.value === "" ? "" : +e.target.value }))}
                     className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
-                    <option value="">Sin restricción</option>
+                    <option value="">Jornada completa (07–21)</option>
                     {HORAS_DIA.map(h => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
                   </select>
                 </div>
@@ -825,6 +839,37 @@ export default function WaCampanas() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Bot opcional: responde en las líneas de la campaña SOLO a los números de la
+// campaña y solo mientras esté activa (hasta su cierre de 20:00–20:30).
+function SelectorBotCampana({ bots, value, onChange }) {
+  return (
+    <div>
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Bot de la campaña (opcional)</label>
+      <select value={value || ""} onChange={e => onChange(e.target.value)}
+        className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400">
+        <option value="">Sin bot</option>
+        {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+      </select>
+      {value && (
+        <p className="mt-1 text-xs text-slate-500">
+          🤖 Responde solo a los contactos de esta campaña que escriban a sus líneas, mientras la campaña esté activa.
+          Otros números siguen el flujo normal.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AvisoCierreCampana() {
+  return (
+    <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+      🕖 Las campañas envían solo de <b>07:00 a 21:00</b>. Si a las 21:00 quedan pendientes, se pausa sola y sigue al día
+      siguiente a las 07:00. Si termina antes, queda <b>abierta</b> midiendo lecturas y respuestas y se cierra sola entre las
+      <b> 20:00 y 21:00</b> con un resumen. Antes del primer cliente se envía a los números de prueba de tu empresa.
     </div>
   );
 }

@@ -153,6 +153,7 @@ const C = { enviados: "#16a34a", leidos: "#0284c7", respuestas: "#9333ea", falli
 const tasa = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
 const minutos = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)} min` : m < 1440 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} d`);
 const ESTADOS = { completed: ["Completada", "bg-green-100 text-green-700"], running: ["Enviando", "bg-sky-100 text-sky-700"],
+  abierta: ["Abierta", "bg-teal-100 text-teal-700"],
   paused: ["Pausada", "bg-amber-100 text-amber-700"], draft: ["Borrador", "bg-slate-100 text-slate-600"],
   scheduled: ["Programada", "bg-violet-100 text-violet-700"], failed: ["Fallida", "bg-red-100 text-red-700"] };
 const MODOS = { libre: "Libre", evitar: "Evitar responsable", mismo: "Mismo responsable" };

@@ -11,8 +11,13 @@ const ESTILO = {
   SISTEMA: { fila: 'center', fondo: '#fef9c3', color: '#713f12', borde: '#fde68a' },
 };
 
+const FUENTE = {
+  BITRIX: { etiqueta: 'Bitrix', fondo: '#e0e7ff', color: '#3730a3' },
+  WABOT: { etiqueta: 'WaBot', fondo: '#dcfce7', color: '#166534' },
+};
+
 /**
- * Conversacion en vivo tal como esta en Bitrix.
+ * Conversacion en vivo combinada desde Bitrix y WaBot.
  * El texto no se guarda en la base: se pide al abrir y se descarta al cerrar.
  */
 export default function ContactabilidadConversacion({
@@ -61,7 +66,7 @@ export default function ContactabilidadConversacion({
             {info.origen_nombre && <> · {info.origen_nombre}</>}
           </div>
         </div>
-        <button type="button" onClick={onRecargar} disabled={cargando} title="Volver a leer de Bitrix"
+        <button type="button" onClick={onRecargar} disabled={cargando} title="Volver a leer de Bitrix y WaBot"
           style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: '6px 11px', cursor: 'pointer' }}>
           {cargando ? '…' : '⟳'}
         </button>
@@ -88,9 +93,14 @@ export default function ContactabilidadConversacion({
 
         {!cargando && !error && !mensajes.length && <p style={{ textAlign: 'center', color: '#64748b' }}>
           {data?.sin_chat
-            ? 'Este lead todavía no tiene un chat abierto en Bitrix.'
+            ? 'Este lead todavía no tiene mensajes disponibles en Bitrix ni WaBot.'
             : 'La conversación está vacía.'}
         </p>}
+
+        {data?.errores_fuente && Object.keys(data.errores_fuente).map((fuente) =>
+          <div key={fuente} role="status" style={{ padding: 10, borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 12 }}>
+            No se pudo consultar {fuente}; se muestran los mensajes disponibles de la otra fuente.
+          </div>)}
 
         {data?.truncado && <p style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', margin: 0 }}>
           Mostrando los mensajes más recientes.
@@ -98,6 +108,7 @@ export default function ContactabilidadConversacion({
 
         {mensajes.map((mensaje) => {
           const estilo = ESTILO[mensaje.emisor_tipo] || ESTILO.SISTEMA;
+          const fuente = FUENTE[mensaje.fuente] || FUENTE.BITRIX;
           const sistema = mensaje.emisor_tipo === 'SISTEMA';
           return <div key={mensaje.id} style={{ display: 'flex', justifyContent: estilo.fila }}>
             <div style={{
@@ -105,9 +116,12 @@ export default function ContactabilidadConversacion({
               border: `1px solid ${estilo.borde}`, borderRadius: 12, padding: '9px 12px',
               fontSize: 13, textAlign: sistema ? 'center' : 'left',
             }}>
-              {!sistema && <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', marginBottom: 3 }}>
-                {mensaje.emisor_nombre || (mensaje.emisor_tipo === 'CLIENTE' ? 'Cliente' : 'Asesor')}
-              </div>}
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', marginBottom: 3, display: 'flex', gap: 7, alignItems: 'center', justifyContent: sistema ? 'center' : 'flex-start' }}>
+                {!sistema && <span>{mensaje.emisor_nombre || (mensaje.emisor_tipo === 'CLIENTE' ? 'Cliente' : 'Asesor')}</span>}
+                <span style={{ background: fuente.fondo, color: fuente.color, borderRadius: 999, padding: '2px 7px', fontSize: 9, letterSpacing: '.03em' }}>
+                  {fuente.etiqueta}
+                </span>
+              </div>
               <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{mensaje.texto}</div>
               <div style={{ fontSize: 10, color: '#64748b', marginTop: 5, display: 'flex', gap: 8, justifyContent: 'space-between' }}>
                 <span>{hora(mensaje.fecha)}</span>
@@ -129,8 +143,9 @@ export default function ContactabilidadConversacion({
         display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
       }}>
         <span>{data?.mensajes_cliente ?? 0} del cliente · {data?.mensajes_asesor ?? 0} del asesor</span>
+        <span>Bitrix: {data?.fuentes?.BITRIX ?? 0} · WaBot: {data?.fuentes?.WABOT ?? 0}</span>
         <span style={{ flex: 1 }} />
-        <span>Leído de Bitrix {data?.desde_cache ? '(hace segundos)' : 'ahora'} · el contenido no se almacena</span>
+        <span>Leído de Bitrix y WaBot {data?.desde_cache ? '(Bitrix en caché)' : 'ahora'} · el contenido no se almacena</span>
       </div>
     </div>
   </div>;

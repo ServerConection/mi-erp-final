@@ -15,6 +15,8 @@ const { obtenerAnalytics, construirFiltros } = require('../contactabilidad/conta
 const { obtenerUmbrales, UMBRALES_DEFECTO, expresionSeveridad, expresionMinutosEspera } =
   require('../contactabilidad/contactabilidad.severidad');
 const { obtenerCapacidades, columnaOpcional } = require('../contactabilidad/contactabilidad.esquema');
+const { obtenerConversacionWabot, combinarMensajes } =
+  require('../contactabilidad/contactabilidad.wabot');
 
 const EMPRESAS = ['NOVONET', 'VELSA'];
 const COOLDOWN_MANUAL_MS = 60_000;
@@ -407,7 +409,7 @@ async function estado(req, res) {
 }
 
 // ---------------------------------------------------------------------------
-// Conversacion en vivo: se lee de Bitrix y no se guarda en la base
+// Conversacion en vivo: combina Bitrix y WaBot sin guardar el contenido
 // ---------------------------------------------------------------------------
 async function conversacion(req, res) {
   const empresa = empresaValida(req.params.empresa);
@@ -425,10 +427,41 @@ async function conversacion(req, res) {
     `, [empresa, id]);
     if (!rows.length) return res.status(404).json({ success: false, error: 'Lead no encontrado' });
 
-    const data = await contexto().conversacion.obtener(empresa, id, {
-      limite: req.query.limite,
-      forzar: String(req.query.forzar).toLowerCase() === 'true',
-    });
+    const erroresFuente = {};
+    let dataBitrix = { mensajes: [], sin_chat: true };
+    let mensajesWabot = [];
+
+    try {
+      dataBitrix = await contexto().conversacion.obtener(empresa, id, {
+        limite: req.query.limite,
+        forzar: String(req.query.forzar).toLowerCase() === 'true',
+      });
+    } catch (error) {
+      erroresFuente.BITRIX = error.message;
+      console.warn(`[contactabilidad] conversacion Bitrix ${empresa}/${id}: ${error.message}`);
+    }
+    try {
+      mensajesWabot = await obtenerConversacionWabot(pool, empresa, id, req.query.limite);
+    } catch (error) {
+      erroresFuente.WABOT = error.message;
+      console.warn(`[contactabilidad] conversacion WaBot ${empresa}/${id}: ${error.message}`);
+    }
+
+    if (erroresFuente.BITRIX && erroresFuente.WABOT) {
+      throw new Error('Bitrix y WaBot no estan disponibles');
+    }
+
+    const mensajes = combinarMensajes(dataBitrix.mensajes, mensajesWabot);
+    const data = {
+      ...dataBitrix,
+      mensajes,
+      total: mensajes.length,
+      mensajes_cliente: mensajes.filter((m) => m.emisor_tipo === 'CLIENTE').length,
+      mensajes_asesor: mensajes.filter((m) => m.emisor_tipo === 'ASESOR').length,
+      fuentes: { BITRIX: dataBitrix.mensajes?.length || 0, WABOT: mensajesWabot.length },
+      errores_fuente: erroresFuente,
+      sin_chat: mensajes.length === 0,
+    };
 
     // El contenido del chat no debe quedar en caches intermedias ni del navegador.
     res.setHeader('Cache-Control', 'no-store, private');

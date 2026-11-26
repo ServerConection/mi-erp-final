@@ -5,6 +5,7 @@ import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/Feedba
 import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { fetchConSesion } from "../utils/sesion";
+import { registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
 import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
@@ -456,6 +457,7 @@ function DailyMonitoringTable({ title, data = [], hasScroll = false }) {
 }
 
 export default function ReporteVelsa() {
+  usarAuditoriaModulo('INDICADORES', useEffect, 'VELSA');
   const [tabActiva, setTabActiva] = useState("GENERAL");
   const [loading, setLoading] = useState(false);
   // Indicador de carga diferido: solo aparece si la consulta pasa de 250 ms.
@@ -1606,10 +1608,11 @@ ${acciones.map((a,i)=>`<div class="aitem"><span style="color:#ea580c;font-weight
               </div>
 
               <button onClick={() => {
+                registrarFiltrosModulo('INDICADORES', filtros, 'Indicadores VELSA', 'VELSA');
                 setFiltrosAplicados(filtros);
                 fetchDashboard(filtros);
                 fetchDetalleCRMData(filtros);  // ✅ Cargar datos CRM detallado
-              }} disabled={loading} aria-busy={loading} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-70 disabled:cursor-wait text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
+              }} data-audit-manual="true" disabled={loading} aria-busy={loading} className="bg-orange-600 hover:bg-orange-500 disabled:opacity-70 disabled:cursor-wait text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-orange-900/20 transition-all active:scale-95 uppercase">
                 {loading ? "CARGANDO..." : "APLICAR FILTROS"}
               </button>
               <button onClick={generarInforme360} className="bg-stone-800 hover:bg-stone-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">

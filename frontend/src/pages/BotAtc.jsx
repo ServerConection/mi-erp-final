@@ -25,6 +25,8 @@ const ESTADOS = {
   NO_DETECTADO: { nombre: "No detectado", color: "bg-slate-200 text-slate-700" },
   PENDIENTE: { nombre: "Escuchando…", color: "bg-blue-100 text-blue-700" },
   EVALUANDO: { nombre: "Evaluando…", color: "bg-blue-100 text-blue-700" },
+  POR_ENVIAR: { nombre: "Por escribir", color: "bg-slate-100 text-slate-600" },
+  ERROR: { nombre: "Error", color: "bg-red-100 text-red-700" },
 };
 const ETAPA_ESTADO = { hecho: "✅ Movido", pendiente: "⏳ Moviendo", sin_deal: "Sin deal", omitido: "No se movió", error: "❌ Error" };
 
@@ -120,7 +122,7 @@ function PestanaChats() {
                 <tr key={s.id} className="border-t align-top">
                   <td className="py-2 px-3 text-xs text-slate-500 whitespace-nowrap">{fecha(s.inicio)}{s.segundos != null && <div>en {s.segundos} s</div>}</td>
                   <td className="py-2 px-3"><div className="font-medium text-slate-800">{s.cliente || "—"}</div><div className="text-xs text-slate-400">{s.telefono || "sin teléfono"}</div></td>
-                  <td className="py-2 px-3 text-xs">{s.linea || "—"}</td>
+                  <td className="py-2 px-3 text-xs">{s.linea || "—"}{s.origen === "saliente" && <div className="text-[11px] font-semibold text-amber-700">Contacto nuevo · bot escribió primero</div>}</td>
                   <td className="py-2 px-3">
                     {s.recomendacion ? (
                       <div className={`text-xs font-bold ${s.recomendacion === "ATC/SOPORTE" ? "text-amber-700" : "text-green-700"}`}>
@@ -182,8 +184,8 @@ function VerChat({ sesion, onCerrar }) {
 
 // ─── Mensajes y etapas ───────────────────────────────────────────────────────
 const CAMPOS = [
-  { k: "pregunta", t: "Pregunta inicial (primer mensaje del chat)", filas: 5 },
-  { k: "plantilla", t: "Plantilla de servicio al cliente (solo se envía en modo Aplicar)", filas: 14 },
+  { k: "pregunta", t: "Pregunta en chats que llegan a líneas con el bot ATC encendido", filas: 5 },
+  { k: "plantilla", t: "Plantilla de servicio al cliente (canales de ATC)", filas: 14 },
 ];
 
 function PestanaMensajes() {
@@ -193,9 +195,11 @@ function PestanaMensajes() {
   const [aviso, setAviso] = useState("");
   const [guardando, setGuardando] = useState(false);
 
+  const [lineas, setLineas] = useState([]);
   useEffect(() => {
     pedir(`${BASE}/config`).then(setCfg).catch((e) => setError(e.message));
-    pedir(`${BASE}/etapas`).then(setEtapas).catch((e) => setError(`No se pudieron leer las etapas de Bitrix: ${e.message}`));
+    pedir(`${BASE}/etapas`).then(setEtapas).catch(() => setEtapas([]));
+    pedir(`${BASE}/lineas`).then((l) => setLineas((l || []).filter((x) => x.status !== "deleted"))).catch(() => {});
   }, []);
   const cambiar = (k, v) => setCfg((c) => ({ ...c, [k]: v }));
   const guardar = async () => {
@@ -230,6 +234,42 @@ function PestanaMensajes() {
         <label className="block"><span className="font-semibold text-slate-700">Chat nuevo si estuvo callado (horas)</span>
           <input type="number" min={1} max={720} value={cfg.reinicio_horas} onChange={(e) => cambiar("reinicio_horas", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full" /></label>
         <p className="md:col-span-2 text-xs text-slate-500">Mientras escucha, el bot vendedor o el asesor atienden normal. En modo Aplicar solo se mueven deals de NOVONET de los últimos 3 días que sigan en Contacto nuevo.</p>
+      </div>
+      <div className="bg-white rounded-xl border-2 border-amber-200 p-4 space-y-3 text-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-bold text-slate-800">Atención a Contacto nuevo (el bot escribe primero)</div>
+            <div className="text-xs text-slate-500">A cada deal nuevo de NOVONET en Contacto nuevo le escribe desde la línea elegida. La IA analiza lo que responde (no solo 1 o 2): si no es intención de compra le envía la plantilla de ATC; si es venta, le confirma que un asesor lo contacta.</div>
+          </div>
+          <button onClick={() => cambiar("saliente_activo", cfg.saliente_activo === "true" ? "false" : "true")}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${cfg.saliente_activo === "true" ? "bg-amber-600" : "bg-slate-300"}`}>
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${cfg.saliente_activo === "true" ? "translate-x-5" : "translate-x-0.5"}`} />
+          </button>
+        </div>
+        {cfg.saliente_estado?.valor && <div className="text-xs bg-slate-50 border rounded-lg px-2 py-1"><b>Estado en WABOT:</b> {cfg.saliente_estado.valor} <span className="text-slate-400">({fecha(cfg.saliente_estado.actualizado_en)})</span></div>}
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="block"><span className="font-semibold text-slate-700">Línea desde la que escribe</span>
+            <select value={cfg.saliente_linea || ""} onChange={(e) => cambiar("saliente_linea", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full">
+              <option value="">Elige una línea…</option>
+              {lineas.map((l) => <option key={l.id} value={l.id}>{l.name} {l.phone_number ? `(${l.phone_number})` : ""} {l.status === "connected" ? "" : `· ${l.status}`}</option>)}
+            </select></label>
+          <label className="block"><span className="font-semibold text-slate-700">Horario</span>
+            <div className="flex items-center gap-1">
+              <input type="time" value={cfg.saliente_inicio || ""} onChange={(e) => cambiar("saliente_inicio", e.target.value)} className="border rounded-lg px-2 py-1" />
+              <span className="text-slate-400">a</span>
+              <input type="time" value={cfg.saliente_fin || ""} onChange={(e) => cambiar("saliente_fin", e.target.value)} className="border rounded-lg px-2 py-1" />
+            </div></label>
+          <label className="block"><span className="font-semibold text-slate-700">Segundos entre mensajes (cuida la línea)</span>
+            <input type="number" min={20} max={600} value={cfg.saliente_intervalo || ""} onChange={(e) => cambiar("saliente_intervalo", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full" /></label>
+          <label className="block"><span className="font-semibold text-slate-700">Máximo de mensajes por día</span>
+            <input type="number" min={1} max={5000} value={cfg.saliente_max || ""} onChange={(e) => cambiar("saliente_max", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full" /></label>
+        </div>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.saliente_plantilla !== "false"} onChange={(e) => cambiar("saliente_plantilla", e.target.checked ? "true" : "false")} />
+          Enviar la plantilla de ATC cuando no sea intención de compra</label>
+        <label className="block"><span className="font-semibold text-slate-700">Primer mensaje al cliente</span>
+          <textarea rows={3} value={cfg.saliente_pregunta || ""} onChange={(e) => cambiar("saliente_pregunta", e.target.value)} className="w-full border rounded-lg p-2 font-mono" /></label>
+        <label className="block"><span className="font-semibold text-slate-700">Respuesta si es venta</span>
+          <textarea rows={2} value={cfg.confirmacion_ventas || ""} onChange={(e) => cambiar("confirmacion_ventas", e.target.value)} className="w-full border rounded-lg p-2 font-mono" /></label>
       </div>
       {CAMPOS.map((c) => (
         <div key={c.k} className="bg-white rounded-xl border p-4">

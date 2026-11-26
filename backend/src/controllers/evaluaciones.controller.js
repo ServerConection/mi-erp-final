@@ -382,6 +382,47 @@ exports.responder = async (req, res) => {
   }
 };
 
+/** GET /api/evaluaciones/:evaluacionId/revision — solo el intento del usuario autenticado */
+exports.revisionPropia = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT respuestas, nota, correctas, total_preguntas, aprobado, created_at
+         FROM eva_intentos
+        WHERE evaluacion_id = $1 AND usuario_id = $2`,
+      [req.evaluacion.id, req.user.id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, error: 'Primero debes responder esta evaluación' });
+    }
+    const intento = rows[0];
+    const elegidas = new Map((intento.respuestas || []).map((r) => [String(r.preguntaId), Number(r.opcionElegida)]));
+    const preguntas = req.evaluacion.preguntas.map((p, indice) => {
+      const opcionElegida = elegidas.has(String(p.id)) ? elegidas.get(String(p.id)) : null;
+      return {
+        id: p.id,
+        numero: indice + 1,
+        texto: p.texto,
+        imagen: p.imagen || null,
+        opciones: p.opciones,
+        opcionElegida,
+        opcionCorrecta: p.correcta,
+        esCorrecta: opcionElegida === p.correcta,
+      };
+    });
+    res.json({
+      success: true,
+      data: {
+        evaluacion: { id: req.evaluacion.id, titulo: req.evaluacion.titulo, notaMinima: req.evaluacion.nota_minima },
+        resultado: { nota: intento.nota, correctas: intento.correctas, total: intento.total_preguntas, aprobado: intento.aprobado, respondidaEn: intento.created_at },
+        preguntas,
+      },
+    });
+  } catch (error) {
+    console.error('[evaluaciones.revisionPropia]', error);
+    res.status(500).json({ success: false, error: 'No se pudo cargar la revisión' });
+  }
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // RESULTADOS (solo creador/admin)
 // ══════════════════════════════════════════════════════════════════════════════

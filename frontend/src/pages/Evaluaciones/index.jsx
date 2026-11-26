@@ -21,12 +21,14 @@ import TomarEvaluacion from './TomarEvaluacion';
 import ResultadosPanel from './ResultadosPanel';
 import CursosPanel from './CursosPanel';
 import KpiCard from './KpiCard';
+import RevisionEvaluacion from './RevisionEvaluacion';
 import './evaluaciones.css';
 
 export default function Evaluaciones() {
   const [tab, setTab]                           = useState('mias');
   const [tomando, setTomando]                   = useState(null);
   const [viendoResultados, setViendoResultados] = useState(null);
+  const [revisando, setRevisando]               = useState(null);
   const [aviso, setAviso]                       = useState(null);
   const puedeGestionar = useMemo(() => {
     try {
@@ -46,6 +48,9 @@ export default function Evaluaciones() {
   }
   if (viendoResultados) {
     return <ResultadosPanel evaluacionId={viendoResultados} onVolver={() => setViendoResultados(null)} />;
+  }
+  if (revisando) {
+    return <RevisionEvaluacion evaluacionId={revisando} onVolver={() => setRevisando(null)} />;
   }
 
   return (
@@ -89,7 +94,7 @@ export default function Evaluaciones() {
         {tab === 'cursos'
           ? <CursosPanel puedeGestionar={puedeGestionar} onEvaluar={setTomando} notificar={notificar} />
           : tab === 'mias' || !puedeGestionar
-            ? <TabMias onTomar={setTomando} />
+            ? <TabMias onTomar={setTomando} onRevisar={setRevisando} />
             : <TabGestionar onVerResultados={setViendoResultados} notificar={notificar} />}
       </div>
 
@@ -176,7 +181,7 @@ const coincide = (e, q) => {
 // TAB: Mis evaluaciones
 // ══════════════════════════════════════════════════════════════════════════════
 
-function TabMias({ onTomar }) {
+function TabMias({ onTomar, onRevisar }) {
   const [lista, setLista]       = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError]       = useState(null);
@@ -307,6 +312,15 @@ function TabMias({ onTomar }) {
                 </div>
                 <span className="w-12 text-right text-sm font-bold tabular-nums text-slate-700">{e.miNota}%</span>
                 <EstadoBadge aprobado={e.miAprobado} />
+                <button
+                  type="button"
+                  onClick={() => onRevisar(e.id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2"
+                  aria-label={`Revisar ${e.titulo}`}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Revisar
+                </button>
                 {!e.miAprobado && (
                   <button
                     type="button"

@@ -45,6 +45,7 @@ export const evaluacionesApi = {
 
   detalleParaTomar: (id) => pedir(`/${id}`),
   responder:        (id, respuestas) => pedir(`/${id}/responder`, { method: 'POST', body: { respuestas } }),
+  revisionPropia:   (id) => pedir(`/${id}/revision`),
 
   resultados: (id) => pedir(`/${id}/resultados`),
   exportar:   (id) => pedir(`/${id}/resultados/exportar`, { blob: true }),

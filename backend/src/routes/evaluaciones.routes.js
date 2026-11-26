@@ -51,6 +51,7 @@ router.patch('/cursos/:cursoId/archivar', puedeCrearEvaluacion, cursos.archivar)
 // ── Tomar / responder ────────────────────────────────────────────────────────
 router.get ('/:evaluacionId', cargarEvaluacion(false), ev.detalleParaTomar);
 router.post('/:evaluacionId/responder', cargarEvaluacion(false), ev.responder);
+router.get ('/:evaluacionId/revision', cargarEvaluacion(false), ev.revisionPropia);
 
 // ── Gestión y resultados (solo creador/admin) ────────────────────────────────
 router.patch ('/:evaluacionId/archivar',           cargarEvaluacion(true), ev.archivar);

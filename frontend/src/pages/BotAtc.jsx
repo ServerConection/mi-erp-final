@@ -1,6 +1,7 @@
 // src/pages/BotAtc.jsx
-// Bot ATC (piloto): en los chats nuevos pregunta "ventas o servicio al cliente".
-// Si es servicio al cliente, envía los canales de ATC y mueve el deal a la etapa ATC.
+// Bot ATC (piloto): en los chats nuevos pregunta "ventas o servicio al cliente",
+// escucha la conversación y al final la IA recomienda: mover a ATC/SOPORTE o dejar en
+// Contacto nuevo. En modo "recomendar" no toca Bitrix; en "aplicar" sí.
 // Solo ADMINISTRADOR (el backend lo valida).
 import { useCallback, useEffect, useState } from "react";
 import { Headset, Save, Loader2, RefreshCw, Smartphone, X, MessagesSquare } from "lucide-react";
@@ -22,9 +23,10 @@ const ESTADOS = {
   ATC: { nombre: "Servicio al cliente", color: "bg-amber-100 text-amber-800" },
   VENTAS: { nombre: "Ventas", color: "bg-green-100 text-green-700" },
   NO_DETECTADO: { nombre: "No detectado", color: "bg-slate-200 text-slate-700" },
-  PENDIENTE: { nombre: "Preguntando…", color: "bg-blue-100 text-blue-700" },
+  PENDIENTE: { nombre: "Escuchando…", color: "bg-blue-100 text-blue-700" },
+  EVALUANDO: { nombre: "Evaluando…", color: "bg-blue-100 text-blue-700" },
 };
-const ETAPA_ESTADO = { hecho: "✅", pendiente: "⏳", sin_deal: "Sin deal", omitido: "No se movió", error: "❌" };
+const ETAPA_ESTADO = { hecho: "✅ Movido", pendiente: "⏳ Moviendo", sin_deal: "Sin deal", omitido: "No se movió", error: "❌ Error" };
 
 const PESTANAS = [
   { id: "chats", nombre: "Chats filtrados" },
@@ -41,7 +43,7 @@ export default function BotAtc() {
           <Headset className="w-7 h-7 text-amber-600" /> Bot ATC <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">piloto</span>
         </h1>
         <p className="text-sm text-slate-500">
-          En cada chat nuevo pregunta si es ventas o servicio al cliente. Los de servicio al cliente reciben los canales de ATC y su deal pasa a la etapa ATC, así no llegan a los asesores.
+          En cada chat nuevo pregunta si es ventas o servicio al cliente y escucha la conversación. Al final la IA lee todo lo que dijo el cliente (no solo el 1 o 2) y recomienda si el deal va a ATC/SOPORTE o se queda en Contacto nuevo.
         </p>
       </div>
       <div className="flex gap-1 border-b mb-4">
@@ -82,9 +84,9 @@ function PestanaChats() {
       {error && <Mensaje tipo="error" texto={error} />}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi titulo="Chats nuevos" valor={r.total ?? "—"} />
-        <Kpi titulo="Servicio al cliente" valor={r.ATC ?? "—"} extra={pct(r.ATC || 0)} color="text-amber-700" />
-        <Kpi titulo="Ventas" valor={r.VENTAS ?? "—"} extra={pct(r.VENTAS || 0)} color="text-green-700" />
-        <Kpi titulo="No detectado" valor={r.NO_DETECTADO ?? "—"} extra={pct(r.NO_DETECTADO || 0)} color="text-slate-600" />
+        <Kpi titulo="→ Mover a ATC/SOPORTE" valor={r.ATC ?? "—"} extra={pct(r.ATC || 0)} color="text-amber-700" />
+        <Kpi titulo="→ Dejar en Contacto nuevo" valor={r.VENTAS ?? "—"} extra={pct(r.VENTAS || 0)} color="text-green-700" />
+        <Kpi titulo="No respondió" valor={r.NO_DETECTADO ?? "—"} extra={pct(r.NO_DETECTADO || 0)} color="text-slate-600" />
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <select value={dias} onChange={(e) => setDias(Number(e.target.value))} className="border rounded-lg px-2 py-1">
@@ -104,8 +106,8 @@ function PestanaChats() {
                 <th className="text-left py-2 px-3">Fecha</th>
                 <th className="text-left py-2 px-3">Cliente</th>
                 <th className="text-left py-2 px-3">Línea</th>
-                <th className="text-left py-2 px-3">Resultado</th>
-                <th className="text-left py-2 px-3">Respuesta del cliente</th>
+                <th className="text-left py-2 px-3">Recomendación</th>
+                <th className="text-left py-2 px-3">Lo que dijo el cliente</th>
                 <th className="text-left py-2 px-3">Bitrix</th>
                 <th className="py-2 px-3"></th>
               </tr>
@@ -120,14 +122,21 @@ function PestanaChats() {
                   <td className="py-2 px-3"><div className="font-medium text-slate-800">{s.cliente || "—"}</div><div className="text-xs text-slate-400">{s.telefono || "sin teléfono"}</div></td>
                   <td className="py-2 px-3 text-xs">{s.linea || "—"}</td>
                   <td className="py-2 px-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADOS[s.estado]?.color || ""}`}>{ESTADOS[s.estado]?.nombre || s.estado}</span>
-                    {s.metodo && <div className="text-[11px] text-slate-400 mt-0.5">por {s.metodo.replace("_tarde", " (tarde)")}</div>}
+                    {s.recomendacion ? (
+                      <div className={`text-xs font-bold ${s.recomendacion === "ATC/SOPORTE" ? "text-amber-700" : "text-green-700"}`}>
+                        {s.recomendacion === "ATC/SOPORTE" ? "Mover a ATC/SOPORTE" : "Dejar en Contacto nuevo"}
+                      </div>
+                    ) : <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADOS[s.estado]?.color || ""}`}>{ESTADOS[s.estado]?.nombre || s.estado}</span>}
+                    {s.estado === "NO_DETECTADO" && <div className="text-[11px] text-slate-500">No respondió</div>}
+                    {s.motivo && <div className="text-[11px] text-slate-500 mt-0.5">{s.motivo}</div>}
+                    {s.confianza && <div className="text-[11px] text-slate-400">confianza {s.confianza}</div>}
                   </td>
-                  <td className="py-2 px-3 text-xs text-slate-600 max-w-xs">{s.respuesta || "—"}</td>
+                  <td className="py-2 px-3 text-xs text-slate-600 max-w-xs">{(s.textos || []).map((t, i) => <div key={i}>• {t.texto}</div>)}{!(s.textos || []).length && "—"}</td>
                   <td className="py-2 px-3 text-xs">
                     {s.bitrix_id ? <div className="font-semibold">#{s.bitrix_id}</div> : null}
-                    {s.etapa_estado ? <div title={s.etapa_detalle || ""}>{ETAPA_ESTADO[s.etapa_estado] || s.etapa_estado} {s.etapa_objetivo}</div> : <span className="text-slate-400">—</span>}
-                    {s.etapa_estado && s.etapa_estado !== "hecho" && s.etapa_detalle && <div className="text-[11px] text-slate-400">{s.etapa_detalle}</div>}
+                    {s.etapa_anterior && <div className="text-slate-500">{s.etapa_anterior}</div>}
+                    {ETAPA_ESTADO[s.etapa_estado] && <div title={s.etapa_detalle || ""}>{ETAPA_ESTADO[s.etapa_estado]} {s.etapa_objetivo}</div>}
+                    {!s.bitrix_id && s.etapa_detalle && <div className="text-[11px] text-slate-400">{s.etapa_detalle}</div>}
                   </td>
                   <td className="py-2 px-3 text-right">
                     <button onClick={() => setViendo(s)} className="text-amber-700 hover:underline text-xs flex items-center gap-1"><MessagesSquare className="w-4 h-4" /> Ver chat</button>
@@ -174,9 +183,7 @@ function VerChat({ sesion, onCerrar }) {
 // ─── Mensajes y etapas ───────────────────────────────────────────────────────
 const CAMPOS = [
   { k: "pregunta", t: "Pregunta inicial (primer mensaje del chat)", filas: 5 },
-  { k: "repregunta", t: "Si no se entiende la respuesta (se envía una sola vez)", filas: 2 },
-  { k: "plantilla", t: "Plantilla de servicio al cliente (canales de ATC)", filas: 14 },
-  { k: "confirmacion_ventas", t: "Confirmación de ventas (solo si la línea no tiene el bot vendedor)", filas: 2 },
+  { k: "plantilla", t: "Plantilla de servicio al cliente (solo se envía en modo Aplicar)", filas: 14 },
 ];
 
 function PestanaMensajes() {
@@ -211,15 +218,18 @@ function PestanaMensajes() {
       {error && <Mensaje tipo="error" texto={error} />}
       {aviso && <Mensaje tipo="ok" texto={aviso} />}
       <div className="bg-white rounded-xl border p-4 grid md:grid-cols-2 gap-4 text-sm">
-        <label className="block"><span className="font-semibold text-slate-700">Etapa si es servicio al cliente</span>
+        <label className="block md:col-span-2"><span className="font-semibold text-slate-700">Modo</span>
+          <select value={cfg.modo} onChange={(e) => cambiar("modo", e.target.value)} className="border rounded-lg px-2 py-1.5 text-sm w-full">
+            <option value="recomendar">Solo recomendar (no envía plantilla, no mueve etapas, el reparto sigue normal)</option>
+            <option value="aplicar">Aplicar (si es ATC: envía la plantilla y mueve el deal; el reparto espera al bot)</option>
+          </select></label>
+        <label className="block"><span className="font-semibold text-slate-700">Etapa ATC en Bitrix</span>
           <SelectEtapa k="etapa_atc" vacio="No mover el deal" /></label>
-        <label className="block"><span className="font-semibold text-slate-700">Etapa si no responde a tiempo</span>
-          <SelectEtapa k="etapa_no_detectado" vacio="Dejar en Contacto nuevo (se reparte normal)" /></label>
-        <label className="block"><span className="font-semibold text-slate-700">Segundos para responder</span>
+        <label className="block"><span className="font-semibold text-slate-700">Segundos que escucha antes de recomendar</span>
           <input type="number" min={30} max={600} value={cfg.segundos} onChange={(e) => cambiar("segundos", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full" /></label>
         <label className="block"><span className="font-semibold text-slate-700">Chat nuevo si estuvo callado (horas)</span>
           <input type="number" min={1} max={720} value={cfg.reinicio_horas} onChange={(e) => cambiar("reinicio_horas", e.target.value)} className="border rounded-lg px-2 py-1.5 w-full" /></label>
-        <p className="md:col-span-2 text-xs text-slate-500">Solo se mueven deals de NOVONET creados en los últimos 3 días que sigan en Contacto nuevo. El reparto espera a que el bot termine; si el deal ya no está en Contacto nuevo, no se entrega a un asesor.</p>
+        <p className="md:col-span-2 text-xs text-slate-500">Mientras escucha, el bot vendedor o el asesor atienden normal. En modo Aplicar solo se mueven deals de NOVONET de los últimos 3 días que sigan en Contacto nuevo.</p>
       </div>
       {CAMPOS.map((c) => (
         <div key={c.k} className="bg-white rounded-xl border p-4">
@@ -257,7 +267,7 @@ function PestanaLineas() {
     setCambiando(null);
   };
   const alternar = (l) => {
-    if (!l.bot_activo && !window.confirm(`¿Activar el bot ATC en "${l.name}"? En cada chat nuevo preguntará si es ventas o servicio al cliente antes que el bot vendedor o el flujo de la línea.`)) return;
+    if (!l.bot_activo && !window.confirm(`¿Activar el bot ATC en "${l.name}"? En cada chat nuevo enviará la pregunta "ventas o servicio al cliente" y luego recomendará la etapa.`)) return;
     guardar(l, { activo: !l.bot_activo });
   };
 
@@ -266,7 +276,7 @@ function PestanaLineas() {
       {error && <Mensaje tipo="error" texto={error} />}
       <div className="bg-white rounded-xl border p-4 text-sm text-slate-600">
         Activa el bot ATC en las líneas del piloto. Se aplica en menos de 30 segundos. Solo actúa en <b>chats nuevos</b> (sin mensajes en las últimas horas configuradas); los chats en curso no se tocan.
-        Si la línea también tiene el bot vendedor, cuando el cliente elige ventas sigue el bot vendedor. Horario vacío = todo el día.
+        Envía la pregunta inicial y luego escucha: el bot vendedor (si la línea lo tiene) o el asesor siguen atendiendo. Horario vacío = todo el día.
       </div>
       {!lineas && !error ? <Cargando /> : (
         <div className="bg-white rounded-xl border overflow-x-auto">

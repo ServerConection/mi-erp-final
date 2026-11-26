@@ -112,7 +112,7 @@ const iniciarWhatsApp = async (appInstance) => {
     // Bot Vendedor IA: saludo nocturno a deals nuevos de NOVONET (nunca bloquea el arranque).
     try { require('./botVendedorNocturno.service').iniciar(baileysManager); } catch (e) { console.error('[BOT-NOCTURNO] no inicio:', e.message); }
     // Bot ATC: vence los 90 s sin respuesta y reintenta mover etapas en Bitrix.
-    try { require('./botAtc.service').iniciar(); } catch (e) { console.error('[BOT-ATC] no inicio:', e.message); }
+    try { require('./botAtc.service').iniciar(baileysManager); } catch (e) { console.error('[BOT-ATC] no inicio:', e.message); }
     // Inbox -> comentarios internos de NOVONET. También se inicia en el monolito.
     require('./inboxBitrixNotes.service').getInboxBitrixNotes().start();
 

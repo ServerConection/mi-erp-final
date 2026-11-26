@@ -1,23 +1,20 @@
 // src/services/botAtc.service.js
 // ============================================================
-// BOT ATC (piloto) — filtra en los primeros segundos de cada chat nuevo si el
-// cliente quiere VENTAS o SERVICIO AL CLIENTE, para que los asesores de venta
-// no reciban casos de ATC.
+// BOT ATC (piloto) — en cada chat nuevo pregunta si el cliente quiere VENTAS o
+// SERVICIO AL CLIENTE y escucha la conversacion durante N segundos (default 90).
+// Al terminar, la IA lee TODO lo que escribio el cliente (texto, audio, imagen) —
+// no se fia solo de que marque 1 o 2 — y recomienda:
+//   ATC/SOPORTE      -> el cliente ya tiene servicio y busca soporte/facturacion/etc.
+//   CONTACTO NUEVO   -> quiere contratar (o no se sabe): sigue el bot vendedor/asesor.
+// Sin respuesta del cliente -> NO_DETECTADO (recomienda dejar en Contacto nuevo).
 //
-// Flujo en las lineas donde el administrador lo activa (modulo "Bot ATC"):
-//   1. Llega el primer mensaje de un chat nuevo -> el bot pregunta
-//      "1 ventas / 2 servicio al cliente" (sesion PENDIENTE).
-//   2. Cliente responde (texto, numero, audio o imagen):
-//        ATC    -> envia la plantilla con los canales de servicio al cliente y
-//                  mueve el deal de Bitrix (NOVONET) a la etapa ATC configurada.
-//        VENTAS -> se aparta: sigue el bot vendedor (si esta activo) o el asesor.
-//   3. Si en N segundos (default 90) no se detecta -> NO_DETECTADO y, si esta
-//      configurada, mueve el deal a esa etapa.
-// Mientras la sesion esta PENDIENTE, el reparto de gestionables espera
-// (msEsperaReparto) para no entregar el lead a un asesor antes de tiempo.
-//
-// Solo mueve deals de la categoria NOVONET creados en los ultimos 3 dias que
-// sigan en una etapa "CONTACTO NUEVO". Nunca lanza errores hacia BaileysManager.
+// Modos (modulo "Bot ATC"):
+//   recomendar (default) -> solo registra la recomendacion. No envia plantilla,
+//                           no mueve etapas y el reparto NO espera.
+//   aplicar              -> si es ATC envia la plantilla de canales y mueve el
+//                           deal a la etapa ATC; el reparto espera al bot.
+// Durante la escucha el bot NO bloquea: el bot vendedor / asesor atiende normal.
+// Nunca lanza errores hacia BaileysManager.
 // ============================================================
 'use strict';
 
@@ -47,14 +44,12 @@ Agenda una cita para ser atendido por un asesor en línea 🧑🏻‍💻
 https://www.netlife.ec/atencion-al-cliente/agendar-cita/`;
 
 const DEFECTOS = {
-  pregunta: '¡Hola! 👋 Gracias por escribir a *NETLIFE*.\nPara atenderte mejor, responde con un número:\n\n*1* Quiero contratar internet (ventas)\n*2* Ya soy cliente (servicio al cliente)',
-  repregunta: '¿Me confirmas por favor? Responde *1* si quieres contratar o *2* si ya eres cliente 🙏',
+  modo: 'recomendar',
+  pregunta: '¡Hola! 👋 Gracias por escribir a *NETLIFE*.\nCuéntanos qué necesitas:\n\n*1* Quiero contratar internet (ventas)\n*2* Ya soy cliente (servicio al cliente)',
   plantilla: `Estimado cliente, este es un canal exclusivo de *ventas*. Para servicio al cliente comunícate por estos canales:\n\n${CANALES_DEFECTO}`,
-  confirmacion_ventas: '¡Perfecto! 😊 En un momento un asesor de ventas te atiende.',
   segundos: '90',
   reinicio_horas: '24',
   etapa_atc: 'ATC/SOPORTE',
-  etapa_no_detectado: '',
 };
 
 // ─── Tablas ──────────────────────────────────────────────────────────────────
@@ -85,6 +80,12 @@ function asegurarTablas() {
         plantilla_en TIMESTAMPTZ,
         inicio TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         resuelto_en TIMESTAMPTZ);
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS textos JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS recomendacion TEXT;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS confianza TEXT;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS motivo TEXT;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS modo TEXT;
+      ALTER TABLE public.batc_sesiones ADD COLUMN IF NOT EXISTS jid TEXT;
       CREATE INDEX IF NOT EXISTS batc_sesiones_conv_idx ON public.batc_sesiones (conversation_id, inicio DESC);
       CREATE INDEX IF NOT EXISTS batc_sesiones_estado_idx ON public.batc_sesiones (estado, inicio);
     `).catch((e) => { tablasListas = null; throw e; });
@@ -101,6 +102,7 @@ async function leerConfig(sinCache = false) {
   const cfg = { ...DEFECTOS };
   for (const r of rows) if (r.clave in DEFECTOS && r.valor !== null) cfg[r.clave] = r.valor;
   cfg.segundosN = Math.min(600, Math.max(30, parseInt(cfg.segundos, 10) || 90));
+  cfg.aplicar = cfg.modo === 'aplicar';
   cfg.reinicioN = Math.min(24 * 30, Math.max(1, parseInt(cfg.reinicio_horas, 10) || 24));
   cfgCache = cfg; cfgEn = Date.now();
   return cfg;
@@ -155,18 +157,24 @@ function clasificarRapido(texto) {
   return null;
 }
 
-async function clasificarIA(texto) {
+// Lee toda la conversacion de la ventana y recomienda la etapa.
+// Devuelve { etapa: 'ATC/SOPORTE'|'CONTACTO NUEVO', confianza, motivo, modelo }.
+async function evaluarIA(transcripcion) {
   const r = await bot._llamarConRespaldo([
     { role: 'system', content:
-      'Clasificas el mensaje de un cliente que escribe a la linea de VENTAS de NETLIFE (internet de fibra en Ecuador). ' +
-      'Antes se le pregunto si quiere contratar (1) o si ya es cliente (2). Responde SOLO una palabra:\n' +
-      'VENTAS = quiere contratar, conocer planes, precios, cobertura o instalar un servicio nuevo.\n' +
-      'ATC = ya es cliente y necesita soporte, facturacion, pagos de su servicio, fallas, reclamos, cambios, traslado o cancelacion.\n' +
-      'NO_SE = no se puede saber (solo saludo, emoji, mensaje sin sentido).' },
-    { role: 'user', content: String(texto).slice(0, 800) },
+      'Auditas chats que llegan a la linea de VENTAS de NETLIFE (internet de fibra en Ecuador). ' +
+      'Al inicio el bot pregunto si el cliente quiere contratar (1) o si ya es cliente (2). ' +
+      'NO te fies solo del numero que marco: muchos ponen 1 o 2 sin leer. Juzga por lo que el cliente ESCRIBE o DICE.\n' +
+      'ATC/SOPORTE = ya tiene el servicio y busca soporte tecnico, facturacion, pagos de su cuenta, fallas, cortes, reclamos, ' +
+      'cambio de plan de su servicio actual, traslado, cancelacion o datos de su contrato.\n' +
+      'CONTACTO NUEVO = quiere contratar, conocer planes, precios, cobertura o instalar un servicio nuevo, o no hay forma de saberlo.\n' +
+      'Responde SOLO JSON: {"etapa":"ATC/SOPORTE" o "CONTACTO NUEVO","confianza":"alta"|"media"|"baja","motivo":"maximo 15 palabras en espanol"}' },
+    { role: 'user', content: transcripcion.slice(-3500) },
   ]);
-  const m = /\b(VENTAS|ATC|NO_SE)\b/.exec(String(r.texto || '').toUpperCase());
-  return m && m[1] !== 'NO_SE' ? m[1] : null;
+  const m = /\{[\s\S]*\}/.exec(r.texto || '');
+  const j = m ? JSON.parse(m[0]) : {};
+  const etapa = /ATC|SOPORTE/i.test(j.etapa || '') ? 'ATC/SOPORTE' : 'CONTACTO NUEVO';
+  return { etapa, confianza: ['alta', 'media', 'baja'].includes(j.confianza) ? j.confianza : 'media', motivo: String(j.motivo || '').slice(0, 200), modelo: r.modelo };
 }
 
 // Texto del mensaje (transcribe audios y describe imagenes).
@@ -251,8 +259,7 @@ async function moverEtapa(sesionId) {
     }
     const actual = etapas.find((e) => e.id === deal.STAGE_ID);
     const cfg = await leerConfig();
-    const desdeValida = actual && (normalizar(actual.nombre).startsWith('contacto nuevo') ||
-      (cfg.etapa_no_detectado && mismoNombre(actual.nombre, cfg.etapa_no_detectado)));
+    const desdeValida = actual && normalizar(actual.nombre).startsWith('contacto nuevo');
     if (actual?.id === destino.id) return fin('hecho', `Ya estaba en ${destino.nombre}`, { bitrixId: deal.ID, anterior: actual.nombre });
     if (!desdeValida) {
       return fin('omitido', `El deal ya estaba en ${actual?.nombre || deal.STAGE_ID}; no se movió`, { bitrixId: deal.ID, anterior: actual?.nombre });
@@ -279,70 +286,32 @@ async function enviar(manager, lineId, remoteJid, texto) {
   return r;
 }
 
-async function resolver(sesion, tipo, metodo, respuesta, ctx) {
-  const cfg = await leerConfig();
-  const etapa = tipo === 'ATC' ? cfg.etapa_atc : (tipo === 'NO_DETECTADO' ? cfg.etapa_no_detectado : '');
-  const { rowCount } = await pool.query(
-    `UPDATE public.batc_sesiones SET estado = $2, metodo = $3, respuesta = $4, resuelto_en = NOW(),
-            etapa_objetivo = NULLIF($5, ''), etapa_intentos = 0, etapa_estado = CASE WHEN NULLIF($5, '') IS NULL THEN NULL ELSE 'pendiente' END
-      WHERE id = $1 AND estado IN ('PENDIENTE', 'NO_DETECTADO')`,
-    [sesion.id, tipo, metodo, String(respuesta || '').slice(0, 500), etapa || '']);
-  if (!rowCount) return;
-  console.log(`[BOT-ATC] conv ${sesion.conversation_id}: ${tipo} (${metodo})`);
-  if (tipo === 'ATC' && ctx) {
-    await enviar(ctx.manager, ctx.lineId, ctx.remoteJid, cfg.plantilla);
-    await pool.query('UPDATE public.batc_sesiones SET plantilla_en = NOW() WHERE id = $1', [sesion.id]);
-  }
-  if (etapa) moverEtapa(sesion.id).catch(() => {});
-}
-
 // Cola por conversacion (un mensaje a la vez).
 const colas = new Map();
 function enCola(clave, tarea) {
   const sig = (colas.get(clave) || Promise.resolve()).then(tarea).catch((e) => console.error('[BOT-ATC]', e.message));
   colas.set(clave, sig);
   sig.finally(() => { if (colas.get(clave) === sig) colas.delete(clave); });
+  return sig;
 }
 
-async function atenderPendiente(sesion, ctx) {
-  const { manager, lineId, msg, conv, remoteJid, text, msgType } = ctx;
-  const { rows } = await pool.query('SELECT estado, repreguntado FROM public.batc_sesiones WHERE id = $1', [sesion.id]);
-  if (!rows[0] || rows[0].estado !== 'PENDIENTE') {
-    // Se resolvio mientras esperaba en la cola: si fue VENTAS, que siga el bot vendedor.
-    if (rows[0]?.estado === 'VENTAS') await pasarAVentas(ctx, false);
-    return;
-  }
-  const texto = await textoDelMensaje(manager, lineId, msg, text, msgType);
-  let c = clasificarRapido(texto);
-  if (!c && normalizar(texto).length >= 3) {
-    try { const t = await clasificarIA(texto); if (t) c = { tipo: t, metodo: 'ia' }; }
-    catch (e) { console.error('[BOT-ATC] IA no disponible:', e.message); }
-  }
-  if (!c) {
-    if (!rows[0].repreguntado) {
-      await pool.query('UPDATE public.batc_sesiones SET repreguntado = TRUE WHERE id = $1', [sesion.id]);
-      await enviar(manager, lineId, remoteJid, (await leerConfig()).repregunta);
-    }
-    return;
-  }
-  await resolver(sesion, c.tipo, c.metodo, texto, ctx);
-  if (c.tipo === 'VENTAS') await pasarAVentas(ctx, true);
-  void conv;
-}
-
-// El chat es de ventas: responde el bot vendedor si la linea lo tiene; si no, confirma y espera al asesor.
-async function pasarAVentas(ctx, confirmar) {
-  let tomado = false;
-  try { tomado = await require('./botVendedorWa.service').atenderSiAplica(ctx); } catch (_) { tomado = false; }
-  if (!tomado && confirmar) await enviar(ctx.manager, ctx.lineId, ctx.remoteJid, (await leerConfig()).confirmacion_ventas);
+// Guarda lo que dijo el cliente (audio transcrito, imagen descrita) para evaluarlo al final.
+async function guardarTexto(sesionId, ctx) {
+  const t = await textoDelMensaje(ctx.manager, ctx.lineId, ctx.msg, ctx.text, ctx.msgType);
+  const etiqueta = ctx.msgType === 'audio' ? '[audio] ' : (ctx.msgType === 'image' ? '[imagen] ' : '');
+  if (!t) return;
+  await pool.query(
+    `UPDATE public.batc_sesiones SET textos = textos || $2::jsonb WHERE id = $1`,
+    [sesionId, JSON.stringify([{ en: new Date().toISOString(), texto: (etiqueta + t).slice(0, 1000) }])]);
 }
 
 /**
- * Llamado por BaileysManager antes del bot vendedor. Devuelve true si el bot ATC
- * se encarga del mensaje (el bot vendedor y el FlowEngine no deben correr).
+ * Llamado por BaileysManager antes del bot vendedor. Devuelve true solo cuando el
+ * bot ATC envia la pregunta inicial (ese mensaje no lo responde el bot vendedor).
+ * Durante la escucha devuelve false: el bot vendedor / asesor atienden normal.
  */
 async function atenderSiAplica(ctx) {
-  const { lineId, msg, conv, remoteJid, text } = ctx;
+  const { lineId, msg, conv, remoteJid } = ctx;
   try {
     if (!conv?.id || !remoteJid || remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) return false;
     if (!(await lineaActiva(lineId))) return false;
@@ -355,10 +324,9 @@ async function atenderSiAplica(ctx) {
         ORDER BY inicio DESC LIMIT 1`, [conv.id, String(cfg.reinicioN)]);
     const s = rows[0];
 
-    if (s?.estado === 'PENDIENTE') { enCola(conv.id, () => atenderPendiente(s, ctx)); return true; }
-    if (s?.estado === 'VENTAS') return false;
-    if (s?.estado === 'ATC') {
-      // Sigue escribiendo un cliente de ATC: se le recuerda la plantilla (1 vez cada 6 h).
+    if (s?.estado === 'PENDIENTE') { enCola(conv.id, () => guardarTexto(s.id, ctx)); return false; }
+    if (s?.estado === 'ATC' && s.modo === 'aplicar') {
+      // Cliente de ATC que sigue escribiendo: se le recuerda la plantilla (1 vez cada 6 h).
       if (!s.plantilla_en || Date.now() - new Date(s.plantilla_en).getTime() > REENVIO_PLANTILLA_HORAS * 3600 * 1000) {
         enCola(conv.id, async () => {
           await enviar(ctx.manager, lineId, remoteJid, cfg.plantilla);
@@ -367,18 +335,7 @@ async function atenderSiAplica(ctx) {
       }
       return true;
     }
-    if (s?.estado === 'NO_DETECTADO') {
-      // Respuesta tardia: solo se actua si es claramente ATC y el asesor aun no escribio.
-      const c = clasificarRapido(text);
-      if (c?.tipo !== 'ATC' || Date.now() - new Date(s.resuelto_en).getTime() > TARDE_MIN * 60 * 1000) return false;
-      const asesor = await pool.query(
-        `SELECT 1 FROM messages WHERE conversation_id = $1 AND direction = 'out' AND timestamp > $2
-            AND COALESCE(metadata->>'bot_atc', '') <> 'true' AND COALESCE(metadata->>'bot_vendedor', '') <> 'true' LIMIT 1`,
-        [conv.id, s.resuelto_en]);
-      if (asesor.rows.length) return false;
-      enCola(conv.id, () => resolver(s, 'ATC', `${c.metodo}_tarde`, text, ctx));
-      return true;
-    }
+    if (s) return false; // ya evaluado: no interviene
 
     // Sin sesion: ¿es un chat nuevo? (sin mensajes previos en las ultimas N horas)
     const prev = await pool.query(
@@ -388,12 +345,11 @@ async function atenderSiAplica(ctx) {
     if (prev.rows.length) return false; // chat en curso: el piloto no interviene
 
     const ins = await pool.query(
-      `INSERT INTO public.batc_sesiones (conversation_id, line_id, telefono) VALUES ($1, $2, $3) RETURNING *`,
-      [conv.id, lineId, normalizarTelefono(conv.wa_number)]);
+      `INSERT INTO public.batc_sesiones (conversation_id, line_id, telefono, modo, jid) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [conv.id, lineId, normalizarTelefono(conv.wa_number), cfg.aplicar ? 'aplicar' : 'recomendar', remoteJid]);
     const nueva = ins.rows[0];
     enCola(conv.id, async () => {
-      const c = clasificarRapido(text);
-      if (c?.tipo === 'ATC') return resolver(nueva, 'ATC', c.metodo, text, ctx); // lo dijo en el primer mensaje
+      await guardarTexto(nueva.id, ctx);
       await enviar(ctx.manager, lineId, remoteJid, cfg.pregunta);
     });
     return true;
@@ -403,16 +359,88 @@ async function atenderSiAplica(ctx) {
   }
 }
 
-// ─── Timer: vencimiento de 90 s y reintentos de etapa ─────────────────────────
-let timer = null; let ocupado = false; let ultimoReintento = 0;
+// Al vencer la ventana: evalua toda la conversacion y registra la recomendacion.
+async function evaluar(s, cfg) {
+  const { rows: tomada } = await pool.query(
+    `UPDATE public.batc_sesiones SET estado = 'EVALUANDO' WHERE id = $1 AND estado = 'PENDIENTE' RETURNING textos`, [s.id]);
+  if (!tomada.length) return;
+  const textos = tomada[0].textos || [];
+  // Lo que respondio el bot vendedor / asesor en la ventana (contexto para la IA).
+  const { rows: salidas } = await pool.query(
+    `SELECT content, timestamp, COALESCE(metadata->>'bot_atc', '') = 'true' AS atc FROM messages
+      WHERE conversation_id = $1 AND direction = 'out' AND timestamp >= $2 ORDER BY timestamp LIMIT 20`,
+    [s.conversation_id, s.inicio]);
+  const lineas = [
+    ...textos.map((t) => ({ en: new Date(t.en).getTime(), l: `Cliente: ${t.texto}` })),
+    ...salidas.filter((m) => m.content).map((m) => ({ en: new Date(m.timestamp).getTime(), l: `${m.atc ? 'Bot' : 'Asesor/bot ventas'}: ${String(m.content).slice(0, 300)}` })),
+  ].sort((a, b) => a.en - b.en).map((x) => x.l);
+  const respuesta = textos.map((t) => t.texto).join(' | ');
+
+  let estado; let rec;
+  if (textos.length <= 1 && clasificarRapido(respuesta)?.tipo !== 'ATC') {
+    // Solo el primer mensaje (saludo o anuncio) y no respondio la pregunta.
+    estado = 'NO_DETECTADO';
+    rec = { etapa: 'CONTACTO NUEVO', confianza: 'baja', motivo: 'El cliente no respondió a la pregunta', metodo: 'tiempo' };
+  } else {
+    try {
+      rec = { ...(await evaluarIA(lineas.join('\n'))), metodo: 'ia' };
+    } catch (e) {
+      console.error('[BOT-ATC] IA no disponible, uso reglas:', e.message);
+      const c = clasificarRapido(respuesta);
+      rec = { etapa: c?.tipo === 'ATC' ? 'ATC/SOPORTE' : 'CONTACTO NUEVO', confianza: 'baja', motivo: 'Evaluado por palabras clave (IA no disponible)', metodo: 'palabra' };
+    }
+    estado = rec.etapa === 'ATC/SOPORTE' ? 'ATC' : 'VENTAS';
+  }
+  const mover = s.modo === 'aplicar' && estado === 'ATC' && cfg.etapa_atc;
+  await pool.query(
+    `UPDATE public.batc_sesiones SET estado = $2, metodo = $3, respuesta = $4, recomendacion = $5, confianza = $6, motivo = $7,
+            resuelto_en = NOW(), etapa_objetivo = $8, etapa_intentos = 0, etapa_estado = $9
+      WHERE id = $1`,
+    [s.id, estado, rec.metodo, respuesta.slice(0, 1000), rec.etapa, rec.confianza, rec.motivo,
+      mover ? cfg.etapa_atc : null, mover ? 'pendiente' : 'consulta']);
+  console.log(`[BOT-ATC] conv ${s.conversation_id}: ${estado} -> recomienda ${rec.etapa} (${rec.confianza})`);
+
+  if (mover) {
+    if (gestor && s.jid) {
+      try {
+        await enviar(gestor, s.line_id, s.jid, cfg.plantilla);
+        await pool.query('UPDATE public.batc_sesiones SET plantilla_en = NOW() WHERE id = $1', [s.id]);
+      } catch (e) { console.error('[BOT-ATC] no se pudo enviar la plantilla:', e.message); }
+    }
+    await moverEtapa(s.id);
+  } else {
+    await identificarDeal(s.id);
+  }
+}
+
+// Modo recomendar: solo anota el deal y su etapa actual (para revisar en el modulo).
+async function identificarDeal(sesionId) {
+  try {
+    const { rows } = await pool.query('SELECT telefono FROM public.batc_sesiones WHERE id = $1', [sesionId]);
+    if (!rows[0]?.telefono) return;
+    const deal = await buscarDeal(rows[0].telefono);
+    if (!deal) {
+      await pool.query(`UPDATE public.batc_sesiones SET etapa_detalle = 'Sin deal reciente en Bitrix' WHERE id = $1`, [sesionId]);
+      return;
+    }
+    const etapa = (await etapasBitrix()).find((e) => e.id === deal.STAGE_ID);
+    await pool.query('UPDATE public.batc_sesiones SET bitrix_id = $2, etapa_anterior = $3 WHERE id = $1',
+      [sesionId, deal.ID, etapa?.nombre || deal.STAGE_ID]);
+  } catch (e) { console.warn('[BOT-ATC] identificarDeal:', e.message); }
+}
+
+// ─── Timer: vencimiento de la ventana y reintentos de etapa ──────────────────
+let timer = null; let ocupado = false; let ultimoReintento = 0; let gestor = null;
 async function revisar() {
   if (ocupado) return; ocupado = true;
   try {
     const cfg = await leerConfig();
+    // Sesiones que quedaron en EVALUANDO por un reinicio: se vuelven a evaluar.
+    await pool.query(`UPDATE public.batc_sesiones SET estado = 'PENDIENTE' WHERE estado = 'EVALUANDO' AND inicio < NOW() - INTERVAL '10 minutes'`);
     const { rows } = await pool.query(
       `SELECT * FROM public.batc_sesiones WHERE estado = 'PENDIENTE' AND inicio < NOW() - ($1 || ' seconds')::interval
-        ORDER BY inicio LIMIT 50`, [String(cfg.segundosN)]);
-    for (const s of rows) await resolver(s, 'NO_DETECTADO', 'tiempo', null, null);
+        ORDER BY inicio LIMIT 20`, [String(cfg.segundosN)]);
+    for (const s of rows) await evaluar(s, cfg);
     if (Date.now() - ultimoReintento > 60 * 1000) {
       ultimoReintento = Date.now();
       const p = await pool.query(
@@ -423,7 +451,8 @@ async function revisar() {
   } catch (e) { console.error('[BOT-ATC] revision:', e.message); }
   finally { ocupado = false; }
 }
-function iniciar() {
+function iniciar(manager) {
+  if (manager) gestor = manager;
   if (timer) return;
   asegurarTablas().catch((e) => console.error('[BOT-ATC] tablas:', e.message));
   timer = setInterval(revisar, 10 * 1000);
@@ -439,6 +468,7 @@ async function msEsperaReparto(bitrixId) {
   try {
     if (!(await hayLineasActivas())) return 0;
     const cfg = await leerConfig();
+    if (!cfg.aplicar) return 0; // modo recomendar: el reparto no espera
     const { rows } = await pool.query(
       `SELECT telefono, bitrix_id, inicio FROM public.batc_sesiones
         WHERE estado = 'PENDIENTE' AND inicio > NOW() - INTERVAL '10 minutes'`);

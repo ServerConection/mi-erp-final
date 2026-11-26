@@ -3,7 +3,7 @@
 // BOT ATC (piloto) — configuracion desde el ERP (solo ADMINISTRADOR).
 //
 // GET  /api/bot-atc/config        mensajes, segundos y etapas
-// PUT  /api/bot-atc/config        { pregunta, repregunta, plantilla, confirmacion_ventas, segundos, reinicio_horas, etapa_atc, etapa_no_detectado }
+// PUT  /api/bot-atc/config        { modo: recomendar|aplicar, pregunta, plantilla, segundos, reinicio_horas, etapa_atc }
 // GET  /api/bot-atc/etapas        etapas del pipeline NOVONET en Bitrix
 // GET  /api/bot-atc/lineas        lineas de WABOT y si el bot ATC esta activo
 // PUT  /api/bot-atc/lineas/:id    { activo, horario_inicio, horario_fin }
@@ -42,6 +42,7 @@ router.put('/config', async (req, res) => {
     const valores = {};
     for (const k of Object.keys(atc.DEFECTOS)) if (b[k] !== undefined) valores[k] = String(b[k]).slice(0, 4000);
     for (const k of ['pregunta', 'plantilla']) if (valores[k] !== undefined && !valores[k].trim()) return fallo(res, new Error(`El mensaje "${k}" no puede quedar vacío`), 400);
+    if (valores.modo !== undefined && !['recomendar', 'aplicar'].includes(valores.modo)) return fallo(res, new Error('Modo inválido'), 400);
     if (valores.segundos !== undefined) {
       const n = parseInt(valores.segundos, 10);
       if (!(n >= 30 && n <= 600)) return fallo(res, new Error('Los segundos deben estar entre 30 y 600'), 400);
@@ -105,10 +106,11 @@ router.get('/sesiones', async (req, res) => {
   try {
     await atc.asegurarTablas();
     const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 7));
-    const estado = ['PENDIENTE', 'ATC', 'VENTAS', 'NO_DETECTADO'].includes(req.query.estado) ? req.query.estado : null;
+    const estado = ['PENDIENTE', 'EVALUANDO', 'ATC', 'VENTAS', 'NO_DETECTADO'].includes(req.query.estado) ? req.query.estado : null;
     const filas = await pool.query(
       `SELECT s.id, s.conversation_id, s.estado, s.metodo, s.respuesta, s.telefono, s.bitrix_id,
               s.etapa_objetivo, s.etapa_anterior, s.etapa_estado, s.etapa_detalle, s.inicio, s.resuelto_en,
+              s.recomendacion, s.confianza, s.motivo, s.modo, s.textos,
               EXTRACT(EPOCH FROM (s.resuelto_en - s.inicio))::int AS segundos,
               l.name AS linea, COALESCE(c.name, '') AS cliente
          FROM public.batc_sesiones s

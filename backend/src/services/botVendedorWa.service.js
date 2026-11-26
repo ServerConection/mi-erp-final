@@ -68,6 +68,7 @@ async function asesorActivo(conversationId) {
       WHERE conversation_id = $1 AND direction = 'out'
         AND timestamp > NOW() - ($2 || ' minutes')::interval
         AND COALESCE(metadata->>'bot_vendedor', '') <> 'true'
+        AND COALESCE(metadata->>'bot_atc', '') <> 'true'
       LIMIT 1`,
     [conversationId, String(PAUSA_MIN)]);
   return rows.length > 0;

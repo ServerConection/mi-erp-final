@@ -268,6 +268,19 @@ function PestanaMensajes() {
           Enviar la plantilla de ATC cuando no sea intención de compra</label>
         <label className="block"><span className="font-semibold text-slate-700">Primer mensaje al cliente</span>
           <textarea rows={3} value={cfg.saliente_pregunta || ""} onChange={(e) => cambiar("saliente_pregunta", e.target.value)} className="w-full border rounded-lg p-2 font-mono" /></label>
+        <label className="block"><span className="font-semibold text-slate-700">Variaciones del primer mensaje (opcional)</span>
+          <div className="text-xs text-slate-500 mb-1">
+            Separa cada versión con una línea que contenga <b>---</b>. El bot las distribuye entre los contactos. Si lo dejas vacío usa el primer mensaje anterior.
+          </div>
+          <textarea rows={9} value={cfg.saliente_variantes || ""} onChange={(e) => cambiar("saliente_variantes", e.target.value)}
+            placeholder={'Hola, recibimos tu solicitud...\n---\n¡Hola! Queremos ayudarte con tu solicitud...'}
+            className="w-full border rounded-lg p-2 font-mono" />
+          <div className="text-xs text-slate-500 mt-1">
+            {String(cfg.saliente_variantes || "").trim()
+              ? `${String(cfg.saliente_variantes).split(/^\\s*---+\\s*$/m).map((x) => x.trim()).filter(Boolean).length} variación(es) cargada(s)`
+              : "Sin variaciones: se usará el mensaje principal"}
+          </div>
+        </label>
         <label className="block"><span className="font-semibold text-slate-700">Respuesta si es venta</span>
           <textarea rows={2} value={cfg.confirmacion_ventas || ""} onChange={(e) => cambiar("confirmacion_ventas", e.target.value)} className="w-full border rounded-lg p-2 font-mono" /></label>
       </div>

@@ -59,6 +59,17 @@ const DEFECTOS = {
   saliente_intervalo: '45',
   saliente_max: '600',
   saliente_pregunta: '¡Hola! 👋 Te escribimos de *NETLIFE* porque recibimos tu solicitud. ¿Buscas contratar internet o necesitas ayuda con un servicio que ya tienes? Cuéntanos en un mensaje 🙂',
+  // Variaciones opcionales del primer mensaje, separadas por una linea con ---.
+  // Si esta vacio se conserva saliente_pregunta para compatibilidad.
+  saliente_variantes: `¡Hola! 👋 Te escribimos de *NETLIFE* porque recibimos tu solicitud. ¿Deseas contratar internet o necesitas ayuda con un servicio que ya tienes? Cuéntanos en un mensaje 🙂
+---
+¡Hola! Somos *NETLIFE* 😊 Recibimos tu solicitud y queremos ayudarte. ¿Buscas un plan nuevo de internet o necesitas atención para tu servicio actual?
+---
+Hola 👋 Gracias por tu interés en *NETLIFE*. Para orientarte mejor, cuéntanos si deseas contratar internet o si ya eres cliente y necesitas soporte.
+---
+¡Hola! Recibimos tu solicitud de información en *NETLIFE*. ¿Te interesa conocer nuestros planes de internet o necesitas ayuda con un servicio existente?
+---
+Hola 😊 Queremos atender tu solicitud de *NETLIFE*. Indícanos si buscas contratar un servicio nuevo o si necesitas atención como cliente actual.`,
   saliente_plantilla: 'true',
   confirmacion_ventas: '¡Genial! 😊 En breve un asesor de ventas te contacta para ayudarte con tu plan.',
 };
@@ -541,6 +552,23 @@ async function estadoSaliente(msg) {
      ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = 'wabot', actualizado_en = NOW()`, [msg]).catch(() => {});
 }
 
+function variacionesSalientes(cfg) {
+  const cargadas = String(cfg.saliente_variantes || '')
+    .split(/^\s*---+\s*$/m)
+    .map((texto) => texto.trim())
+    .filter(Boolean);
+  return cargadas.length ? cargadas : [String(cfg.saliente_pregunta || '').trim()].filter(Boolean);
+}
+
+// Distribucion estable y pareja: el mismo deal siempre recibe la misma variante
+// aunque el worker se reinicie antes de confirmar el envio.
+function mensajeSaliente(cfg, sesion) {
+  const opciones = variacionesSalientes(cfg);
+  if (!opciones.length) throw new Error('No hay un primer mensaje configurado');
+  const semilla = Number.parseInt(sesion?.bitrix_id || sesion?.id || '0', 10);
+  return opciones[Math.abs(Number.isFinite(semilla) ? semilla : 0) % opciones.length];
+}
+
 // Deals que el bot de gestionables recibio en "Contacto nuevo" en los ultimos 20 min (+ respaldo bitrix_webhook_leads).
 async function detectarDeals(cfg) {
   const candidatos = new Map();
@@ -615,7 +643,7 @@ async function salienteTick(cfg) {
   if (!p) return estadoSaliente('Trabajando: sin deals nuevos pendientes por escribir.');
   ultimoEnvio = Date.now();
   try {
-    await enviar(gestor, cfg.saliente_linea, p.telefono, cfg.saliente_pregunta);
+    await enviar(gestor, cfg.saliente_linea, p.telefono, mensajeSaliente(cfg, p));
     await pool.query(`UPDATE public.batc_sesiones SET estado = 'PENDIENTE', enviado_en = NOW(), inicio = NOW() WHERE id = $1`, [p.id]);
     console.log(`[BOT-ATC] mensaje enviado al deal ${p.bitrix_id}`);
     await estadoSaliente(`Trabajando: último mensaje enviado al deal ${p.bitrix_id}.`);
@@ -664,5 +692,6 @@ async function msEsperaReparto(bitrixId) {
 module.exports = {
   asegurarTablas, leerConfig, guardarConfig, DEFECTOS, lineaActiva, invalidarLineas, atenderSiAplica,
   iniciar, msEsperaReparto, etapasBitrix,
-  _clasificarRapido: clasificarRapido, _normalizarTelefono: normalizarTelefono, // pruebas
+  _clasificarRapido: clasificarRapido, _normalizarTelefono: normalizarTelefono,
+  _variacionesSalientes: variacionesSalientes, _mensajeSaliente: mensajeSaliente, // pruebas
 };

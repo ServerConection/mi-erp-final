@@ -13,12 +13,16 @@ const esAdminGerencia = (perfil) => {
 
 const esSupervisor = (perfil) => normPerfil(perfil).startsWith('SUPERVISOR');
 const esLectorEspecial = (usuario) => normPerfil(usuario) === 'JASIMBANA';
-const puedeAccederHorarios = (perfil, usuario) => esAdminGerencia(perfil) || esSupervisor(perfil) || esLectorEspecial(usuario);
+// Cualquier usuario con sesión entra: el asesor solo ve su propio horario;
+// supervisor, gerencia y administración ven a todos (ver veTodo en horarios.routes.js).
+const puedeAccederHorarios = (perfil) => normPerfil(perfil) !== '';
 
 function empresaHorarios(req) {
   const empresaUsuario = String(req.user?.empresa || '').trim().toUpperCase();
   const solicitada = String(req.query?.empresa || req.body?.empresa || empresaUsuario || 'NOVONET').trim().toUpperCase();
-  if (esSupervisor(req.user?.perfil) && solicitada !== empresaUsuario) return null;
+  // Solo Admin/Gerencia y el lector especial cambian de empresa; el resto queda en la suya.
+  const libre = esAdminGerencia(req.user?.perfil) || esLectorEspecial(req.user?.usuario);
+  if (!libre && solicitada !== (empresaUsuario || 'NOVONET')) return null;
   return EMPRESAS_HORARIOS.has(solicitada) ? solicitada : null;
 }
 

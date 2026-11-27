@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import * as XLSX from "xlsx";
+import { puedeElegirEmpresaHorarios } from "../utils/accesoAdministracion";
 
 const API = import.meta.env.VITE_API_URL;
 const empresaSesion = () => {
@@ -31,11 +32,11 @@ const esAdministrador = () => {
     return false;
   }
 };
-// Admin / Gerencia pueden alternar entre NOVONET y VELSA; el supervisor queda fijo en su empresa.
+// Admin / Gerencia pueden alternar entre NOVONET y VELSA; supervisor y asesor quedan fijos en su empresa.
 const puedeElegirEmpresa = () => {
   try {
     const user = JSON.parse(localStorage.getItem("userProfile") || localStorage.getItem("user") || "{}");
-    return !String(user?.perfil || "").trim().toUpperCase().startsWith("SUPERVISOR");
+    return puedeElegirEmpresaHorarios(user?.perfil, user?.usuario || user?.username);
   } catch {
     return false;
   }

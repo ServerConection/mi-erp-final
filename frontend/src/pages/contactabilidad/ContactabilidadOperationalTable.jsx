@@ -4,13 +4,21 @@ import {
 } from '../../utils/contactabilidadAnalytics.js';
 
 const fmt = (valor) => (valor ? new Date(valor).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' }) : '—');
+const pendienteWabot = (fila) => {
+  const cliente = fila.ultimo_mensaje_cliente_wabot_at
+    ? new Date(fila.ultimo_mensaje_cliente_wabot_at).getTime() : 0;
+  const asesor = fila.ultimo_mensaje_asesor_wabot_at
+    ? new Date(fila.ultimo_mensaje_asesor_wabot_at).getTime() : 0;
+  if (!cliente && !asesor) return '—';
+  return cliente > asesor ? 'ASESOR' : 'CLIENTE';
+};
 const th = { padding: 10, textAlign: 'left', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', fontSize: 11, color: '#475569' };
 const td = { padding: 10, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' };
 
 const COLUMNAS = ['Gravedad', 'Esperando', 'Empresa', 'ID', 'Cliente', 'Asesor', 'Origen', 'Etapa',
   'Msg. cliente', 'Msg. asesor', 'MSG cliente WaBot', 'MSG asesor WaBot',
   'Últ. cliente', 'Últ. asesor', 'Últ. cliente WaBot', 'Últ. asesor WaBot',
-  'Pendiente', 'Chat', ''];
+  'Pendiente', 'Pendiente WaBot', 'Chat', ''];
 
 /**
  * Tabla operativa.
@@ -116,6 +124,7 @@ export default function ContactabilidadOperationalTable({
                   <div style={{ fontSize: 10, color: '#94a3b8' }}>{fmt(fila.ultimo_mensaje_asesor_wabot_at)}</div>
                 </td>
                 <td style={td}>{fila.pendiente_por || '—'}</td>
+                <td style={td}>{pendienteWabot(fila)}</td>
                 <td style={td}>
                   {onVerConversacion && <button type="button" onClick={() => onVerConversacion(fila)}
                     title="Ver la conversación en Bitrix"

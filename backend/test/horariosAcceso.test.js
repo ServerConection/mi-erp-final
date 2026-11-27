@@ -34,3 +34,12 @@ test('jasimbana puede consultar horarios de ambas empresas sin permisos de edici
   assert.equal(empresaHorarios({ ...base, query: { empresa: 'NOVONET' } }), 'NOVONET');
   assert.equal(empresaHorarios({ ...base, query: { empresa: 'VELSA' } }), 'VELSA');
 });
+
+test('asesor entra a horarios, sin ver todo y fijo en su empresa', () => {
+  assert.equal(puedeAccederHorarios('ASESOR'), true);
+  assert.equal(puedeAccederHorarios(''), false);
+  const base = { body: {}, user: { perfil: 'ASESOR', usuario: 'pperez', empresa: 'VELSA' } };
+  assert.equal(empresaHorarios({ ...base, query: { empresa: 'VELSA' } }), 'VELSA');
+  assert.equal(empresaHorarios({ ...base, query: { empresa: 'NOVONET' } }), null);
+  assert.equal(empresaHorarios({ ...base, query: {} }), 'VELSA');
+});

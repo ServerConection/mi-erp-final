@@ -14,12 +14,12 @@ export const puedeAccederAdministracion = (perfil) => perfilAdministracion(perfi
 
 export const esLectorEspecialHorarios = (usuario) => normalizar(usuario) === 'JASIMBANA';
 
-export const puedeAccederHorarios = (perfil, usuario) => {
-  const normalizado = normalizar(perfil);
-  return puedeAccederAdministracion(normalizado)
-    || normalizado.startsWith('SUPERVISOR')
-    || esLectorEspecialHorarios(usuario);
-};
+// Horarios: todos entran. El asesor ve solo su horario; supervisor para arriba ve a todos (lo decide el backend).
+export const puedeAccederHorarios = (perfil) => normalizar(perfil) !== '';
+
+// Solo Admin/Gerencia y el lector especial alternan entre NOVONET y VELSA.
+export const puedeElegirEmpresaHorarios = (perfil, usuario) =>
+  puedeAccederAdministracion(perfil) || esLectorEspecialHorarios(usuario);
 
 // Analista entra únicamente a Comisiones, no al resto de Administración.
 export const puedeAccederComisiones = (perfil) => {

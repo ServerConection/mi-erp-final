@@ -28,19 +28,21 @@ test('TXT acepta 4 o 5 columnas (% ATC opcional)', () => {
   assert.throws(() => parseTxt('id;nombre_bitrix_asesor;gestionables_permitidos;fecha_carga;porcentaje_atc_max\n1;ANA;4;2026-10-07;140\n'));
 });
 
-test('efectividad: meta 30% redondeada hacia arriba; cubrirla habilita', () => {
-  const { bloqueadoPorEfectividad, esVentaSubida, metaVentaSubida } = require('../src/shared/repartoConteo');
-  assert.equal(metaVentaSubida(10), 3);
-  assert.equal(metaVentaSubida(7), 3);   // 2,1 → 3
-  assert.equal(metaVentaSubida(5), 2);   // 1,5 → 2
+test('efectividad: meta Jotform 50% y tope gestionable 45%', () => {
+  const { bloqueadoPorEfectividad, esVentaSubida, metaVentaSubida, topeGestionables } = require('../src/shared/repartoConteo');
+  assert.equal(metaVentaSubida(10), 5);
+  assert.equal(metaVentaSubida(7), 4);
+  assert.equal(metaVentaSubida(5), 3);
   assert.equal(metaVentaSubida(0), 0);
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 3, venta: 0 }), true);   // ejemplo de Bryan
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 2, venta: 0 }), false);  // aún en plazo
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 5, venta: 3 }), false);  // cubrió su 30%
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 7, vencidos: 3, venta: 2 }), true);    // meta 3
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 5, vencidos: 2, venta: 1 }), true);    // meta 2
-  assert.equal(bloqueadoPorEfectividad({ gestionables: 5, vencidos: 2, venta: 2 }), false);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 5, venta: 4 }), true);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 4, venta: 0 }), false);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 10, vencidos: 5, venta: 5 }), false);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 7, vencidos: 4, venta: 3 }), true);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 5, vencidos: 3, venta: 2 }), true);
+  assert.equal(bloqueadoPorEfectividad({ gestionables: 5, vencidos: 3, venta: 3 }), false);
   assert.equal(bloqueadoPorEfectividad({ gestionables: 0, vencidos: 0 }), false);
+  assert.equal(topeGestionables(10), 4);
+  assert.equal(topeGestionables(20), 9);
   assert.equal(esVentaSubida('Venta Subida'), true);
   assert.equal(esVentaSubida('VENTA_SUBIDA'), true);
   assert.equal(esVentaSubida('Venta por otra pauta de la empresa'), false);

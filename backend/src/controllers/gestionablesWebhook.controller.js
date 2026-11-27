@@ -32,7 +32,7 @@ const { getEmpresa, empresaValida } = require('../shared/repartoEmpresas');
 const { elegirAsesor, ordenarPorTurno, normalizarNombre, dentroDeHorario, cupoDeEntregaCola } = require('../shared/repartoGestionables');
 const { leerConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { leerAccess, estadoAccess } = require('../shared/repartoAccess');
-const { conteoGestionablesHoy, bloqueadoPorAtc, bloqueadoPorEfectividad } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorEfectividad, topeGestionables } = require('../shared/repartoConteo');
 
 // Opcional: si se define, antes de escribir se verifica que el deal siga
 // realmente en esta etapa (evita pisar el campo si el lead ya avanzó antes
@@ -164,9 +164,8 @@ const crearReparto = (empresa) => {
         WHERE g.fecha_carga = ${HOY_EC}
         GROUP BY 1, 2, 3`
     );
-    // Regla vigente: el cupo es el TOTAL de leads entregados hoy (bot + humano,
-    // en cualquier etapa). Además, el ATC no puede llegar al % de sus permitidos
-    // (10 permitidos y 50% → al llegar a 5 ATC ya no recibe).
+    // Regla vigente: solo los gestionables consumen el cupo, hasta el 45% de
+    // los leads permitidos. ATC deja de ser una limitante independiente.
     const conteo = await conteoGestionablesHoy(db, empresa);
     for (const r of rows) {
       const c = conteo ? conteo.get(normalizarNombre(r.nombre)) : null;
@@ -174,10 +173,11 @@ const crearReparto = (empresa) => {
       // ni los de Duplicado / Regularización / Remarketing
       r.asignados = Math.max(0, r.asignados - (c?.sin_conteo || 0) - (c?.dup_reg_rmk || 0));
       r.total = r.asignados;
-      r.bloqueado_atc = conteo ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: c?.atc || 0 }) : false;
-      // Efectividad: vencidos (+3 h sin Venta Subida) ≥ meta y aún no cubre su meta (30% ↑) → no recibe
-      r.bloqueado_efectividad = conteo ? bloqueadoPorEfectividad({ gestionables: c?.gestionables || 0, vencidos: c?.vencidos || 0, venta: c?.venta || 0 }) : false;
-      r.bloqueado = r.bloqueado_atc || r.bloqueado_efectividad;
+      r.gestionables = c?.gestionables || 0;
+      r.tope_gestionables = topeGestionables(r.permitidos);
+      r.asignados = r.gestionables;
+      r.bloqueado_efectividad = conteo && c?.venta !== null ? bloqueadoPorEfectividad({ gestionables: r.gestionables, vencidos: c?.vencidos || 0, venta: c?.venta || 0 }) : false;
+      r.bloqueado = r.bloqueado_efectividad;
     }
     const estNorm = normalizarNombre(estacion);
     const sinEstacion = rows.filter((r) => normalizarNombre(r.nombre) !== estNorm);
@@ -189,12 +189,12 @@ const crearReparto = (empresa) => {
           && (!access || estadoAccess(access, r.nombre).conectado))
       : sinEstacion;
     return {
-      disponibles: enLineaRows.filter((r) => r.asignados < r.permitidos && !r.bloqueado),
-      hayConCupo: sinEstacion.some((r) => r.asignados < r.permitidos),
-      // Hay asesores en línea con cupo, pero todos frenados por ATC o efectividad
-      soloBloqueadosAtc: enLineaRows.some((r) => r.asignados < r.permitidos)
-        && enLineaRows.every((r) => !(r.asignados < r.permitidos) || r.bloqueado),
-      porEfectividad: enLineaRows.some((r) => r.asignados < r.permitidos && r.bloqueado_efectividad),
+      disponibles: enLineaRows.filter((r) => r.gestionables < r.tope_gestionables && !r.bloqueado),
+      hayConCupo: sinEstacion.some((r) => r.gestionables < r.tope_gestionables),
+      // Hay asesores en línea con cupo, pero todos frenados por efectividad.
+      soloBloqueados: enLineaRows.some((r) => r.gestionables < r.tope_gestionables)
+        && enLineaRows.every((r) => !(r.gestionables < r.tope_gestionables) || r.bloqueado),
+      porEfectividad: enLineaRows.some((r) => r.gestionables < r.tope_gestionables && r.bloqueado_efectividad),
     };
   };
 
@@ -266,12 +266,12 @@ const crearReparto = (empresa) => {
         return { estado: 'ya_repartido', elegido: { nombre: ya.rows[0].asesor_asignado } };
       }
 
-      const { disponibles, hayConCupo, soloBloqueadosAtc, porEfectividad } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
+      const { disponibles, hayConCupo, soloBloqueados, porEfectividad } = await asesoresDeHoy(client, enLinea, cfg.estacion_nombre);
       const elegido = elegirAsesor(candidatos(disponibles, enLinea), Math.random, opciones);
 
       if (!elegido) {
         await client.query('ROLLBACK');
-        return { estado: 'sin_disponible', motivo: soloBloqueadosAtc ? (porEfectividad ? 'limite_efectividad' : 'limite_atc') : (enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite') };
+        return { estado: 'sin_disponible', motivo: soloBloqueados && porEfectividad ? 'limite_efectividad' : (enLinea && hayConCupo ? 'nadie_en_linea' : 'todos_al_limite') };
       }
 
       const userId = await idUsuarioBitrix(elegido.nombre);
@@ -317,8 +317,7 @@ const crearReparto = (empresa) => {
     cola_en_espera:   'Hay leads esperando antes que este',
     en_estacion:      'Ya estaba a nombre de la estación',
     reintento_bitrix: 'Bitrix estaba saturado; se reintenta desde la cola',
-    limite_atc:       'Los asesores con cupo superaron su % de ATC',
-    limite_efectividad: 'Los asesores con cupo tienen leads vencidos sin Venta Subida',
+    limite_efectividad: 'Los asesores con cupo no alcanzaron su meta de ingresos Jotform',
   };
   const enviarAEstacion = async (bitrixId, nombreOriginal, motivo, cfg) => {
     const userId = await idUsuarioBitrix(cfg.estacion_nombre);

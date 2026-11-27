@@ -21,16 +21,13 @@ const { getEmpresa } = require('./repartoEmpresas');
 
 const HOY_EC = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
 
-// Regla de efectividad: cada lead tiene 3 horas desde que se le entregó al
-// asesor para pasar a "Venta Subida". Meta = 30% de sus gestionables del día,
-// redondeado SIEMPRE hacia arriba (7 → 2,1 → 3; 5 → 1,5 → 2).
-// Deja de recibir si ya tiene tantos leads vencidos (+3 h sin subir) como su
-// meta Y todavía no llega a la meta de Ventas Subidas. Si cubre la meta, sigue
-// recibiendo aunque tenga leads vencidos.
-// Plazo por empresa (Novonet 3 h, Velsa 8 h) en shared/repartoEmpresas.js
+// Regla de efectividad: después de 8 horas se exige que los ingresos Jotform
+// registrados HOY en envios_ventas equivalgan al 50% de los gestionables de
+// hoy. La venta puede pertenecer a un lead recibido en cualquier fecha.
 const PLAZO_VENTA_HORAS = Number(process.env.GESTIONABLES_PLAZO_VENTA_HORAS) || 3;
 const plazoVentaHoras = (empresa) => getEmpresa(empresa).plazoVentaHoras || PLAZO_VENTA_HORAS;
-const PCT_SIN_VENTA_MAX = Number(process.env.GESTIONABLES_PCT_SIN_VENTA) || 30;
+const PCT_VENTAS_JOT_MIN = 50;
+const PCT_GESTIONABLES_MAX = 45;
 const normEtapa = (etapa) => String(etapa || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/_/g, ' ').trim().replace(/\s+/g, ' ').toUpperCase();
 const esVentaSubida = (etapa) => normEtapa(etapa) === 'VENTA SUBIDA';
@@ -38,14 +35,19 @@ const esVentaSubida = (etapa) => normEtapa(etapa) === 'VENTA SUBIDA';
 // para detectar si alguien mueve leads ahí para seguir recibiendo).
 const ETAPAS_FUERA_DEL_TOTAL = new Set(['DUPLICADO', 'DUPLLICADO', 'REGULARIZACION', 'REMARKETING']);
 const esEtapaFueraDelTotal = (etapa) => ETAPAS_FUERA_DEL_TOTAL.has(normEtapa(etapa));
-const metaVentaSubida = (gestionables, pct = PCT_SIN_VENTA_MAX) =>
+const metaVentaSubida = (gestionables, pct = PCT_VENTAS_JOT_MIN) =>
   Math.ceil(Math.round((Number(gestionables) || 0) * pct) / 100);
-const bloqueadoPorEfectividad = ({ gestionables, vencidos, venta = 0, pct = PCT_SIN_VENTA_MAX }) => {
+const bloqueadoPorEfectividad = ({ gestionables, vencidos, venta = 0, pct = PCT_VENTAS_JOT_MIN }) => {
   const meta = metaVentaSubida(gestionables, pct);
   if (!meta || !vencidos) return false;
-  if ((Number(venta) || 0) >= meta) return false;   // cubrió su 30%: habilitado
+  if ((Number(venta) || 0) >= meta) return false;   // cubrió su 50%: habilitado
   return vencidos >= meta;
 };
+
+// El asesor nunca puede conservar más del 45% de su cupo como gestionables.
+// Se redondea hacia abajo para no superar el porcentaje solicitado.
+const topeGestionables = (permitidos, pct = PCT_GESTIONABLES_MAX) =>
+  Math.floor((Number(permitidos) || 0) * pct / 100);
 
 // ¿La etapa es ATC? (ATC, ATC/SOPORTE, ATC SOPORTE, atc…)
 const esEtapaAtc = (etapa) => /^ATC([ /-]?SOPORTE)?$/.test(
@@ -68,6 +70,57 @@ const bloqueadoPorAtc = ({ permitidos, atc, maxPct = ATC_MAX_PCT }) => {
   const tope = topeAtc({ permitidos, maxPct });
   if (tope === null || !permitidos) return false;
   return (Number(atc) || 0) >= tope;
+};
+
+const conteoVentasJotHoy = async (empresa) => {
+  const E = getEmpresa(empresa);
+  const origenJot = `JOTFORM_${E.etiqueta}`;
+  const { rows } = await db.query(
+    `SELECT e.codigo_asesor,
+            NULLIF(BTRIM(e.usuario), '') AS usuario_venta,
+            NULLIF(BTRIM(CONCAT_WS(' ', u.nombres, u.apellidos)), '') AS nombre_usuario,
+            COUNT(DISTINCT e.id)::int AS ventas
+       FROM public.envios_ventas e
+       LEFT JOIN public.usuarios u ON u.id = e.usuario_id
+      WHERE UPPER(BTRIM(e.distribuidor_autorizado)) = $1
+        AND e.estatus_envio IS DISTINCT FROM 'BORRADOR'
+        AND e.origen_dato IN ($2, 'ERP')
+        AND (CASE
+               WHEN e.origen_dato = 'JOTFORM_NOVONET'
+                 THEN NULLIF(e.fecha_registro_sistema, '')::timestamp::date
+               ELSE (NULLIF(e.fecha_registro_sistema, '')::timestamptz AT TIME ZONE 'America/Guayaquil')::date
+             END) = ${HOY_EC}
+      GROUP BY e.codigo_asesor, e.usuario, u.nombres, u.apellidos`,
+    [E.etiqueta, origenJot]
+  );
+
+  let aliases = [];
+  try {
+    aliases = (await db.query(
+      `SELECT codigo_asesor, nombre_bitrix
+         FROM public.asesor_alias_bitrix
+        WHERE empresa = $1 AND activo`, [E.etiqueta]
+    )).rows;
+  } catch (e) {
+    console.warn('[gestionables] No se pudo leer asesor_alias_bitrix:', e.message);
+  }
+  const nombresPorCodigo = new Map();
+  for (const a of aliases) {
+    const codigo = normalizarNombre(a.codigo_asesor);
+    if (!nombresPorCodigo.has(codigo)) nombresPorCodigo.set(codigo, new Set());
+    nombresPorCodigo.get(codigo).add(normalizarNombre(a.nombre_bitrix));
+  }
+  const ventas = new Map();
+  for (const r of rows) {
+    const nombres = new Set([
+      normalizarNombre(r.nombre_usuario),
+      normalizarNombre(r.usuario_venta),
+      ...(nombresPorCodigo.get(normalizarNombre(r.codigo_asesor)) || []),
+    ]);
+    nombres.delete('');
+    for (const nombre of nombres) ventas.set(nombre, (ventas.get(nombre) || 0) + Number(r.ventas || 0));
+  }
+  return ventas;
 };
 
 const conteoGestionablesHoy = async (erpDb, empresa) => {
@@ -98,9 +151,12 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
     console.error('[gestionables] No se pudo leer la etapa de los leads (se cuenta todo como consumido):', e.message);
     return null;
   }
+  let ventasJot = null;
+  try { ventasJot = await conteoVentasJotHoy(E.clave); }
+  catch (e) { console.error('[gestionables] No se pudo contar ingresos Jotform de hoy:', e.message); }
   for (const a of asig.rows) {
     const k = normalizarNombre(a.asesor_asignado);
-    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: 0, vencidos: 0, sin_conteo: 0, sin_conteo_humano: 0, dup_reg_rmk: 0, dup_reg_rmk_humano: 0 };
+    const x = m.get(k) || { total: 0, gestionables: 0, atc: 0, venta: ventasJot ? (ventasJot.get(k) || 0) : null, vencidos: 0, sin_conteo: 0, sin_conteo_humano: 0, dup_reg_rmk: 0, dup_reg_rmk_humano: 0 };
     // Origen "FB Messenger - Novo" (y otros configurados): se entregó en orden,
     // pero no suma al total de leads, ni ATC, ni gestionables, ni efectividad.
     if (sinConteo.has(String(a.bitrix_deal_id))) {
@@ -121,12 +177,12 @@ const conteoGestionablesHoy = async (erpDb, empresa) => {
     const gestionable = !etapa || esEtapaGestionable(etapa);
     if (gestionable) x.gestionables += 1;
     if (etapa && esEtapaAtc(etapa)) x.atc += 1;
-    if (etapa && esVentaSubida(etapa)) x.venta += 1;
-    // Gestionable con más de 3 h desde la entrega y todavía sin Venta Subida
-    else if (gestionable && a.creado_en && Date.now() - new Date(a.creado_en).getTime() >= plazoVentaHoras(empresa) * 3600 * 1000) x.vencidos += 1;
+    // Gestionable con más de 8 h desde la entrega. La meta ya no se valida
+    // contra la etapa de este lead, sino contra los ingresos Jotform del día.
+    if (gestionable && a.creado_en && Date.now() - new Date(a.creado_en).getTime() >= plazoVentaHoras(empresa) * 3600 * 1000) x.vencidos += 1;
     m.set(k, x);
   }
   return m;
 };
 
-module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, esEtapaFueraDelTotal, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_SIN_VENTA_MAX };
+module.exports = { conteoGestionablesHoy, esEtapaAtc, bloqueadoPorAtc, topeAtc, esVentaSubida, esEtapaFueraDelTotal, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, topeGestionables, PLAZO_VENTA_HORAS, plazoVentaHoras, PCT_VENTAS_JOT_MIN, PCT_GESTIONABLES_MAX };

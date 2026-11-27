@@ -22,9 +22,30 @@ const EMPRESAS = ['NOVONET', 'VELSA'];
 const COOLDOWN_MANUAL_MS = 60_000;
 const LOCK_MANUAL = 918273642;
 const CACHE_UMBRALES_MS = 60_000;
+// El tablero se actualiza cada minuto. Esta ventana agrupa pestañas y usuarios
+// con los mismos filtros sin ocultar cambios durante un ciclo completo.
+const CACHE_ANALYTICS_MS = 45_000;
+const CACHE_ANALYTICS_MAX = 100;
 
 let cacheUmbrales = { valor: null, at: 0 };
 let ultimoRefrescoManual = 0;
+const cacheAnalytics = new Map();
+
+function claveAnalytics(query = {}) {
+  return JSON.stringify(Object.entries(query)
+    .filter(([clave]) => clave !== '_fresh')
+    .sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function limpiarCacheAnalytics() {
+  const ahora = Date.now();
+  for (const [clave, entrada] of cacheAnalytics) {
+    if (!entrada.promesa && ahora - entrada.at >= CACHE_ANALYTICS_MS) cacheAnalytics.delete(clave);
+  }
+  while (cacheAnalytics.size > CACHE_ANALYTICS_MAX) {
+    cacheAnalytics.delete(cacheAnalytics.keys().next().value);
+  }
+}
 
 /** Umbrales de SLA con cache corta: se leen de BD sin castigar cada request. */
 async function umbralesVigentes() {
@@ -129,8 +150,37 @@ async function analytics(req, res, deps = {}) {
     const umbrales = await umbralesVigentes();
     const columnas = await obtenerCapacidades(pool);
     const obtener = deps.obtener || ((query) => obtenerAnalytics(pool, query, { umbrales, columnas }));
-    const data = await obtener(req.query);
-    res.json({ success: true, data, generado_at: new Date().toISOString() });
+    const usarCache = !deps.obtener && req.query?._fresh !== '1';
+    const clave = claveAnalytics(req.query);
+    const ahora = Date.now();
+    let entrada = usarCache ? cacheAnalytics.get(clave) : null;
+    let cache = 'MISS';
+
+    if (entrada?.data && ahora - entrada.at < CACHE_ANALYTICS_MS) {
+      cache = 'HIT';
+    } else {
+      if (!entrada?.promesa) {
+        const promesa = obtener(req.query).then((data) => {
+          cacheAnalytics.set(clave, { data, at: Date.now(), promesa: null });
+          limpiarCacheAnalytics();
+          return data;
+        }).catch((error) => {
+          cacheAnalytics.delete(clave);
+          throw error;
+        });
+        entrada = { data: null, at: ahora, promesa };
+        if (usarCache) cacheAnalytics.set(clave, entrada);
+      } else {
+        cache = 'COALESCED';
+      }
+      const data = await entrada.promesa;
+      entrada = { data, at: Date.now(), promesa: null };
+    }
+
+    // Algunos consumidores de prueba implementan el contrato JSON minimo de
+    // Express y no exponen set(); la cabecera es diagnostica, no funcional.
+    res.set?.('X-Contactabilidad-Cache', cache);
+    res.json({ success: true, data: entrada.data, generado_at: new Date(entrada.at).toISOString() });
   } catch (error) {
     return fallo(res, error, 'Error calculando inteligencia de Contactabilidad', 'analytics');
   }

@@ -115,14 +115,30 @@ const PAGINA_APP = `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">${SDK}
 <title>Automarcador</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f5f7fa;color:#263238;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
-.wrap{max-width:560px;margin:24px auto;padding:0 16px}.card{background:#fff;border:1px solid #dfe6ec;border-radius:16px;padding:22px;box-shadow:0 8px 24px rgba(38,50,56,.06);margin-bottom:14px}
-h1{font-size:20px;margin:0 0 4px}.muted{color:#78909c;font-size:13px}.stats{display:flex;gap:10px;margin-top:14px}
-.stat{flex:1;text-align:center;background:#f5f7fa;border-radius:10px;padding:10px}.stat b{display:block;font-size:22px}
-.actual{font-size:22px;font-weight:700;margin:6px 0}.estado{font-size:14px;color:#1687d9;font-weight:600}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}button{border:0;border-radius:9px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer}
-.go{background:#16a34a;color:#fff}.stop{background:#dc2626;color:#fff}.sec{background:#eef2f5;color:#455a64}button:disabled{opacity:.45;cursor:default}
-.err{color:#c62828;font-size:13px;margin-top:10px}.hidden{display:none}.tipo{background:#eef2f5;color:#263238;font-weight:600}.tipo.sel{background:#1687d9;color:#fff}
+*{box-sizing:border-box}
+:root{--navy:#17233c;--blue:#2563eb;--blue-soft:#eff6ff;--slate:#64748b;--line:#e2e8f0;--canvas:#f3f6fb}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#fff 0,#f7f9fc 38%,var(--canvas) 100%);color:var(--navy);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button,select{font:inherit}.wrap{width:min(760px,calc(100% - 32px));margin:32px auto;padding-bottom:32px}
+.card{position:relative;overflow:hidden;background:rgba(255,255,255,.96);border:1px solid rgba(203,213,225,.82);border-radius:20px;padding:24px 26px;box-shadow:0 14px 38px rgba(15,23,42,.07),0 2px 6px rgba(15,23,42,.03);margin-bottom:16px}
+.card:first-child:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,#2563eb,#7c3aed,#ec4899)}
+h1{display:flex;align-items:center;gap:10px;font-size:22px;line-height:1.2;letter-spacing:-.35px;margin:2px 0 5px;color:#0f172a}
+h1:before{content:"";width:38px;height:38px;flex:0 0 38px;border-radius:12px;background:#eff6ff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z'/%3E%3C/svg%3E") center/20px no-repeat}
+.muted{color:var(--slate);font-size:13px;line-height:1.45}#quien{margin-left:48px;text-transform:uppercase;letter-spacing:.055em;font-size:11px;font-weight:650}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px}
+.stat{position:relative;text-align:left;background:#f8fafc;border:1px solid #edf2f7;border-radius:14px;padding:15px 16px}.stat:after{content:"";position:absolute;top:16px;right:16px;width:8px;height:8px;border-radius:50%;background:#cbd5e1}.stat:nth-child(2):after{background:#22c55e}.stat:nth-child(3):after{background:#f59e0b}
+.stat b{display:block;font-size:26px;line-height:1.05;margin-bottom:6px;color:#0f172a;font-variant-numeric:tabular-nums}.stat .muted{font-size:12px}
+.actual{font-size:24px;font-weight:750;letter-spacing:-.35px;margin:7px 0 3px;color:#0f172a;overflow-wrap:anywhere}.estado{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#1d4ed8;font-weight:700;margin-top:4px}.estado:not(:empty):before{content:"";width:7px;height:7px;border-radius:50%;background:#3b82f6;box-shadow:0 0 0 4px #dbeafe}
+.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px}button{border:1px solid transparent;border-radius:10px;padding:11px 17px;font-size:13px;font-weight:720;line-height:1.2;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,background .15s ease,border-color .15s ease}
+button:hover:not(:disabled){transform:translateY(-1px)}button:focus-visible,select:focus-visible{outline:3px solid rgba(37,99,235,.22);outline-offset:2px}
+.go{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;box-shadow:0 6px 14px rgba(22,163,74,.18)}.go:hover:not(:disabled){box-shadow:0 8px 18px rgba(22,163,74,.25)}
+.stop{background:#fff1f2;color:#be123c;border-color:#fecdd3}.stop:hover:not(:disabled){background:#ffe4e6}.sec{background:#f8fafc;color:#334155;border-color:var(--line)}.sec:hover:not(:disabled){background:#fff;border-color:#94a3b8;box-shadow:0 4px 10px rgba(15,23,42,.06)}button:disabled{opacity:.45;cursor:default}
+label.muted{display:flex;align-items:center;gap:7px;margin-left:auto}select{appearance:none;min-width:58px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:7px 25px 7px 9px;color:#334155;font-size:12px;font-weight:700;background-image:linear-gradient(45deg,transparent 50%,#64748b 50%),linear-gradient(135deg,#64748b 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 9px) 50%;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+.err{color:#b42318;background:#fff1f0;border-radius:10px;font-size:13px;font-weight:600;margin-top:12px;padding:0}.err:not(:empty){border:1px solid #ffccc7;padding:10px 12px}.hidden{display:none!important}
+#cardActual,#cardTipo{animation:entrada .25s ease-out}.tipo{background:#f8fafc;color:#334155;border-color:var(--line);font-weight:650}.tipo:hover:not(:disabled){background:var(--blue-soft);border-color:#bfdbfe;color:#1d4ed8}.tipo.sel{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 5px 12px rgba(37,99,235,.2)}
+#cardTipo>.muted:first-child,#cardActual>.muted:first-child{font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:#64748b}#tipos{gap:8px;margin-top:14px}#tipos .tipo{padding:10px 14px}
+@keyframes entrada{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@media(max-width:620px){.wrap{width:min(100% - 20px,760px);margin:14px auto}.card{border-radius:16px;padding:20px 18px}.stats{grid-template-columns:1fr}.stat{display:flex;align-items:center;justify-content:space-between;padding:12px 14px}.stat b{margin:0;order:2;font-size:23px}.stat:after{display:none}#quien{margin-left:0;margin-top:10px}label.muted{width:100%;margin:4px 0 0}.actual{font-size:20px}button{flex-grow:1}.tipo{flex-grow:0}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><div class="wrap">
 <div class="card"><h1>📞 Automarcador</h1><div class="muted" id="quien">Conectando con Bitrix…</div>
 <div class="stats"><div class="stat"><b id="pend">–</b><span class="muted">Pendientes</span></div>

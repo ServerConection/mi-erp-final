@@ -6,6 +6,7 @@ import TablaKpiComercial from "../components/TablaKpiComercial";
 import EfectividadDiaria from "../components/EfectividadDiaria";
 import { useCargaDiferida, EstilosCarga, BarraCarga } from "../components/FeedbackCarga";
 import { fetchConSesion } from "../utils/sesion";
+import { registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
 import TablaOrigenesEtapas from '../components/TablaOrigenesEtapas';
 import { TOOLTIPS_INDICADORES as TIP } from "../utils/indicadoresTooltips";
 import { calcularStatsIndicadores } from "../utils/indicadoresStats";
@@ -604,6 +605,7 @@ export default function ReporteComercialCore({
   apiBase = '/api/indicadores',
   empresa = 'NOVONET',
 } = {}) {
+  usarAuditoriaModulo('INDICADORES', useEffect, empresa);
   const esPipelineWebhook = ['SEMILLERO', 'VENTAENLINEA'].includes(empresa.toUpperCase());
   const [tabActiva, setTabActiva]       = useState("GENERAL");
   const [loading, setLoading]           = useState(false);
@@ -2144,7 +2146,7 @@ ${asesoresPDF.length>0?`
                   onKeyDown={(e) => { if (e.key === "Enter") { setFiltrosAplicados(filtros); fetchDashboard(filtros); } }}
                 />
               </div>
-              <button onClick={() => { setFiltrosAplicados(filtros); fetchDashboard(filtros); }} disabled={loading} aria-busy={loading} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-70 disabled:cursor-wait text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
+              <button onClick={() => { registrarFiltrosModulo('INDICADORES', filtros, `Indicadores ${empresa}`, empresa); setFiltrosAplicados(filtros); fetchDashboard(filtros); }} data-audit-manual="true" disabled={loading} aria-busy={loading} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-70 disabled:cursor-wait text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 uppercase">{loading ? "CARGANDO..." : "APLICAR FILTROS"}</button>
               <button onClick={generarInforme360} className="bg-slate-800 hover:bg-slate-700 text-white h-[42px] rounded-xl text-[10px] font-black shadow-lg transition-all active:scale-95 uppercase flex items-center justify-center gap-1.5">
                 <span>📄</span> Informe 360°
               </button>

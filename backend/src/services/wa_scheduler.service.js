@@ -35,9 +35,12 @@ class SchedulerService {
     await this._checkWelcomeNotifications()
     await this._classifyWelcomeResponses()
     await this._checkCampanasPausadasPorHorario()
+    await this._checkCierreCampanas()
   }
 
   async _checkScheduledCampaigns() {
+    // Fuera de la jornada 07:00–21:00 no se inicia ni reanuda nada.
+    if (!CampaignEngine.dentroJornadaGlobal()) return
     try {
       const res = await query(
         `SELECT id, name FROM campaigns
@@ -61,7 +64,30 @@ class SchedulerService {
   // configurado (días/horas). En cuanto vuelven a estar dentro de la
   // ventana permitida, se reanudan solas — no hace falta que nadie entre
   // a darle "Reanudar" a mano cada mañana.
+  // Cierre diario (20:00–21:00): cada campaña ABIERTA (ya envió a todos)
+  // cuya cierre_at ya pasó se finaliza y se envía su resumen.
+  async _checkCierreCampanas() {
+    if (typeof this.campaignEngine?.cerrar !== 'function') return
+    try {
+      const res = await query(
+        `SELECT id, name FROM campaigns
+          WHERE status = 'abierta' AND cierre_at IS NOT NULL AND cierre_at <= NOW()
+          ORDER BY cierre_at LIMIT 20`)
+      for (const c of res.rows) {
+        try {
+          await this.campaignEngine.cerrar(c.id)
+        } catch (e) {
+          console.warn(`[Scheduler] No se pudo cerrar la campaña "${c.name}": ${e.message}`)
+        }
+      }
+    } catch (e) {
+      console.warn('[Scheduler] _checkCierreCampanas:', e.message)
+    }
+  }
+
   async _checkCampanasPausadasPorHorario() {
+    // Fuera de la jornada 07:00–21:00 no se inicia ni reanuda nada.
+    if (!CampaignEngine.dentroJornadaGlobal()) return
     try {
       const res = await query(
         `SELECT id, name, line_id, line_ids, send_days, send_hour_from, send_hour_to FROM campaigns

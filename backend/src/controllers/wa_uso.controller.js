@@ -8,6 +8,76 @@ const EMPRESAS = {
   NOVONET: 'gestionables_asignaciones',
   VELSA: 'velsa_gestionables_asignaciones',
 };
+const MODULOS_ACCESO = new Set(['INDICADORES', 'CONTACTABILIDAD', 'VISTA_ASESOR']);
+let tablaAccesosPromise;
+
+function asegurarTablaAccesos() {
+  if (!tablaAccesosPromise) tablaAccesosPromise = db.query(`
+    CREATE TABLE IF NOT EXISTS public.accesos_modulos (
+      id BIGSERIAL PRIMARY KEY,
+      usuario_id BIGINT NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+      empresa VARCHAR(30) NOT NULL,
+      modulo VARCHAR(30) NOT NULL CHECK (modulo IN ('INDICADORES','CONTACTABILIDAD','VISTA_ASESOR')),
+      modulo_empresa VARCHAR(30),
+      accedido_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_accesos_modulos_fecha_empresa
+      ON public.accesos_modulos (accedido_en DESC, empresa, modulo);
+    CREATE TABLE IF NOT EXISTS public.acciones_modulos (
+      id BIGSERIAL PRIMARY KEY,
+      usuario_id BIGINT NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+      empresa VARCHAR(30) NOT NULL,
+      modulo VARCHAR(30) NOT NULL CHECK (modulo IN ('INDICADORES','CONTACTABILIDAD','VISTA_ASESOR')),
+      modulo_empresa VARCHAR(30),
+      accion VARCHAR(40) NOT NULL,
+      detalle TEXT,
+      realizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_acciones_modulos_fecha_empresa
+      ON public.acciones_modulos (realizado_en DESC, empresa, modulo);
+    ALTER TABLE public.acciones_modulos ALTER COLUMN detalle TYPE TEXT;
+    ALTER TABLE public.accesos_modulos ADD COLUMN IF NOT EXISTS modulo_empresa VARCHAR(30);
+    ALTER TABLE public.acciones_modulos ADD COLUMN IF NOT EXISTS modulo_empresa VARCHAR(30);
+  `).catch((error) => { tablaAccesosPromise = null; throw error; });
+  return tablaAccesosPromise;
+}
+
+async function registrarAcceso(req, res) {
+  const modulo = String(req.body?.modulo || '').trim().toUpperCase();
+  const empresa = String(req.user?.empresa || '').trim().toUpperCase();
+  const moduloEmpresa = String(req.body?.modulo_empresa || '').trim().toUpperCase();
+  if (!MODULOS_ACCESO.has(modulo)) return res.status(400).json({ success: false, error: 'Modulo no valido' });
+  if (!EMPRESAS[empresa]) return res.status(400).json({ success: false, error: 'Empresa no valida' });
+  try {
+    await asegurarTablaAccesos();
+    await db.query('INSERT INTO public.accesos_modulos (usuario_id, empresa, modulo, modulo_empresa) VALUES ($1, $2, $3, $4)',
+      [req.user.id, empresa, modulo, EMPRESAS[moduloEmpresa] ? moduloEmpresa : null]);
+    return res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('[wa-uso/acceso]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo registrar el acceso' });
+  }
+}
+
+async function registrarAccion(req, res) {
+  const modulo = String(req.body?.modulo || '').trim().toUpperCase();
+  const empresa = String(req.user?.empresa || '').trim().toUpperCase();
+  const moduloEmpresa = String(req.body?.modulo_empresa || '').trim().toUpperCase();
+  const accion = String(req.body?.accion || '').trim().toUpperCase().slice(0, 40);
+  const detalle = String(req.body?.detalle || '').trim().replace(/\s+/g, ' ').slice(0, 2000);
+  if (!MODULOS_ACCESO.has(modulo) || !accion) return res.status(400).json({ success: false, error: 'Accion no valida' });
+  if (!EMPRESAS[empresa]) return res.status(400).json({ success: false, error: 'Empresa no valida' });
+  try {
+    await asegurarTablaAccesos();
+    await db.query(`INSERT INTO public.acciones_modulos (usuario_id, empresa, modulo, modulo_empresa, accion, detalle)
+                    VALUES ($1, $2, $3, $4, $5, $6)`, [req.user.id, empresa, modulo,
+      EMPRESAS[moduloEmpresa] ? moduloEmpresa : null, accion, detalle || null]);
+    return res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('[wa-uso/accion]', error);
+    return res.status(500).json({ success: false, error: 'No se pudo registrar la accion' });
+  }
+}
 
 const fechaValida = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 const nombreClave = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -93,6 +163,7 @@ async function reporte(req, res) {
   const empresas = empresa ? [empresa] : Object.keys(EMPRESAS);
 
   try {
+    await asegurarTablaAccesos();
     const { rows: inicioRows } = await db.query(`
       SELECT MIN((consultado_en AT TIME ZONE 'America/Guayaquil')::date)::text AS fecha
       FROM public.coverage_consultas
@@ -102,7 +173,7 @@ async function reporte(req, res) {
       : null;
     const filtroEmpresa = empresa ? 'AND UPPER(BTRIM(u.empresa)) = $3' : '';
     const params = empresa ? [rango.desde, rango.hasta, empresa] : [rango.desde, rango.hasta];
-    const [wabot, consultas, asignaciones] = await Promise.all([
+    const [wabot, acciones, accesos, consultas, asignaciones] = await Promise.all([
       db.query(`
         SELECT (m.timestamp AT TIME ZONE 'America/Guayaquil')::date::text AS fecha,
                l.created_by AS usuario_id,
@@ -121,6 +192,34 @@ async function reporte(req, res) {
         WHERE (m.timestamp AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
           ${filtroEmpresa}
         GROUP BY 1,2,3,4 ORDER BY 1 DESC, usos DESC
+      `, params),
+      db.query(`
+        SELECT a.id, EXTRACT(EPOCH FROM a.realizado_en)::bigint AS orden,
+               TO_CHAR(a.realizado_en AT TIME ZONE 'America/Guayaquil', 'DD/MM/YYYY HH24:MI:SS') AS fecha_hora,
+               (a.realizado_en AT TIME ZONE 'America/Guayaquil')::date::text AS fecha,
+               a.usuario_id,
+               COALESCE(NULLIF(BTRIM(u.nombres || ' ' || u.apellidos), ''), u.usuario, 'Sin usuario') AS usuario,
+               a.empresa, a.modulo, a.modulo_empresa, a.accion, a.detalle
+        FROM public.acciones_modulos a
+        JOIN public.usuarios u ON u.id = a.usuario_id
+        WHERE (a.realizado_en AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+          ${empresa ? 'AND a.empresa = $3' : ''}
+        ORDER BY a.realizado_en DESC
+        LIMIT 10000
+      `, params),
+      db.query(`
+        SELECT a.id, EXTRACT(EPOCH FROM a.accedido_en)::bigint AS orden,
+               TO_CHAR(a.accedido_en AT TIME ZONE 'America/Guayaquil', 'DD/MM/YYYY HH24:MI:SS') AS fecha_hora,
+               (a.accedido_en AT TIME ZONE 'America/Guayaquil')::date::text AS fecha,
+               a.usuario_id,
+               COALESCE(NULLIF(BTRIM(u.nombres || ' ' || u.apellidos), ''), u.usuario, 'Sin usuario') AS usuario,
+               a.empresa, a.modulo, a.modulo_empresa
+        FROM public.accesos_modulos a
+        JOIN public.usuarios u ON u.id = a.usuario_id
+        WHERE (a.accedido_en AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
+          ${empresa ? 'AND a.empresa = $3' : ''}
+        ORDER BY a.accedido_en DESC
+        LIMIT 10000
       `, params),
       db.query(`
         SELECT (consultado_en AT TIME ZONE 'America/Guayaquil')::date::text AS fecha,
@@ -173,7 +272,7 @@ async function reporte(req, res) {
     return res.json({
       success: true,
       data: {
-        rango, empresa: empresa || 'TODAS', uso: { wabot: wabot.rows },
+        rango, empresa: empresa || 'TODAS', uso: { wabot: wabot.rows, accesos: accesos.rows, acciones: acciones.rows },
         cobertura, totales,
         cobertura_desde: coberturaDesde,
         fuentes: { wabot: 'ACTIVIDAD_DE_LINEA', cobertura: 'GESTIONABLE_POR_NEGOCIACION' },
@@ -185,4 +284,4 @@ async function reporte(req, res) {
   }
 }
 
-module.exports = { reporte };
+module.exports = { reporte, registrarAcceso, registrarAccion };

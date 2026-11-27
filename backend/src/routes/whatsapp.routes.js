@@ -39,6 +39,8 @@ router.use(verificarToken);
 
 // Analítica transversal de uso y cobertura.
 router.get ('/uso/reporte', usoCtrl.reporte);
+router.post('/uso/acceso',  usoCtrl.registrarAcceso);
+router.post('/uso/accion',  usoCtrl.registrarAccion);
 
 // ── LÍNEAS ────────────────────────────────────────────────────
 // OJO: /lines/dashboard va ANTES de /lines/:id, si no Express lo captura como id

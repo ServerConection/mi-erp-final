@@ -10,6 +10,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/db');
 const { enviarResultadoEvaluacion } = require('../services/evaluacionesCorreo.service');
+const { esAdministradorEvaluaciones } = require('../middleware/evaluacionesAcceso');
 
 const nombreCompleto = (r) =>
   [r.nombres, r.apellidos].filter(Boolean).join(' ').trim() || r.usuario;
@@ -30,6 +31,17 @@ function bytesImagenDataUrl(valor) {
 /** Quita "correcta" de cada pregunta — lo que ve alguien que va a responder. */
 const sinRespuestas = (preguntas) =>
   preguntas.map(({ correcta, ...resto }) => resto);
+
+async function videoCursoCompletado(evaluacionId, usuarioId) {
+  const existe = await pool.query(`SELECT to_regclass('public.eva_cursos') AS tabla`);
+  if (!existe.rows[0]?.tabla) return true;
+  const { rows } = await pool.query(`
+    SELECT NOT EXISTS (SELECT 1 FROM public.eva_cursos WHERE evaluacion_id=$1 AND activo)
+        OR EXISTS (SELECT 1 FROM public.eva_cursos c JOIN public.eva_curso_progreso p ON p.curso_id=c.id
+                    WHERE c.evaluacion_id=$1 AND c.activo AND p.usuario_id=$2 AND p.video_completado) AS permitido
+  `, [evaluacionId, usuarioId]);
+  return rows[0]?.permitido !== false;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CREAR / EDITAR
@@ -146,13 +158,14 @@ exports.archivar = async (req, res) => {
 /** GET /api/evaluaciones — panel de quien crea: sus evaluaciones (o todas si admin) + stats */
 exports.listar = async (req, res) => {
   try {
-    const esAdmin = req.user.perfil === 'ADMINISTRADOR';
+    const esAdmin = esAdministradorEvaluaciones(req.user);
     const { rows } = await pool.query(
       `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima, e.tiempo_limite_min, e.activa, e.created_at,
               jsonb_array_length(e.preguntas) AS total_preguntas,
               u.usuario, u.nombres, u.apellidos,
               (SELECT COUNT(*) FROM eva_intentos i WHERE i.evaluacion_id = e.id) AS total_intentos,
-              (SELECT COUNT(*) FROM eva_intentos i WHERE i.evaluacion_id = e.id AND i.aprobado) AS total_aprobados
+              (SELECT COUNT(*) FROM eva_intentos i WHERE i.evaluacion_id = e.id AND i.aprobado) AS total_aprobados,
+              (SELECT ROUND(AVG(i.nota), 1) FROM eva_intentos i WHERE i.evaluacion_id = e.id) AS nota_promedio
          FROM eva_evaluaciones e
          JOIN usuarios u ON u.id = e.creado_por
         WHERE $1::boolean OR e.creado_por = $2
@@ -170,6 +183,7 @@ exports.listar = async (req, res) => {
         totalPreguntas: Number(r.total_preguntas),
         totalIntentos: Number(r.total_intentos),
         totalAprobados: Number(r.total_aprobados),
+        notaPromedio: r.nota_promedio == null ? null : Number(r.nota_promedio),
         creador: nombreCompleto(r),
       })),
     });
@@ -182,7 +196,7 @@ exports.listar = async (req, res) => {
 /** GET /api/evaluaciones/mias — evaluaciones activas para mí, con mi resultado si ya la tomé */
 exports.misEvaluaciones = async (req, res) => {
   try {
-    const esAdmin = req.user.perfil === 'ADMINISTRADOR';
+    const esAdmin = esAdministradorEvaluaciones(req.user);
     const { rows } = await pool.query(
       `SELECT e.id, e.titulo, e.modulo_tema, e.empresa, e.nota_minima, e.tiempo_limite_min,
               jsonb_array_length(e.preguntas) AS total_preguntas,
@@ -249,8 +263,11 @@ exports.detalleParaTomar = async (req, res) => {
     if (!req.evaluacion.activa && !req.esCreadorEvaluacion) {
       return res.status(404).json({ success: false, error: 'Evaluación no encontrada' });
     }
-    if (req.evaluacion.empresa && req.evaluacion.empresa !== req.user.empresa && req.user.perfil !== 'ADMINISTRADOR') {
+    if (req.evaluacion.empresa && req.evaluacion.empresa !== req.user.empresa && !esAdministradorEvaluaciones(req.user)) {
       return res.status(404).json({ success: false, error: 'Evaluación no encontrada' });
+    }
+    if (!(await videoCursoCompletado(req.evaluacion.id, req.user.id))) {
+      return res.status(403).json({ success: false, error: 'Debes completar el video del curso antes de rendir esta evaluación' });
     }
 
     const { rows: intento } = await pool.query(
@@ -290,6 +307,9 @@ exports.responder = async (req, res) => {
   try {
     if (!req.evaluacion.activa) {
       return res.status(400).json({ success: false, error: 'Esta evaluación ya no está activa' });
+    }
+    if (!(await videoCursoCompletado(req.evaluacion.id, req.user.id))) {
+      return res.status(403).json({ success: false, error: 'Debes completar el video del curso antes de responder' });
     }
 
     const respuestas = Array.isArray(req.body.respuestas) ? req.body.respuestas : [];
@@ -359,6 +379,47 @@ exports.responder = async (req, res) => {
   } catch (error) {
     console.error('[evaluaciones.responder]', error);
     res.status(500).json({ success: false, error: 'No se pudo registrar tu respuesta' });
+  }
+};
+
+/** GET /api/evaluaciones/:evaluacionId/revision — solo el intento del usuario autenticado */
+exports.revisionPropia = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT respuestas, nota, correctas, total_preguntas, aprobado, created_at
+         FROM eva_intentos
+        WHERE evaluacion_id = $1 AND usuario_id = $2`,
+      [req.evaluacion.id, req.user.id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, error: 'Primero debes responder esta evaluación' });
+    }
+    const intento = rows[0];
+    const elegidas = new Map((intento.respuestas || []).map((r) => [String(r.preguntaId), Number(r.opcionElegida)]));
+    const preguntas = req.evaluacion.preguntas.map((p, indice) => {
+      const opcionElegida = elegidas.has(String(p.id)) ? elegidas.get(String(p.id)) : null;
+      return {
+        id: p.id,
+        numero: indice + 1,
+        texto: p.texto,
+        imagen: p.imagen || null,
+        opciones: p.opciones,
+        opcionElegida,
+        opcionCorrecta: p.correcta,
+        esCorrecta: opcionElegida === p.correcta,
+      };
+    });
+    res.json({
+      success: true,
+      data: {
+        evaluacion: { id: req.evaluacion.id, titulo: req.evaluacion.titulo, notaMinima: req.evaluacion.nota_minima },
+        resultado: { nota: intento.nota, correctas: intento.correctas, total: intento.total_preguntas, aprobado: intento.aprobado, respondidaEn: intento.created_at },
+        preguntas,
+      },
+    });
+  } catch (error) {
+    console.error('[evaluaciones.revisionPropia]', error);
+    res.status(500).json({ success: false, error: 'No se pudo cargar la revisión' });
   }
 };
 

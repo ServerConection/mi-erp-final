@@ -38,7 +38,7 @@ export default function ContactabilidadFilters({
     setNombreVista('');
   };
 
-  return <div style={{ display: 'grid', gap: 12, padding: 14, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginTop: 14 }}>
+  return <div className="contactabilidad-filters" style={{ display: 'grid', gap: 12, padding: 14, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginTop: 14 }}>
 
     {/* --- Alcance: sobre que universo de leads miramos ---------------------- */}
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>

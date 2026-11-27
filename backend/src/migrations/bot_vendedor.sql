@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS public.bv_clasificacion (
   modelo          VARCHAR(80),
   creado_en       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- Estado comercial persistente. JSONB permite ampliar el flujo sin romper conversaciones existentes.
 CREATE TABLE IF NOT EXISTS public.bv_conversation_state (
   conversation_id    UUID PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,

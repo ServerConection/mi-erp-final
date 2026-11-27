@@ -240,6 +240,8 @@ app.use('/uploads/envios_ventas', (req, res) => res.status(404).json({ success: 
 app.use('/uploads/tthh_documentos', (req, res) => res.status(404).json({ success: false, error: 'No encontrado' }));
 
 const uploadsPath = path.resolve(__dirname, '..', 'uploads');
+const evaluacionesUploadsPath = process.env.EVALUACIONES_UPLOADS_DIR || path.join(uploadsPath, 'evaluaciones');
+app.use('/uploads/evaluaciones', express.static(evaluacionesUploadsPath, { maxAge: '7d', etag: true, lastModified: true }));
 app.use('/uploads', express.static(uploadsPath, {
   maxAge: '7d',
   etag: true,
@@ -272,6 +274,7 @@ app.use('/api/tthh', tthhRoutes);
 app.use('/api/soporte', require('./routes/soporte.routes'));
 app.use('/api/carpeta-compartida', require('./routes/carpetaCompartida.routes'));
 app.use('/api/bot-vendedor', require('./routes/botVendedor.routes'));
+app.use('/api/bot-atc', require('./routes/botAtc.routes'));
 app.use('/api/llamadas', llamadasRoutes);
 app.use('/api/gestionables-asesores', require('./routes/gestionables.routes'));
 app.use('/api/mis-negociaciones', require('./routes/misNegociaciones.routes'));

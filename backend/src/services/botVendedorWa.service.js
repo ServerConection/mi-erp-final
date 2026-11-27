@@ -58,6 +58,9 @@ async function lineaActiva(lineId) {
 
 function invalidarLineas() { lineasEn = 0; }
 
+// Aviso de "dame un momento" ya enviado por conversacion (para no repetirlo).
+const avisosEspera = new Map();
+
 // Pausas por conversacion tras pasar a un asesor (en memoria).
 const pausas = new Map(); // conversation_id -> timestamp hasta
 
@@ -68,6 +71,7 @@ async function asesorActivo(conversationId) {
       WHERE conversation_id = $1 AND direction = 'out'
         AND timestamp > NOW() - ($2 || ' minutes')::interval
         AND COALESCE(metadata->>'bot_vendedor', '') <> 'true'
+        AND COALESCE(metadata->>'bot_atc', '') <> 'true'
       LIMIT 1`,
     [conversationId, String(PAUSA_MIN)]);
   return rows.length > 0;

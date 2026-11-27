@@ -22,10 +22,13 @@ import ContactabilidadQuality from './contactabilidad/ContactabilidadQuality.jsx
 import ContactabilidadOperationalTable from './contactabilidad/ContactabilidadOperationalTable.jsx';
 import ContactabilidadConversacion from './contactabilidad/ContactabilidadConversacion.jsx';
 import { buildAnalyticsQuery, readFilters } from '../utils/contactabilidadAnalytics.js';
+import { registrarAccionModulo, registrarFiltrosModulo, usarAuditoriaModulo } from '../utils/registrarAccesoModulo.js';
+import './contactabilidad/contactabilidad.css';
 
 const API = import.meta.env.VITE_API_URL || '';
 const BASE = `${API}/api/bot-auditor/contactabilidad`;
-const INTERVALO_KEY = 'contactabilidad.autorefresco';
+const AUTOREFRESCO_MS = 60_000;
+const ESTADO_MS = 5 * 60_000;
 const TICK_MS = 15000; // refresca los cronometros en pantalla sin pedir datos
 
 const EMPTY = {
@@ -54,11 +57,8 @@ function esAdministrador() {
   } catch { return false; }
 }
 
-const leerIntervalo = () => {
-  try { return localStorage.getItem(INTERVALO_KEY) || '60'; } catch { return '60'; }
-};
-
 export default function Contactabilidad() {
+  usarAuditoriaModulo('CONTACTABILIDAD', useEffect);
   const [tab, setTab] = useState('alertas');
   const [filters, setFilters] = useState(() => readFilters(window.location.search));
   const [analytics, setAnalytics] = useState(EMPTY);
@@ -70,13 +70,20 @@ export default function Contactabilidad() {
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState(null);
   const [ultimaCarga, setUltimaCarga] = useState(null);
-  const [intervalo, setIntervalo] = useState(leerIntervalo);
   const [ahora, setAhora] = useState(() => Date.now());
   const [chat, setChat] = useState(null); // { lead, data, cargando, error }
 
   const admin = useMemo(() => esAdministrador(), []);
   const query = useMemo(() => buildAnalyticsQuery(filters), [filters]);
   const peticion = useRef(null);
+  const cargaEnCurso = useRef(false);
+  const primeraAuditoriaFiltros = useRef(true);
+
+  useEffect(() => {
+    if (primeraAuditoriaFiltros.current) { primeraAuditoriaFiltros.current = false; return undefined; }
+    const id = setTimeout(() => registrarFiltrosModulo('CONTACTABILIDAD', filters, 'Filtros automáticos de Contactabilidad'), 700);
+    return () => clearTimeout(id);
+  }, [query]);
 
   const avisar = useCallback((texto, tipo = 'ok') => {
     setMensaje({ texto, tipo });
@@ -84,20 +91,28 @@ export default function Contactabilidad() {
   }, []);
 
   // --- Carga de datos -------------------------------------------------------
-  const cargar = useCallback(async ({ conSpinner = false } = {}) => {
-    peticion.current?.abort();
+  const cargar = useCallback(async ({ conSpinner = false, forzar = false, cancelarAnterior = false } = {}) => {
+    if (cargaEnCurso.current && !cancelarAnterior) return;
+    if (cancelarAnterior) peticion.current?.abort();
     const control = new AbortController();
     peticion.current = control;
+    cargaEnCurso.current = true;
     if (conSpinner) setLoading(true);
     try {
-      const json = await pedir(`${BASE}/analytics?${query}`, { signal: control.signal });
+      const separador = query ? '&' : '';
+      const url = `${BASE}/analytics?${query}${forzar ? `${separador}_fresh=1` : ''}`;
+      const json = await pedir(url, { signal: control.signal });
       setAnalytics({ ...EMPTY, ...json.data });
       setUltimaCarga(Date.now());
       setError('');
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message);
     } finally {
-      if (conSpinner) setLoading(false);
+      if (peticion.current === control) {
+        cargaEnCurso.current = false;
+        peticion.current = null;
+        if (conSpinner) setLoading(false);
+      }
     }
   }, [query]);
 
@@ -113,30 +128,35 @@ export default function Contactabilidad() {
   }, [empresa, desde, hasta]);
 
   useEffect(() => { pedir(`${BASE}/vistas`).then((j) => setVistas(j.data || [])).catch(() => {}); }, []);
-  useEffect(() => { pedir(`${BASE}/estado`).then((j) => setEstado(j.data)).catch(() => {}); }, [ultimaCarga]);
+  useEffect(() => {
+    const consultarEstado = () => {
+      if (document.visibilityState === 'visible') {
+        pedir(`${BASE}/estado`).then((j) => setEstado(j.data)).catch(() => {});
+      }
+    };
+    consultarEstado();
+    const timer = setInterval(consultarEstado, ESTADO_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   // La URL siempre refleja los filtros: el enlace es compartible tal cual.
   useEffect(() => {
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-    const id = setTimeout(() => cargar({ conSpinner: true }), 0);
+    const id = setTimeout(() => cargar({ conSpinner: true, cancelarAnterior: true }), 0);
     return () => { clearTimeout(id); peticion.current?.abort(); };
   }, [query, cargar]);
 
   // --- Auto-refresco (se pausa si la pestaña no esta visible) ---------------
   useEffect(() => {
-    const segundos = Number(intervalo);
-    try { localStorage.setItem(INTERVALO_KEY, intervalo); } catch { /* modo privado */ }
-    if (!segundos) return undefined;
-
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') cargar();
-    }, segundos * 1000);
+    }, AUTOREFRESCO_MS);
 
     // Al volver a la pestaña, primero se actualiza y luego se sigue el ritmo.
     const alVolver = () => { if (document.visibilityState === 'visible') cargar(); };
     document.addEventListener('visibilitychange', alVolver);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', alVolver); };
-  }, [intervalo, cargar]);
+  }, [cargar]);
 
   // Cronometros en pantalla: avanzan sin pedir nada al servidor.
   useEffect(() => {
@@ -168,7 +188,7 @@ export default function Contactabilidad() {
   // El boton principal relee en segundos todo el tablero (incluida la tabla).
   // El barrido profundo de Bitrix queda en su boton separado porque implica
   // varias llamadas por lead y puede tardar minutos sin que la UI tenga culpa.
-  const actualizarTodo = () => cargar({ conSpinner: true });
+  const actualizarTodo = () => cargar({ conSpinner: true, forzar: true });
 
   const refrescarLead = async (fila) => {
     try {
@@ -251,7 +271,7 @@ export default function Contactabilidad() {
     setTab('operacion');
   };
 
-  const tabButton = (valor, etiqueta, insignia) => <button type="button" onClick={() => setTab(valor)}
+  const tabButton = (valor, etiqueta, insignia) => <button type="button" data-audit-manual="true" onClick={() => { registrarAccionModulo('CONTACTABILIDAD', 'CAMBIO_VISTA', `Cambió a la vista ${etiqueta}`); setTab(valor); }}
     style={{
       padding: '10px 18px', border: 0, borderRadius: 9, cursor: 'pointer', fontWeight: 800,
       background: tab === valor ? '#1d4ed8' : '#e2e8f0', color: tab === valor ? '#fff' : '#334155',
@@ -266,19 +286,20 @@ export default function Contactabilidad() {
 
   const vencidos = (analytics.alertas?.resumen?.critico || 0) + (analytics.alertas?.resumen?.grave || 0);
 
-  return <div style={{ padding: 24, background: '#f8fafc', minHeight: '100vh', color: '#0f172a' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
+  return <main className="contactabilidad-page">
+    <div className="contactabilidad-shell">
+    <div className="contactabilidad-hero">
       <div>
         <h1 style={{ margin: 0 }}>📊 Inteligencia de Contactabilidad</h1>
         <p style={{ color: '#64748b', margin: '6px 0 0' }}>
           Quién está esperando respuesta, hace cuánto y de quién es el caso.
         </p>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="contactabilidad-tabs" role="tablist" aria-label="Vistas de Contactabilidad">
         {tabButton('alertas', 'Alertas', vencidos)}
         {tabButton('inteligencia', 'Inteligencia')}
         {tabButton('operacion', 'Operación')}
-        <button type="button" onClick={exportar} style={{
+        <button className="contactabilidad-export" type="button" onClick={exportar} style={{
           padding: '10px 16px', borderRadius: 9, border: '1px solid #cbd5e1',
           background: '#fff', cursor: 'pointer', fontWeight: 700,
         }}>⭳ Exportar</button>
@@ -287,7 +308,6 @@ export default function Contactabilidad() {
 
     <ContactabilidadToolbar
       ultimaCarga={ultimaCarga} cargando={loading} sincronizando={sincronizando}
-      intervalo={intervalo} onIntervalo={setIntervalo}
       onRefrescar={actualizarTodo} onForzar={forzarSync}
       puedeForzar={admin} estado={estado} ahora={ahora} mensaje={mensaje} />
 
@@ -299,7 +319,7 @@ export default function Contactabilidad() {
 
     <ContactabilidadKpis resumen={analytics.resumen} loading={loading} />
 
-    {error && <div role="alert" style={{ padding: 14, borderRadius: 10, background: '#fee2e2', color: '#991b1b', marginBottom: 14 }}>
+    {error && <div role="alert" className="contactabilidad-error">
       No se pudo actualizar: {error}
     </div>}
 
@@ -327,5 +347,6 @@ export default function Contactabilidad() {
       lead={chat.lead} data={chat.data} cargando={chat.cargando} error={chat.error}
       ahora={ahora} onCerrar={() => setChat(null)}
       onRecargar={() => abrirConversacion(chat.lead, { forzar: true })} />}
-  </div>;
+    </div>
+  </main>;
 }

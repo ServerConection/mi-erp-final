@@ -6,10 +6,6 @@ const boton = {
 };
 const primario = { ...boton, background: '#1d4ed8', borderColor: '#1d4ed8', color: '#fff' };
 
-const INTERVALOS = [
-  ['30', '30 s'], ['60', '1 min'], ['300', '5 min'], ['0', 'Apagado'],
-];
-
 /**
  * Barra de actualizacion.
  *  - "Actualizar" relee en segundos KPIs, alertas y tabla desde la base.
@@ -18,17 +14,16 @@ const INTERVALOS = [
  *  - El auto-refresco se pausa solo cuando la pestaña no esta visible.
  */
 export default function ContactabilidadToolbar({
-  ultimaCarga, cargando, sincronizando, intervalo, onIntervalo,
+  ultimaCarga, cargando, sincronizando,
   onRefrescar, onForzar, puedeForzar, estado, ahora, mensaje,
 }) {
-  const pausado = intervalo === '0';
   const frescura = ultimaCarga ? formatRelative(ultimaCarga, ahora) : 'sin cargar';
   const desfase = estado?.frescura?.reduce((max, fila) => {
     const valor = fila.ultimo_mensaje ? new Date(fila.ultimo_mensaje).getTime() : 0;
     return Math.max(max, valor);
   }, 0);
 
-  return <div style={{
+  return <div className="contactabilidad-toolbar" style={{
     display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
     padding: 12, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, marginTop: 14,
   }}>
@@ -43,23 +38,15 @@ export default function ContactabilidadToolbar({
       {sincronizando ? 'Consultando Bitrix…' : '⇅ Traer de Bitrix'}
     </button>}
 
-    <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-      Auto
-      <select value={intervalo} onChange={(e) => onIntervalo(e.target.value)}
-        style={{ padding: '7px 9px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
-        {INTERVALOS.map(([valor, texto]) => <option key={valor} value={valor}>{texto}</option>)}
-      </select>
-    </label>
-
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12,
-      color: pausado ? '#94a3b8' : '#15803d',
+      color: '#15803d', fontWeight: 700,
     }}>
       <span style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: pausado ? '#cbd5e1' : '#22c55e',
+        background: '#22c55e', boxShadow: '0 0 0 4px #dcfce7',
       }} />
-      {pausado ? 'Auto-refresco apagado' : 'En vivo'}
+      Actualización automática cada minuto
     </span>
 
     <span style={{ fontSize: 12, color: '#64748b' }}>Datos {frescura}</span>

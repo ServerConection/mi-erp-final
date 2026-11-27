@@ -45,9 +45,24 @@ export const evaluacionesApi = {
 
   detalleParaTomar: (id) => pedir(`/${id}`),
   responder:        (id, respuestas) => pedir(`/${id}/responder`, { method: 'POST', body: { respuestas } }),
+  revisionPropia:   (id) => pedir(`/${id}/revision`),
 
   resultados: (id) => pedir(`/${id}/resultados`),
   exportar:   (id) => pedir(`/${id}/resultados/exportar`, { blob: true }),
+
+  cursos: () => pedir('/cursos/lista'),
+  crearCurso: async (formData) => {
+    const res = await fetch(`${BASE}/cursos`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `Error ${res.status}`);
+    return data;
+  },
+  completarVideo: (id) => pedir(`/cursos/${id}/video-completado`, { method: 'POST' }),
+  archivarCurso: (id, activo) => pedir(`/cursos/${id}/archivar`, { method: 'PATCH', body: { activo } }),
 };
 
 /** Descarga un blob con el nombre indicado. */

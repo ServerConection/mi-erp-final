@@ -371,15 +371,15 @@ export default function TomarEvaluacion({ evaluacionId, onVolver }) {
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50">
       {cabecera}
 
-      <div className="mx-auto max-w-3xl px-4 pb-40 pt-8 sm:px-6">
-        <div key={pregunta.id} className={direccion === 'adelante' ? 'eva-in-right' : 'eva-in-left'}>
+      <div className="mx-auto max-w-4xl px-4 pb-40 pt-6 sm:px-6 sm:pt-8">
+        <div key={pregunta.id} className={`${direccion === 'adelante' ? 'eva-in-right' : 'eva-in-left'} rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8`}>
           <div className="mb-3 flex items-center gap-2">
             <Chip tono="indigo">Pregunta {indice + 1} de {total}</Chip>
             {datos.moduloTema && <Chip tono="cyan">{datos.moduloTema}</Chip>}
             <Chip tono="slate">Mínimo {datos.notaMinima}%</Chip>
           </div>
 
-          <h1 className="mb-5 text-xl font-semibold leading-snug text-slate-800 sm:text-2xl">
+          <h1 className="mb-6 text-xl font-bold leading-snug text-slate-900 sm:text-2xl">
             {pregunta.texto}
           </h1>
 
@@ -396,10 +396,10 @@ export default function TomarEvaluacion({ evaluacionId, onVolver }) {
                 <button
                   key={j}
                   onClick={() => elegir(pregunta.id, j)}
-                  className={`eva-opcion ${activa ? 'eva-opcion-activa' : ''} flex w-full items-center gap-3.5 rounded-2xl border-2 px-4 py-3.5 text-left ${
+                  className={`eva-opcion ${activa ? 'eva-opcion-activa' : ''} flex w-full items-center gap-3.5 rounded-xl border px-4 py-3.5 text-left ${
                     activa
-                      ? 'border-indigo-500 bg-indigo-50/70 shadow-md shadow-indigo-100'
-                      : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/30'
+                      ? 'border-indigo-500 bg-indigo-50 shadow-sm ring-2 ring-indigo-100'
+                      : 'border-slate-200 bg-slate-50/60 hover:border-indigo-300 hover:bg-indigo-50/40'
                   }`}
                 >
                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold transition-colors ${

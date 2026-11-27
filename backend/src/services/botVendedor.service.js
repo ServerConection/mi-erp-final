@@ -180,6 +180,31 @@ async function llamarModelo(messages, prov) {
 }
 
 // Recorre los proveedores; si TODOS estan en limite, espera lo minimo que pidan y reintenta (max 3 vueltas).
+// Llamada corta para clasificar (bot ATC): usa Gemini Flash-Lite primero para no gastar el cupo
+// de Groq del bot vendedor; si Gemini no esta o falla, usa la cadena normal.
+const MODELO_CLASIFICADOR = process.env.BOT_ATC_MODEL || 'gemini-3.1-flash-lite';
+async function llamarClasificador(messages) {
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const cuerpo = { model: MODELO_CLASIFICADOR, messages, temperature: 0, max_tokens: 200, reasoning_effort: 'low' };
+      const resp = await fetch(`${GEMINI_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.GEMINI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const texto = (data.choices?.[0]?.message?.content || '').trim();
+        if (texto) return { texto, modelo: MODELO_CLASIFICADOR };
+      } else {
+        console.warn(`[BOT-ATC] clasificador ${MODELO_CLASIFICADOR} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      }
+    } catch (e) { console.warn(`[BOT-ATC] clasificador ${MODELO_CLASIFICADOR}:`, e.message); }
+  }
+  return llamarConRespaldo(messages);
+}
+
 async function llamarConRespaldo(messages) {
   const lista = proveedores();
   if (!lista.length) throw new Error('Falta GROQ_API_KEY (o GEMINI_API_KEY) en el entorno');
@@ -237,6 +262,8 @@ function fechaHoraActual() {
  * historial: [{ role: 'user'|'assistant', content }] (el ultimo debe ser del cliente).
  * Devuelve { texto, accion: null|'ESCALAR'|'FUERA_HORARIO', modelo, ms }.
  */
+const HISTORIAL_MAX = Math.max(4, Number(process.env.BOT_HISTORIAL || 6));
+
 const ESTILOS_APERTURA = [
   'saludo calido y breve, y pregunta si el internet es para casa o negocio',
   'saludo energico mencionando la fibra optica de Netlife, y pregunta en que sector vive',
@@ -250,17 +277,20 @@ async function responder(historial) {
   if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
   const inicio = Date.now();
   const base = await cargarBase();
-  const hist = (historial || []).slice(-10).map((m) => ({
+  const hist = (historial || []).slice(-HISTORIAL_MAX).map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: String(m.content || '').slice(0, 2000),
   }));
 
   const delCliente = hist.filter((m) => m.role === 'user');
   let consulta = delCliente.slice(-3).map((m) => m.content).join(' ');
-  if (/precio|cuest|cuanto|valor|plan|recomi|mbps|megas|velocidad|promo|pag|tarifa|instal|ofert/i.test(normalizar(consulta)) || delCliente.length >= 3) {
-    consulta += ' precio final con iva sin iva promo facturas mbps defense forma de pago tarjeta instalacion';
-  }
-  const contexto = [...base.siempre, ...buscar(base.fragmentos, consulta, base.siempre.length ? 1 : 3)].join('\n\n---\n\n');
+  // Ahorro de tokens: el catalogo (docs "siempre") solo va cuando se habla de planes/precios
+  // o la conversacion ya avanzo; al saludar no hace falta.
+  const hablaDePrecios = /precio|cuest|cuanto|valor|plan|recomi|mbps|megas|velocidad|promo|pag|tarifa|instal|ofert|contrat|requisit|cobertura/i.test(normalizar(consulta));
+  const conCatalogo = hablaDePrecios || delCliente.length >= 3;
+  if (conCatalogo) consulta += ' precio final con iva sin iva promo facturas mbps defense forma de pago tarjeta instalacion';
+  const fragmentos = delCliente.length >= 2 || hablaDePrecios ? buscar(base.fragmentos, consulta, base.siempre.length ? 1 : 3) : [];
+  const contexto = [...(conCatalogo ? base.siempre : []), ...fragmentos].join('\n\n---\n\n');
 
   const messages = [
     { role: 'system', content: base.prompt },
@@ -269,7 +299,7 @@ async function responder(historial) {
   if (base.reglas.trim()) messages.push({ role: 'system', content: `REGLAS ADICIONALES DEL NEGOCIO (obligatorias):\n${base.reglas.trim()}` });
   messages.push({
     role: 'system',
-    content: `BASE DE CONOCIMIENTO (usa solo esto para precios, planes y condiciones. Si el cliente no dice su forma de pago, muestra el precio promo con tarjeta de credito y aclara que con cuenta bancaria la promo cambia):\n\n${contexto || '(sin documentos cargados; si necesitas un dato que no tienes, aplica la regla de pasar a un asesor)'}`,
+    content: `BASE DE CONOCIMIENTO (usa solo esto para precios, planes y condiciones. Si el cliente no dice su forma de pago, muestra el precio promo con tarjeta de credito y aclara que con cuenta bancaria la promo cambia):\n\n${contexto || '(no se cargo el catalogo en este mensaje; si el cliente pide precios o planes, preguntale que necesita y en el siguiente mensaje tendras el catalogo. No inventes precios)'}`,
   });
   // Primer mensaje del bot en el chat: un estilo de apertura al azar para que la
   // presentacion no sea siempre igual (el prompt pide no repetir saludos).
@@ -420,6 +450,7 @@ module.exports = {
   asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen, enHorario, aMinutos,
   recomendarEtapa, registrarErrorIA, ETAPAS_RECOMENDABLES, horarioLaboral,
   _llamarConRespaldo: llamarConRespaldo, // para pruebas
+  llamarClasificador,
   transcribirAudio, describirImagen, extraerTexto,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

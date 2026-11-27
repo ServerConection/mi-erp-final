@@ -19,6 +19,9 @@
 // GET  /api/bot-vendedor/nocturno               config de atencion nocturna
 // PUT  /api/bot-vendedor/nocturno               { activo, linea, inicio, fin, max, mensaje }
 // GET  /api/bot-vendedor/nocturno/resumen       carrera bot vs asesor por deal (?dias=30)
+// GET  /api/bot-vendedor/conversaciones         chats atendidos por el bot (?dias=7)
+// GET  /api/bot-vendedor/conversaciones/:id     mensajes de un chat + etapa recomendada
+// POST /api/bot-vendedor/conversaciones/:id/recomendar  la IA recomienda la etapa de Bitrix
 // POST /api/bot-vendedor/probar                 { historial: [{role, content}] }
 //
 // No hay DELETE: los documentos se archivan (activo = false) y se pueden reactivar.
@@ -30,6 +33,7 @@ const multer = require('multer');
 const pool = require('../config/db');
 const { verificarToken, soloAdmin } = require('../middleware/auth');
 const bot = require('../services/botVendedor.service');
+const estadoComercial = require('../services/botVendedorEstado.service');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 1 } });
@@ -281,6 +285,86 @@ router.get('/nocturno/resumen', async (req, res) => {
       prom_min_asesor: prom(deals.map((d) => d.min_asesor).filter((x) => x !== null)),
     };
     ok(res, { dias, totales, ultimos: deals.slice(0, 150) });
+  } catch (e) { fallo(res, e); }
+});
+
+// ─── Conversaciones atendidas por el bot (estilo contactabilidad) ────────────
+router.get('/conversaciones', async (req, res) => {
+  try {
+    await bot.asegurarTablas();
+    const dias = Math.min(60, Math.max(1, parseInt(req.query.dias, 10) || 7));
+    const { rows } = await pool.query(
+      `WITH conv_bot AS (
+         SELECT DISTINCT conversation_id FROM messages
+          WHERE metadata->>'bot_vendedor' = 'true' AND timestamp > NOW() - ($1 || ' days')::interval
+       )
+       SELECT c.id, c.wa_number, l.name AS linea,
+              MIN(m.timestamp) AS inicio, MAX(m.timestamp) AS ultimo,
+              COUNT(*) FILTER (WHERE m.direction = 'in')::int AS msgs_cliente,
+              COUNT(*) FILTER (WHERE m.metadata->>'bot_vendedor' = 'true')::int AS msgs_bot,
+              COUNT(*) FILTER (WHERE m.direction = 'out' AND COALESCE(m.metadata->>'bot_vendedor', '') <> 'true')::int AS msgs_asesor,
+              BOOL_OR(m.metadata->>'accion' IN ('ESCALAR', 'FUERA_HORARIO')) AS paso_asesor,
+              (ARRAY_AGG(m.content ORDER BY m.timestamp DESC))[1] AS ultimo_mensaje,
+               n.bitrix_id, n.bot_venta_en, cl.etapa AS etapa_recomendada, cl.motivo AS motivo_etapa,
+               st.paso_actual, st.avance, st.reintentos, st.mensajes_agrupados, st.actualizado_en AS estado_actualizado_en
+         FROM conv_bot cb
+         JOIN conversations c ON c.id = cb.conversation_id
+         JOIN messages m ON m.conversation_id = c.id
+         LEFT JOIN lines l ON l.id = c.line_id
+         LEFT JOIN LATERAL (
+           SELECT bitrix_id, bot_venta_en FROM public.bv_nocturno
+            WHERE line_id = c.line_id AND telefono = c.wa_number ORDER BY creado_en DESC LIMIT 1
+         ) n ON TRUE
+         LEFT JOIN public.bv_clasificacion cl ON cl.conversation_id = c.id
+         LEFT JOIN public.bv_conversation_state st ON st.conversation_id = c.id
+        GROUP BY c.id, c.wa_number, l.name, n.bitrix_id, n.bot_venta_en, cl.etapa, cl.motivo,
+                 st.paso_actual, st.avance, st.reintentos, st.mensajes_agrupados, st.actualizado_en
+        ORDER BY ultimo DESC
+        LIMIT 300`,
+      [String(dias)]);
+    const err = await pool.query("SELECT valor, actualizado_en FROM public.bv_config WHERE clave = 'ia_ultimo_error'");
+    ok(res, { dias, conversaciones: estadoComercial.aplicarMetricas(rows), ia_ultimo_error: err.rows[0] || null, etapas: bot.ETAPAS_RECOMENDABLES.map(([e]) => e) });
+  } catch (e) { fallo(res, e); }
+});
+
+const leerMensajes = async (convId) => {
+  const { rows } = await pool.query(
+    `SELECT id, direction, type, content, media_url, timestamp,
+            (metadata->>'bot_vendedor' = 'true') AS es_bot, metadata->>'accion' AS accion
+       FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC LIMIT 500`,
+    [convId]);
+  return rows;
+};
+
+router.get('/conversaciones/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fallo(res, 'Conversacion invalida', 400);
+    const conv = await pool.query(
+      `SELECT c.id, c.wa_number, c.status, l.name AS linea FROM conversations c LEFT JOIN lines l ON l.id = c.line_id WHERE c.id = $1`, [id]);
+    if (!conv.rows.length) return fallo(res, 'No existe', 404);
+    const cl = await pool.query('SELECT etapa, motivo, modelo, creado_en FROM public.bv_clasificacion WHERE conversation_id = $1', [id]);
+    const st = await pool.query('SELECT estado, paso_actual, avance, reintentos, mensajes_agrupados, ultimo_error, actualizado_en FROM public.bv_conversation_state WHERE conversation_id = $1', [id]);
+    ok(res, { conversacion: conv.rows[0], mensajes: await leerMensajes(id), clasificacion: cl.rows[0] || null, estado_comercial: st.rows[0] || null });
+  } catch (e) { fallo(res, e); }
+});
+
+router.post('/conversaciones/:id/recomendar', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fallo(res, 'Conversacion invalida', 400);
+    const msgs = await leerMensajes(id);
+    if (!msgs.length) return fallo(res, 'La conversacion no tiene mensajes', 400);
+    const r = await bot.recomendarEtapa(msgs.map((m) => ({
+      quien: m.direction === 'in' ? 'Cliente' : (m.es_bot ? 'Bot' : 'Asesor'),
+      texto: m.content || `[${m.type}]`,
+    })));
+    await bot.asegurarTablas();
+    await pool.query(
+      `INSERT INTO public.bv_clasificacion (conversation_id, etapa, motivo, modelo, creado_en) VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (conversation_id) DO UPDATE SET etapa = EXCLUDED.etapa, motivo = EXCLUDED.motivo, modelo = EXCLUDED.modelo, creado_en = NOW()`,
+      [id, r.etapa, r.motivo, r.modelo]);
+    ok(res, r);
   } catch (e) { fallo(res, e); }
 });
 

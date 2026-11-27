@@ -18,6 +18,9 @@
 
 const pool = require('../config/db');
 const bot = require('./botVendedor.service');
+const { crearAgrupador } = require('./botVendedorAgrupador');
+const estadoComercial = require('./botVendedorEstado.service');
+const { ejecutarConReintento } = require('./botVendedorReintento');
 
 const PAUSA_MIN = Number(process.env.BOT_PAUSA_MIN || 120);
 const CACHE_LINEAS_MS = 30 * 1000;
@@ -71,13 +74,14 @@ async function asesorActivo(conversationId) {
 }
 
 // Historial de la conversacion para el modelo (sin el mensaje actual).
-async function historial(conversationId, waMsgIdActual) {
+async function historial(conversationId, waMsgIdsActuales = []) {
+  const excluir = new Set((Array.isArray(waMsgIdsActuales) ? waMsgIdsActuales : [waMsgIdsActuales]).filter(Boolean));
   const { rows } = await pool.query(
-    `SELECT direction, type, content FROM messages
-      WHERE conversation_id = $1 AND (wa_msg_id IS DISTINCT FROM $2)
-      ORDER BY timestamp DESC LIMIT 10`,
-    [conversationId, waMsgIdActual || null]);
-  return rows.reverse()
+    `SELECT direction, type, content, wa_msg_id FROM messages
+      WHERE conversation_id = $1
+      ORDER BY timestamp DESC LIMIT 30`,
+    [conversationId]);
+  return rows.filter((m) => !excluir.has(m.wa_msg_id)).slice(0, 10).reverse()
     .map((m) => ({
       role: m.direction === 'out' ? 'assistant' : 'user',
       content: m.content || (m.type && m.type !== 'text' ? `[${m.type}]` : ''),
@@ -125,25 +129,49 @@ function enCola(clave, tarea) {
   return siguiente;
 }
 
-async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType }) {
+async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType, loteMensajes = null }) {
   const hasta = pausas.get(conv.id);
   if (hasta && Date.now() < hasta) return;
   if (hasta) pausas.delete(conv.id);
   if (await asesorActivo(conv.id)) return;
 
-  const entrada = await construirEntrada(manager, lineId, msg, text, msgType);
+  const mensajes = loteMensajes?.length ? loteMensajes : [{ manager, lineId, msg, conv, remoteJid, text, msgType }];
+  const entradas = [];
+  for (const item of mensajes) {
+    const parte = await construirEntrada(item.manager, item.lineId, item.msg, item.text, item.msgType);
+    if (parte) entradas.push(parte);
+  }
+  const entrada = entradas.join('\n');
   if (!entrada) return;
 
-  const hist = await historial(conv.id, msg.key?.id);
+  const hist = await historial(conv.id, mensajes.map((m) => m.msg?.key?.id));
   hist.push({ role: 'user', content: entrada });
 
-  let r;
-  try {
-    r = await bot.responder(hist);
-  } catch (e) {
-    console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: IA no disponible:`, e.message);
-    r = { texto: 'Disculpa, estoy teniendo un inconveniente. Un asesor te escribira en breve.', accion: 'ESCALAR', ms: 0, modelo: '-' };
-  }
+  await bot.asegurarTablas();
+  const estadoPrevio = await estadoComercial.leerEstado(pool, conv.id);
+  const r = await ejecutarConReintento({
+    ejecutar: () => bot.responder(hist, { estado: estadoPrevio, conversationId: conv.id }),
+    esperasMs: [5000, 10000],
+    cancelado: () => asesorActivo(conv.id),
+    alError: async (e, intento, total) => {
+      console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: IA no disponible (intento ${intento}/${total}):`, e.message);
+      await bot.registrarErrorIA(`${new Date().toISOString()} · linea ${lineId} · intento ${intento}/${total} · ${e.message}`);
+      await pool.query(
+        `UPDATE public.bv_conversation_state SET reintentos = reintentos + 1, ultimo_error = $2, actualizado_en = NOW()
+          WHERE conversation_id = $1`, [conv.id, String(e.message).slice(0, 500)]).catch(() => {});
+    },
+    alAgotar: async () => ({ texto: bot.MSG_ESCALAR, accion: 'ESCALAR', imagenes: [], estadoCambios: { escalado: true }, ms: 0, modelo: '-' }),
+  });
+  if (!r) return;
+
+  const guardado = await estadoComercial.guardarEstado(pool, conv.id, {
+    ...(r.estadoCambios || {}),
+    cierre_confirmado: r.ventaCerrada || undefined,
+    escalado: Boolean(r.accion) || undefined,
+  });
+  await pool.query(
+    `UPDATE public.bv_conversation_state SET mensajes_agrupados = mensajes_agrupados + $2, ultimo_error = NULL
+      WHERE conversation_id = $1`, [conv.id, Math.max(0, mensajes.length - 1)]).catch(() => {});
 
   const enviado = await manager.sendText(lineId, remoteJid, r.texto);
   const waMsgId = enviado?.key?.id;
@@ -167,7 +195,7 @@ async function atender({ manager, lineId, msg, conv, remoteJid, text, msgType })
       console.error(`[BOT-VENDEDOR-WA] linea ${lineId}: no se pudo enviar la imagen del plan ${id}:`, e.message);
     }
   }
-  console.log(`[BOT-VENDEDOR-WA] linea ${lineId} conv ${conv.id}: respondio en ${(r.ms / 1000).toFixed(1)} s${r.accion ? ` <<${r.accion}>>` : ''}`);
+  console.log(`[BOT-VENDEDOR-WA] linea ${lineId} conv ${conv.id}: respondio en ${(r.ms / 1000).toFixed(1)} s · paso ${guardado.paso} (${guardado.avance}%)${r.accion ? ` <<${r.accion}>>` : ''}`);
 
   if (r.ventaCerrada) {
     // Carrera nocturna: primera confirmacion de venta del cliente con el bot.
@@ -196,12 +224,20 @@ async function atenderSiAplica({ manager, lineId, msg, conv, remoteJid, text, ms
     if (!(await lineaActiva(lineId))) return false;
     const ts = Number(msg?.messageTimestamp || 0) * 1000;
     if (ts && Date.now() - ts > MAX_ANTIGUEDAD_MS) return true; // mensaje viejo: no responder, pero tampoco correr el flujo
-    enCola(conv.id, () => atender({ manager, lineId, msg, conv, remoteJid, text, msgType }));
+    agrupador.agregar(conv.id, { manager, lineId, msg, conv, remoteJid, text, msgType });
     return true;
   } catch (e) {
     console.error(`[BOT-VENDEDOR-WA] linea ${lineId}:`, e.message);
     return false;
   }
 }
+
+const agrupador = crearAgrupador({
+  esperaMs: Math.max(500, Number(process.env.BOT_AGRUPAR_MS || 5000)),
+  procesar: async ({ clave, mensajes }) => {
+    const ultimo = mensajes[mensajes.length - 1];
+    return enCola(clave, () => atender({ ...ultimo, loteMensajes: mensajes }));
+  },
+});
 
 module.exports = { atenderSiAplica, invalidarLineas, lineaActiva };

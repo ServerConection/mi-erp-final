@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const estadoComercial = require('./botVendedorEstado.service');
 
 const DIR_BOT = path.join(__dirname, '..', '..', 'scripts', 'bot-vendedor');
 const BASE_URL = (process.env.BOT_VENDEDOR_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
@@ -106,6 +107,27 @@ function limpiarTexto(t) {
   return String(t || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function interpretarRespuestaModelo(textoCrudo) {
+  const original = String(textoCrudo || '');
+  const bloque = original.match(/<estado_comercial>([\s\S]*?)<\/estado_comercial>/i);
+  let estado = {};
+  if (bloque) {
+    try {
+      const valor = JSON.parse(bloque[1]);
+      if (valor && typeof valor === 'object' && !Array.isArray(valor)) estado = valor;
+    } catch (_) {}
+  }
+  const imagenesRaw = [...new Set([...original.matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))].slice(0, 2);
+  const ventaCerrada = /\[VENTA_CERRADA\]/.test(original);
+  const texto = original
+    .replace(/<estado_comercial>[\s\S]*?<\/estado_comercial>/gi, '')
+    .replace(/\[IMG:\d+\]/g, '')
+    .replace(/\[VENTA_CERRADA\]/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+  return { texto, estado, imagenesRaw, ventaCerrada };
+}
+
 async function cargarBase() {
   if (cache && Date.now() - cacheEn < CACHE_MS) return cache;
   await asegurarTablas();
@@ -146,19 +168,30 @@ function buscar(fragmentos, consulta, max) {
 }
 
 // ─── Groq ────────────────────────────────────────────────────────────────────
-const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+// Proveedores de IA en orden. Si uno responde 429 (limite por minuto del plan gratis)
+// se pasa AL INSTANTE al siguiente, sin esperar. Gemini se suma si hay GEMINI_API_KEY.
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const MODELO_GEMINI = process.env.BOT_GEMINI_MODEL || 'gemini-3.8-flash';
+function proveedores() {
+  const lista = [
+    { url: BASE_URL, key: apiKey(), modelo: MODELO },
+    { url: BASE_URL, key: apiKey(), modelo: MODELO_RESPALDO },
+  ];
+  if (process.env.GEMINI_API_KEY) lista.push({ url: GEMINI_URL, key: process.env.GEMINI_API_KEY, modelo: MODELO_GEMINI });
+  return lista.filter((p) => p.key);
+}
 
-async function llamarModelo(messages, modelo) {
-  const cuerpo = { model: modelo, messages, temperature: 0.4, max_tokens: 500 };
-  if (/gpt-oss/.test(modelo)) cuerpo.reasoning_effort = 'low';
-  const resp = await fetch(`${BASE_URL}/chat/completions`, {
+async function llamarModelo(messages, prov) {
+  const cuerpo = { model: prov.modelo, messages, temperature: 0.4, max_tokens: 400 };
+  if (/gpt-oss|gemini/.test(prov.modelo)) cuerpo.reasoning_effort = 'low';
+  const resp = await fetch(`${prov.url}/chat/completions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${prov.key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(45000),
   });
   if (!resp.ok) {
-    const err = new Error(`IA ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+    const err = new Error(`IA ${prov.modelo} ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
     err.status = resp.status;
     throw err;
   }
@@ -166,27 +199,26 @@ async function llamarModelo(messages, modelo) {
   return (data.choices?.[0]?.message?.content || '').trim();
 }
 
-// 429 = limite por minuto del plan gratis: espera lo que pide Groq y reintenta.
-async function llamarConEspera(messages, modelo) {
-  for (let intento = 0; intento < 3; intento++) {
-    try {
-      return await llamarModelo(messages, modelo);
-    } catch (e) {
-      if (e.status !== 429 || intento === 2) throw e;
-      const seg = Number((e.message.match(/try again in ([\d.]+)s/) || [])[1] || 10);
-      await esperar(Math.ceil(seg * 1000) + 500);
-    }
-  }
-  return '';
-}
-
+// Recorre los proveedores; si TODOS estan en limite, espera lo minimo que pidan y reintenta (max 3 vueltas).
 async function llamarConRespaldo(messages) {
-  try {
-    return { texto: await llamarConEspera(messages, MODELO), modelo: MODELO };
-  } catch (e) {
-    console.error(`[BOT-VENDEDOR] ${MODELO} fallo (${e.message.slice(0, 120)}); uso ${MODELO_RESPALDO}`);
-    return { texto: await llamarConEspera(messages, MODELO_RESPALDO), modelo: MODELO_RESPALDO };
+  const lista = proveedores();
+  if (!lista.length) throw new Error('Falta GROQ_API_KEY (o GEMINI_API_KEY) en el entorno');
+  let ultimo;
+  for (let vuelta = 0; vuelta < 1; vuelta++) {
+    let espera = 0;
+    for (const prov of lista) {
+      try {
+        const texto = await llamarModelo(messages, prov);
+        if (texto) return { texto, modelo: prov.modelo };
+      } catch (e) {
+        ultimo = e;
+        const seg = Number((e.message.match(/try again in ([\d.]+)s/) || [])[1] || (e.status === 429 ? 8 : 0));
+        if (seg) espera = espera ? Math.min(espera, seg) : seg;
+      }
+    }
+    if (!espera) break; // errores que no son de limite: no sirve esperar
   }
+  throw ultimo || new Error('La IA no respondio');
 }
 
 // Minutos desde medianoche en hora de Ecuador.
@@ -208,6 +240,11 @@ function enHorario(inicio, fin, fecha = new Date()) {
   return i < f ? (ahora >= i && ahora < f) : (ahora >= i || ahora < f);
 }
 
+function horarioLaboral(fecha = new Date()) {
+  const dia = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(fecha);
+  return !['Sat', 'Sun'].includes(dia) && enHorario('09:00', '18:00', fecha);
+}
+
 function fechaHoraActual() {
   return new Intl.DateTimeFormat('es-EC', {
     timeZone: TZ, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -219,7 +256,7 @@ function fechaHoraActual() {
  * historial: [{ role: 'user'|'assistant', content }] (el ultimo debe ser del cliente).
  * Devuelve { texto, accion: null|'ESCALAR'|'FUERA_HORARIO', modelo, ms }.
  */
-async function responder(historial) {
+async function responder(historial, opciones = {}) {
   if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
   const inicio = Date.now();
   const base = await cargarBase();
@@ -233,12 +270,24 @@ async function responder(historial) {
   if (/precio|cuest|cuanto|valor|plan|recomi|mbps|megas|velocidad|promo|pag|tarifa|instal|ofert/i.test(normalizar(consulta)) || delCliente.length >= 3) {
     consulta += ' precio final con iva sin iva promo facturas mbps defense forma de pago tarjeta instalacion';
   }
-  const contexto = [...base.siempre, ...buscar(base.fragmentos, consulta, 2)].join('\n\n---\n\n');
+  const contexto = [...base.siempre, ...buscar(base.fragmentos, consulta, base.siempre.length ? 1 : 3)].join('\n\n---\n\n');
 
   const messages = [
     { role: 'system', content: base.prompt },
     { role: 'system', content: `FECHA Y HORA ACTUAL (Ecuador): ${fechaHoraActual()}. Haz UNA sola pregunta por mensaje y responde en maximo 4 lineas, salvo cuando presentes la recomendacion o el resumen final.` },
   ];
+  if (opciones.estado) {
+    const estado = estadoComercial.normalizarEstado(opciones.estado);
+    const paso = estadoComercial.calcularPaso(estado);
+    messages.push({
+      role: 'system',
+      content: `ESTADO COMERCIAL CONFIRMADO (no vuelvas a preguntar estos datos):\n${JSON.stringify(estado)}\nSIGUIENTE PASO PENDIENTE: ${paso}. Responde primero cualquier pregunta directa del cliente y despues haz como maximo una pregunta sobre el siguiente dato faltante.`,
+    });
+  }
+  messages.push({
+    role: 'system',
+    content: 'MEMORIA INTERNA: al final de cada respuesta agrega <estado_comercial>{"campo":"valor"}</estado_comercial> con SOLO los datos comerciales nuevos confirmados por el cliente en este turno. Campos permitidos: motivo, segmento, ciudad, sector, personas, usos, plan, forma_pago, documentos, direccion, cierre_confirmado, escalado. Usa {} si no hay datos nuevos. Este bloque es interno y no se muestra al cliente.',
+  });
   if (base.reglas.trim()) messages.push({ role: 'system', content: `REGLAS ADICIONALES DEL NEGOCIO (obligatorias):\n${base.reglas.trim()}` });
   messages.push({
     role: 'system',
@@ -258,17 +307,74 @@ async function responder(historial) {
   messages.push(...hist);
 
   const { texto, modelo } = await llamarConRespaldo(messages);
+  const interpretada = interpretarRespuestaModelo(texto);
   // Etiquetas [IMG:id] -> imagenes a enviar (solo ids validos), y se quitan del texto.
   const validos = new Set(base.planesConImagen.map((p) => p.id));
-  const imagenes = [...new Set([...String(texto).matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))]
-    .filter((id) => validos.has(id)).slice(0, 2);
-  const ventaCerrada = /\[VENTA_CERRADA\]/.test(String(texto));
-  let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/\[VENTA_CERRADA\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
+  const imagenes = interpretada.imagenesRaw.filter((id) => validos.has(id));
+  const ventaCerrada = interpretada.ventaCerrada;
+  let salida = interpretada.texto;
   let accion = null;
-  if (/FUERA_DE_HORARIO/.test(salida)) { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
-  else if (/ESCALAR_ASESOR/.test(salida)) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
+  // La IA solo decide SI pasa a un asesor; el horario lo decide el codigo (lun-vie 9:00-18:00 Ecuador).
+  if (/ESCALAR_ASESOR|FUERA_DE_HORARIO/.test(salida)) {
+    if (horarioLaboral()) { accion = 'ESCALAR'; salida = MSG_ESCALAR; }
+    else { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
+  }
   if (!salida) salida = 'Disculpa, no te entendi bien. ¿Me lo puedes repetir?';
-  return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, modelo, ms: Date.now() - inicio };
+  return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, estadoCambios: interpretada.estado, modelo, ms: Date.now() - inicio };
+}
+
+// ─── Etapa recomendada ───────────────────────────────────────────────────────
+// Etapas del pipeline NOVONET (53 en total) que tienen sentido para una conversacion de WhatsApp.
+const ETAPAS_RECOMENDABLES = [
+  ['CONTACTO NUEVO', 'El cliente no respondio o la conversacion no avanzo.'],
+  ['VOLVER A LLAMAR NO CONTESTA', 'Respondio poco y dejo de contestar; hay que volver a contactarlo.'],
+  ['SEGUIMIENTO NEGOCIACION', 'Mostro interes y pregunto por planes/precios, pero no decidio.'],
+  ['PENDIENTE CIERRE', 'Eligio un plan o esta por decidir; falta cerrar.'],
+  ['ENVIO REQUISITOS/DOCUMENTOS PENDIENTES', 'Acepto contratar y faltan cedula, planilla u otros datos.'],
+  ['CLIENTE CON ACUERDO', 'Confirmo la venta con todos los datos; listo para subir.'],
+  ['FUERA DE COBERTURA', 'La direccion no tiene cobertura.'],
+  ['NO INTERESA COSTO PLAN', 'El precio del plan le parecio caro.'],
+  ['NO INTERESA COSTO INSTALACIÓN', 'No acepta el valor de instalacion.'],
+  ['MANTIENE PROVEEDOR', 'Se queda con su proveedor actual.'],
+  ['DESISTE DE COMPRA', 'Dijo que ya no quiere el servicio.'],
+  ['NO VOLVER A CONTACTAR', 'Pidio no ser contactado.'],
+  ['ATC/SOPORTE', 'Ya es cliente y escribio por soporte o servicio al cliente.'],
+  ['CLIENTE DISCAPACIDAD', 'Califica al plan de discapacidad.'],
+  ['DUPLICADO', 'Ya esta siendo atendido por otro deal o asesor.'],
+];
+
+/** Lee la conversacion y recomienda a que etapa de Bitrix moverla. Devuelve { etapa, motivo, modelo }. */
+async function recomendarEtapa(mensajes) {
+  if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
+  const transcripcion = mensajes
+    .map((m) => `${m.quien}: ${String(m.texto || '').replace(/\s+/g, ' ').slice(0, 400)}`)
+    .join('\n').slice(-6000);
+  const lista = ETAPAS_RECOMENDABLES.map(([e, d]) => `- ${e}: ${d}`).join('\n');
+  const { texto, modelo } = await llamarConRespaldo([
+    { role: 'system', content: `Eres supervisor comercial de NETLIFE. Lee la conversacion de WhatsApp y elige UNA etapa de Bitrix a la que deberia pasar la negociacion. Responde SOLO un JSON: {"etapa": "<nombre exacto de la lista>", "motivo": "<una frase corta en espanol>"}.\nETAPAS:\n${lista}` },
+    { role: 'user', content: transcripcion || '(sin mensajes)' },
+  ]);
+  let etapa = 'SEGUIMIENTO NEGOCIACION';
+  let motivo = '';
+  try {
+    const j = JSON.parse((String(texto).match(/\{[\s\S]*\}/) || ['{}'])[0]);
+    const valida = ETAPAS_RECOMENDABLES.find(([e]) => normalizar(e) === normalizar(j.etapa || ''));
+    if (valida) etapa = valida[0];
+    motivo = String(j.motivo || '').slice(0, 300);
+  } catch (_) {
+    motivo = 'No se pudo interpretar la respuesta de la IA.';
+  }
+  return { etapa, motivo, modelo };
+}
+
+// Ultimo error de la IA (para mostrarlo en el modulo; WABOT corre en otro proceso).
+async function registrarErrorIA(mensaje) {
+  try {
+    await pool.query(
+      `INSERT INTO public.bv_config (clave, valor, actualizado_por, actualizado_en) VALUES ('ia_ultimo_error', $1, 'wabot', NOW())
+       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = 'wabot', actualizado_en = NOW()`,
+      [String(mensaje).slice(0, 500)]);
+  } catch (_) {}
 }
 
 // Imagen de un plan (cache en memoria para no leer la BD en cada envio).
@@ -328,6 +434,9 @@ async function extraerTexto(buffer, nombre) {
 
 module.exports = {
   asegurarTablas, cargarBase, invalidarCache, responder, imagenPlan, invalidarImagen, enHorario, aMinutos,
+  recomendarEtapa, registrarErrorIA, ETAPAS_RECOMENDABLES, horarioLaboral,
+  _llamarConRespaldo: llamarConRespaldo, // para pruebas
   transcribirAudio, describirImagen, extraerTexto,
+  interpretarRespuestaModelo,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

@@ -7,6 +7,11 @@ import InboxPlantillasPicker, { rellenarPlantilla } from "../components/InboxPla
 import { getSocketCompartido } from "../utils/socketCompartido";
 import { exportChatPDF } from "./WaRespaldos";
 import { conversacionCoincideFiltros, crearParametrosInbox } from "../utils/waInboxFilters";
+import {
+  construirUrlNegociacionBitrix,
+  decidirDestinoLlamadaBitrix,
+  esAplicacionWabot,
+} from "../utils/bitrixCallRouting";
 import MapaCobertura, { LeyendaMapa } from "../components/MapaCobertura";
 
 const ORIGIN = import.meta.env.VITE_API_URL;
@@ -166,14 +171,7 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     return () => clearInterval(t);
   }, [llamadaPc]);
   const numVisible = (n) => (pilotoPc ? "Número oculto" : `+${n || ""}`);
-  const BITRIX_DEAL_BASE = {
-    VELSA: "https://aclopecuador.bitrix24.es/crm/deal/details",
-    NOVONET: "https://novonet.bitrix24.es/crm/deal/details",
-  };
-  const bitrixDealUrl = (dealId) => {
-    const base = BITRIX_DEAL_BASE[USER_EMPRESA];
-    return base ? `${base}/${dealId}/` : null;
-  };
+  const bitrixDealUrl = (dealId) => construirUrlNegociacionBitrix(USER_EMPRESA, dealId);
   const singleDealConversation = Boolean(dealId) && !IS_ADMIN;
 
   const [conversations, setConversations] = useState([]);
@@ -687,19 +685,37 @@ export default function WaInbox({ dealId = null, fixedLineName = "", initialConv
     return `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
   };
 
-  // Llamar por Bitrix desde WABOT: encola la llamada; el Automarcador abierto en
-  // Bitrix (PC o app móvil) la toma y marca por el teléfono de Bitrix del asesor.
+  // En el APK abre la negociación en Bitrix24 Mobile para que el asesor llame
+  // desde allí. En navegador conserva la cola del Automarcador de la PC.
   const [llamandoBitrix, setLlamandoBitrix] = useState(false);
   const llamarPorBitrix = async () => {
     if (!selected?.id || llamandoBitrix) return;
     setLlamandoBitrix(true);
     try {
+      const destino = decidirDestinoLlamadaBitrix({
+        esApk: esAplicacionWabot(window.Capacitor),
+        empresa: USER_EMPRESA,
+        dealId: selected.bitrix_deal_id || dealId,
+      });
+      if (destino.tipo === "error") {
+        alert(destino.mensaje);
+        return;
+      }
+      if (destino.tipo === "abrir_negociacion") {
+        const launcher = window.Capacitor?.Plugins?.BitrixLauncher;
+        if (!launcher?.open) throw new Error("BitrixLauncher no disponible");
+        const resultado = await launcher.open({ url: destino.url });
+        if (!resultado?.opened) alert("No se pudo abrir la negociación en Bitrix24 Mobile. Verifica que la app esté instalada.");
+        return;
+      }
       const r = await fetch(`${API}/conversations/${selected.id}/llamar-bitrix`, { method: "POST", headers: authH(false) });
       const d = await r.json();
-      if (d.success) alert("Llamada enviada. Contéstala en el Automarcador de Bitrix (PC) o en la app de Bitrix (celular). Debe estar abierto y en 'Iniciar'.");
+      if (d.success) alert("Llamada enviada. Contéstala en el Automarcador de Bitrix (PC). Debe estar abierto y en 'Iniciar'.");
       else alert(d.error || "No se pudo iniciar la llamada");
     } catch {
-      alert("No se pudo conectar con el servidor.");
+      alert(esAplicacionWabot(window.Capacitor)
+        ? "No se pudo abrir Bitrix24 Mobile. Verifica que la app esté instalada."
+        : "No se pudo conectar con el servidor.");
     } finally {
       setLlamandoBitrix(false);
     }

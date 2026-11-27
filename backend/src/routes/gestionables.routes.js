@@ -100,7 +100,7 @@ router.put('/', (req, res) => guardar(req, res, false));
 const { leerConfig, guardarConfig, leerEnLinea } = require('../shared/repartoEstado');
 const { leerAccess, estadoAccess } = require('../shared/repartoAccess');
 const { normalizarNombre, dentroDeHorario } = require('../shared/repartoGestionables');
-const { conteoGestionablesHoy, bloqueadoPorAtc, topeAtc, ATC_MAX_PCT, bloqueadoPorEfectividad, metaVentaSubida, plazoVentaHoras, PCT_SIN_VENTA_MAX } = require('../shared/repartoConteo');
+const { conteoGestionablesHoy, bloqueadoPorEfectividad, metaVentaSubida, topeGestionables, plazoVentaHoras, PCT_VENTAS_JOT_MIN, PCT_GESTIONABLES_MAX } = require('../shared/repartoConteo');
 
 const fechaEc = (f) => (fechaValida(f) ? f : null);
 const HOY_EC_SQL = `(NOW() AT TIME ZONE 'America/Guayaquil')::date`;
@@ -165,14 +165,15 @@ router.get('/reparto/estado', async (req, res) => {
       r.asignados = Math.max(0, r.asignados - sinC);
       r.asignados_humano = Math.max(0, (r.asignados_humano || 0) - sinCH);
       r.asignados_bot = Math.max(0, (r.asignados_bot || 0) - (sinC - sinCH));
-      const tope = topeAtc({ permitidos: r.permitidos });
+      const gestionables = gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null;
+      const topeGest = topeGestionables(r.permitidos);
+      const ventasJot = gestMap ? gestMap.get(normalizarNombre(r.nombre))?.venta : null;
       return {
         ...r,
-        // Cupo usado = TOTAL de leads entregados hoy (bot + humano, cualquier etapa)
+        // Se conserva el total para auditoría; el cupo operativo usa gestionables.
         total_asignados: r.asignados,
-        atc_max: ATC_MAX_PCT,                 // fijo desde código
-        asignados: r.asignados,
-        disponibles: Math.max(0, r.permitidos - r.asignados),
+        asignados: gestionables,
+        disponibles: gestionables === null ? null : Math.max(0, topeGest - gestionables),
         en_linea: enLinea ? !!l?.enLinea : null,
         jornada: l?.jornada || null,
         conexion: l?.inicio || null,          // hora de apertura de jornada (orden de conexión)
@@ -181,24 +182,25 @@ router.get('/reparto/estado', async (req, res) => {
         access_conectado: access ? estadoAccess(access, r.nombre).conectado : null,
         access_actividad: access ? estadoAccess(access, r.nombre).actividad : null,
         es_estacion: esEstacion,
-        gestionables: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
-        // % ATC de lo recibido hoy y si ya llegó a su máximo (el bot no le entrega)
-        // ATC de hoy frente a su tope (% de sus permitidos)
+        gestionables,
+        gestionables_tope: topeGest,
+        gestionables_pct_max: PCT_GESTIONABLES_MAX,
+        // ATC queda visible solo como dato informativo; no bloquea.
         atc: atcHoy,
-        atc_tope: tope === null ? null : Math.ceil(tope),
+        atc_tope: null,
         atc_pct: atcHoy !== null && r.permitidos ? Math.round((atcHoy * 100) / r.permitidos) : 0,
-        bloqueado_atc: gestMap ? bloqueadoPorAtc({ permitidos: r.permitidos, atc: atcHoy }) : false,
-        // Efectividad: Ventas Subidas vs meta (30% ↑ de gestionables) y leads vencidos (+3 h)
-        venta_subida: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.venta || 0) : null,
+        bloqueado_atc: false,
+        // Efectividad: ingresos Jotform de hoy vs 50% de gestionables, luego de 8 h.
+        venta_subida: ventasJot,
         vencidos: gestMap ? (gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0) : null,
-        // Meta de Ventas Subidas = 30% de sus gestionables, redondeado hacia arriba
+        // Meta de ingresos Jotform = 50% de sus gestionables, redondeado hacia arriba.
         sin_conteo: sinC - dupRR,             // entregados de FB Messenger - Novo (no cuentan)
         dup_reg_rmk: dupRR,                   // leads que pasaron a Duplicado / Regularización / Remarketing
         meta_venta: gestMap ? metaVentaSubida(gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0) : null,
-        bloqueado_efectividad: gestMap ? bloqueadoPorEfectividad({
+        bloqueado_efectividad: gestMap && ventasJot !== null ? bloqueadoPorEfectividad({
           gestionables: gestMap.get(normalizarNombre(r.nombre))?.gestionables || 0,
           vencidos: gestMap.get(normalizarNombre(r.nombre))?.vencidos || 0,
-          venta: gestMap.get(normalizarNombre(r.nombre))?.venta || 0,
+          venta: ventasJot || 0,
         }) : false,
       };
     });
@@ -209,7 +211,7 @@ router.get('/reparto/estado', async (req, res) => {
       resumen: resumen.rows[0],
       horario: { inicio: cfg.hora_inicio, fin: cfg.hora_fin, dentro: dentroDeHorario(new Date(), cfg.hora_inicio, cfg.hora_fin) },
       estacion: { nombre: cfg.estacion_nombre, pendientes: cola.rows.length, lista: cola.rows, sin_tabla: !!cola.sinTabla },
-      efectividad: { plazo_horas: plazoVentaHoras(E.clave), pct_max_sin_venta: PCT_SIN_VENTA_MAX },
+      efectividad: { plazo_horas: plazoVentaHoras(E.clave), pct_ventas_jot_min: PCT_VENTAS_JOT_MIN, pct_gestionables_max: PCT_GESTIONABLES_MAX },
       data,
     });
   } catch (e) {

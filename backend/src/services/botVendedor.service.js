@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const estadoComercial = require('./botVendedorEstado.service');
 
 const DIR_BOT = path.join(__dirname, '..', '..', 'scripts', 'bot-vendedor');
 const BASE_URL = (process.env.BOT_VENDEDOR_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
@@ -106,6 +107,27 @@ function limpiarTexto(t) {
   return String(t || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function interpretarRespuestaModelo(textoCrudo) {
+  const original = String(textoCrudo || '');
+  const bloque = original.match(/<estado_comercial>([\s\S]*?)<\/estado_comercial>/i);
+  let estado = {};
+  if (bloque) {
+    try {
+      const valor = JSON.parse(bloque[1]);
+      if (valor && typeof valor === 'object' && !Array.isArray(valor)) estado = valor;
+    } catch (_) {}
+  }
+  const imagenesRaw = [...new Set([...original.matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))].slice(0, 2);
+  const ventaCerrada = /\[VENTA_CERRADA\]/.test(original);
+  const texto = original
+    .replace(/<estado_comercial>[\s\S]*?<\/estado_comercial>/gi, '')
+    .replace(/\[IMG:\d+\]/g, '')
+    .replace(/\[VENTA_CERRADA\]/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+  return { texto, estado, imagenesRaw, ventaCerrada };
+}
+
 async function cargarBase() {
   if (cache && Date.now() - cacheEn < CACHE_MS) return cache;
   await asegurarTablas();
@@ -147,7 +169,6 @@ function buscar(fragmentos, consulta, max) {
 
 // ─── Groq ────────────────────────────────────────────────────────────────────
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
-
 // Proveedores de IA en orden. Si uno responde 429 (limite por minuto del plan gratis)
 // se pasa AL INSTANTE al siguiente, sin esperar. Gemini se suma si hay GEMINI_API_KEY.
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -273,7 +294,7 @@ const ESTILOS_APERTURA = [
   'saludo simpatico y corto, y pregunta que le gustaria mejorar de su internet actual',
 ];
 
-async function responder(historial) {
+async function responder(historial, opciones = {}) {
   if (!apiKey()) throw new Error('Falta GROQ_API_KEY en el entorno');
   const inicio = Date.now();
   const base = await cargarBase();
@@ -296,6 +317,18 @@ async function responder(historial) {
     { role: 'system', content: base.prompt },
     { role: 'system', content: `FECHA Y HORA ACTUAL (Ecuador): ${fechaHoraActual()}. Haz UNA sola pregunta por mensaje y responde en maximo 4 lineas, salvo cuando presentes la recomendacion o el resumen final.` },
   ];
+  if (opciones.estado) {
+    const estado = estadoComercial.normalizarEstado(opciones.estado);
+    const paso = estadoComercial.calcularPaso(estado);
+    messages.push({
+      role: 'system',
+      content: `ESTADO COMERCIAL CONFIRMADO (no vuelvas a preguntar estos datos):\n${JSON.stringify(estado)}\nSIGUIENTE PASO PENDIENTE: ${paso}. Responde primero cualquier pregunta directa del cliente y despues haz como maximo una pregunta sobre el siguiente dato faltante.`,
+    });
+  }
+  messages.push({
+    role: 'system',
+    content: 'MEMORIA INTERNA: al final de cada respuesta agrega <estado_comercial>{"campo":"valor"}</estado_comercial> con SOLO los datos comerciales nuevos confirmados por el cliente en este turno. Campos permitidos: motivo, segmento, ciudad, sector, personas, usos, plan, forma_pago, documentos, direccion, cierre_confirmado, escalado. Usa {} si no hay datos nuevos. Este bloque es interno y no se muestra al cliente.',
+  });
   if (base.reglas.trim()) messages.push({ role: 'system', content: `REGLAS ADICIONALES DEL NEGOCIO (obligatorias):\n${base.reglas.trim()}` });
   messages.push({
     role: 'system',
@@ -321,12 +354,12 @@ async function responder(historial) {
   messages.push(...hist);
 
   const { texto, modelo } = await llamarConRespaldo(messages);
+  const interpretada = interpretarRespuestaModelo(texto);
   // Etiquetas [IMG:id] -> imagenes a enviar (solo ids validos), y se quitan del texto.
   const validos = new Set(base.planesConImagen.map((p) => p.id));
-  const imagenes = [...new Set([...String(texto).matchAll(/\[IMG:(\d+)\]/g)].map((m) => Number(m[1])))]
-    .filter((id) => validos.has(id)).slice(0, 2);
-  const ventaCerrada = /\[VENTA_CERRADA\]/.test(String(texto));
-  let salida = String(texto).replace(/\[IMG:\d+\]/g, '').replace(/\[VENTA_CERRADA\]/g, '').replace(/[ \t]+\n/g, '\n').trim();
+  const imagenes = interpretada.imagenesRaw.filter((id) => validos.has(id));
+  const ventaCerrada = interpretada.ventaCerrada;
+  let salida = interpretada.texto;
   let accion = null;
   // La IA solo decide SI pasa a un asesor; el horario lo decide el codigo (lun-vie 9:00-18:00 Ecuador).
   if (/ESCALAR_ASESOR|FUERA_DE_HORARIO/.test(salida)) {
@@ -334,7 +367,7 @@ async function responder(historial) {
     else { accion = 'FUERA_HORARIO'; salida = MSG_FUERA_HORARIO; }
   }
   if (!salida) salida = 'Disculpa, no te entendi bien. ¿Me lo puedes repetir?';
-  return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, modelo, ms: Date.now() - inicio };
+  return { texto: salida, accion, imagenes: accion ? [] : imagenes, ventaCerrada: !accion && ventaCerrada, estadoCambios: interpretada.estado, modelo, ms: Date.now() - inicio };
 }
 
 // ─── Etapa recomendada ───────────────────────────────────────────────────────
@@ -452,5 +485,6 @@ module.exports = {
   _llamarConRespaldo: llamarConRespaldo, // para pruebas
   llamarClasificador,
   transcribirAudio, describirImagen, extraerTexto,
+  interpretarRespuestaModelo,
   MODELO, MODELO_RESPALDO, MSG_ESCALAR,
 };

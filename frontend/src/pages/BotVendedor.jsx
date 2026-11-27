@@ -177,6 +177,9 @@ function PestanaConversaciones() {
                   {c.msgs_cliente === 0 && <span className="text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">Sin respuesta</span>}
                   {c.paso_asesor && <span className="text-[10px] px-1.5 rounded bg-amber-100 text-amber-800">Pasó a asesor</span>}
                   {c.bot_venta_en && <span className="text-[10px] px-1.5 rounded bg-green-100 text-green-800">Venta</span>}
+                  <span className="text-[10px] px-1.5 rounded bg-indigo-100 text-indigo-800">{c.paso_actual} · {c.avance}%</span>
+                  {c.mensajes_agrupados > 0 && <span className="text-[10px] px-1.5 rounded bg-violet-100 text-violet-800">{c.mensajes_agrupados} agrupados</span>}
+                  {c.reintentos > 0 && <span className="text-[10px] px-1.5 rounded bg-amber-100 text-amber-800">{c.reintentos} reintentos</span>}
                   {c.etapa_recomendada && <span className={`text-[10px] px-1.5 rounded ${COLOR_ETAPA(c.etapa_recomendada)}`}>{c.etapa_recomendada}</span>}
                 </div>
               </button>
@@ -210,6 +213,18 @@ function PestanaConversaciones() {
                     ? <><b className="text-indigo-800">{detalle.clasificacion.etapa}</b><div className="text-xs text-slate-600 mt-0.5">{detalle.clasificacion.motivo}</div></>
                     : <span className="text-slate-400">{recomendando ? "analizando la conversación…" : "—"}</span>}
                 </div>
+                {detalle.estado_comercial && (
+                  <div className="mt-2 rounded-lg bg-white border p-2 text-xs text-slate-600">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Avance comercial: <b className="text-slate-800">{detalle.estado_comercial.paso_actual}</b></span>
+                      <b className="text-indigo-700">{detalle.estado_comercial.avance}%</b>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-indigo-600" style={{ width: `${Math.max(0, Math.min(100, detalle.estado_comercial.avance || 0))}%` }} />
+                    </div>
+                    {detalle.estado_comercial.ultimo_error && <div className="mt-1 text-amber-700">Último error: {detalle.estado_comercial.ultimo_error}</div>}
+                  </div>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#efeae2]">
                 {detalle.mensajes.map((m) => (

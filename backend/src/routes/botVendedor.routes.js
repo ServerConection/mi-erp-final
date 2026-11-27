@@ -33,6 +33,7 @@ const multer = require('multer');
 const pool = require('../config/db');
 const { verificarToken, soloAdmin } = require('../middleware/auth');
 const bot = require('../services/botVendedor.service');
+const estadoComercial = require('../services/botVendedorEstado.service');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 1 } });
@@ -304,7 +305,8 @@ router.get('/conversaciones', async (req, res) => {
               COUNT(*) FILTER (WHERE m.direction = 'out' AND COALESCE(m.metadata->>'bot_vendedor', '') <> 'true')::int AS msgs_asesor,
               BOOL_OR(m.metadata->>'accion' IN ('ESCALAR', 'FUERA_HORARIO')) AS paso_asesor,
               (ARRAY_AGG(m.content ORDER BY m.timestamp DESC))[1] AS ultimo_mensaje,
-              n.bitrix_id, n.bot_venta_en, cl.etapa AS etapa_recomendada, cl.motivo AS motivo_etapa
+               n.bitrix_id, n.bot_venta_en, cl.etapa AS etapa_recomendada, cl.motivo AS motivo_etapa,
+               st.paso_actual, st.avance, st.reintentos, st.mensajes_agrupados, st.actualizado_en AS estado_actualizado_en
          FROM conv_bot cb
          JOIN conversations c ON c.id = cb.conversation_id
          JOIN messages m ON m.conversation_id = c.id
@@ -314,12 +316,14 @@ router.get('/conversaciones', async (req, res) => {
             WHERE line_id = c.line_id AND telefono = c.wa_number ORDER BY creado_en DESC LIMIT 1
          ) n ON TRUE
          LEFT JOIN public.bv_clasificacion cl ON cl.conversation_id = c.id
-        GROUP BY c.id, c.wa_number, l.name, n.bitrix_id, n.bot_venta_en, cl.etapa, cl.motivo
+         LEFT JOIN public.bv_conversation_state st ON st.conversation_id = c.id
+        GROUP BY c.id, c.wa_number, l.name, n.bitrix_id, n.bot_venta_en, cl.etapa, cl.motivo,
+                 st.paso_actual, st.avance, st.reintentos, st.mensajes_agrupados, st.actualizado_en
         ORDER BY ultimo DESC
         LIMIT 300`,
       [String(dias)]);
     const err = await pool.query("SELECT valor, actualizado_en FROM public.bv_config WHERE clave = 'ia_ultimo_error'");
-    ok(res, { dias, conversaciones: rows, ia_ultimo_error: err.rows[0] || null, etapas: bot.ETAPAS_RECOMENDABLES.map(([e]) => e) });
+    ok(res, { dias, conversaciones: estadoComercial.aplicarMetricas(rows), ia_ultimo_error: err.rows[0] || null, etapas: bot.ETAPAS_RECOMENDABLES.map(([e]) => e) });
   } catch (e) { fallo(res, e); }
 });
 
@@ -340,7 +344,8 @@ router.get('/conversaciones/:id', async (req, res) => {
       `SELECT c.id, c.wa_number, c.status, l.name AS linea FROM conversations c LEFT JOIN lines l ON l.id = c.line_id WHERE c.id = $1`, [id]);
     if (!conv.rows.length) return fallo(res, 'No existe', 404);
     const cl = await pool.query('SELECT etapa, motivo, modelo, creado_en FROM public.bv_clasificacion WHERE conversation_id = $1', [id]);
-    ok(res, { conversacion: conv.rows[0], mensajes: await leerMensajes(id), clasificacion: cl.rows[0] || null });
+    const st = await pool.query('SELECT estado, paso_actual, avance, reintentos, mensajes_agrupados, ultimo_error, actualizado_en FROM public.bv_conversation_state WHERE conversation_id = $1', [id]);
+    ok(res, { conversacion: conv.rows[0], mensajes: await leerMensajes(id), clasificacion: cl.rows[0] || null, estado_comercial: st.rows[0] || null });
   } catch (e) { fallo(res, e); }
 });
 

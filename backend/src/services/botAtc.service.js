@@ -179,7 +179,7 @@ function clasificarRapido(texto) {
 // Lee toda la conversacion de la ventana y recomienda la etapa.
 // Devuelve { etapa: 'ATC/SOPORTE'|'CONTACTO NUEVO', confianza, motivo, modelo }.
 async function evaluarIA(transcripcion) {
-  const r = await bot._llamarConRespaldo([
+  const r = await bot.llamarClasificador([
     { role: 'system', content:
       'Auditas chats que llegan a la linea de VENTAS de NETLIFE (internet de fibra en Ecuador). ' +
       'Al inicio el bot le pregunto si busca contratar internet o si necesita ayuda con un servicio que ya tiene. ' +
@@ -434,8 +434,16 @@ async function evaluar(s, cfg) {
     estado = 'NO_DETECTADO';
     rec = { etapa: 'CONTACTO NUEVO', confianza: 'baja', motivo: 'El cliente no respondió a la pregunta', metodo: 'tiempo' };
   } else {
+    const rapido = clasificarRapido(respuesta.replace(/\|/g, ' '));
+    const soloNumeros = textos.every((t) => /^\s*\d\s*$/.test(String(t.texto)));
     try {
-      rec = { ...(await evaluarIA(lineas.join('\n'))), metodo: 'ia' };
+      if (rapido?.metodo === 'palabra' || (rapido && soloNumeros)) {
+        // Palabras claras (o solo marco un numero): se clasifica sin gastar IA.
+        rec = { etapa: rapido.tipo === 'ATC' ? 'ATC/SOPORTE' : 'CONTACTO NUEVO', confianza: soloNumeros ? 'media' : 'alta',
+          motivo: soloNumeros ? `Solo respondió "${respuesta}"` : 'Palabras claras del cliente', metodo: rapido.metodo };
+      } else {
+        rec = { ...(await evaluarIA(lineas.join('\n'))), metodo: 'ia' };
+      }
     } catch (e) {
       console.error('[BOT-ATC] IA no disponible, uso reglas:', e.message);
       const c = clasificarRapido(respuesta);
